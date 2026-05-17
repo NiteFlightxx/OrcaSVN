@@ -1,38 +1,27 @@
 <template>
   <el-container class="main-container">
-    <el-aside width="200px" class="sidebar">
+    <el-aside width="224px" class="sidebar">
       <div class="logo">
-        <el-icon><FolderOpened /></el-icon>
-        <span>OrcaSVN</span>
+        <div class="logo-mark">
+          <el-icon><FolderOpened /></el-icon>
+        </div>
+        <div>
+          <span>OrcaSVN</span>
+          <small>SVN Workbench</small>
+        </div>
       </div>
       <el-menu
         :default-active="activeMenu"
         class="sidebar-menu"
         @select="handleMenuSelect"
       >
-        <el-menu-item index="workspace">
-          <el-icon><HomeFilled /></el-icon>
-          <span>{{ $t('menu.workspace') }}</span>
-        </el-menu-item>
-        <el-menu-item index="checkout">
-          <el-icon><Download /></el-icon>
-          <span>{{ $t('menu.checkout') }}</span>
-        </el-menu-item>
-        <el-menu-item index="commit">
-          <el-icon><Upload /></el-icon>
-          <span>{{ $t('menu.commit') }}</span>
-        </el-menu-item>
-        <el-menu-item index="log">
-          <el-icon><Document /></el-icon>
-          <span>{{ $t('menu.log') }}</span>
-        </el-menu-item>
-        <el-menu-item index="diff">
-          <el-icon><Connection /></el-icon>
-          <span>{{ $t('menu.diff') }}</span>
-        </el-menu-item>
-        <el-menu-item index="blame">
-          <el-icon><Edit /></el-icon>
-          <span>{{ $t('menu.blame') }}</span>
+        <el-menu-item
+          v-for="item in menuItems"
+          :key="item.index"
+          :index="item.index"
+        >
+          <el-icon><component :is="item.icon" /></el-icon>
+          <span>{{ $t(item.labelKey) }}</span>
         </el-menu-item>
       </el-menu>
     </el-aside>
@@ -42,15 +31,14 @@
           <el-breadcrumb v-if="workspaceStore.currentPath">
             <el-breadcrumb-item>{{ workspaceStore.currentPath }}</el-breadcrumb-item>
           </el-breadcrumb>
+          <div v-else class="header-title">{{ $t('menu.workspace') }}</div>
         </div>
         <div class="header-right">
-          <el-button @click="refreshStatus" :loading="workspaceStore.isLoading">
+          <el-button circle @click="refreshStatus" :loading="workspaceStore.isLoading" :title="$t('menu.refresh')">
             <el-icon><Refresh /></el-icon>
-            {{ $t('menu.refresh') }}
           </el-button>
-          <el-button @click="openSettings">
+          <el-button circle @click="openSettings" :title="$t('menu.settings')">
             <el-icon><Setting /></el-icon>
-            {{ $t('menu.settings') }}
           </el-button>
           <LanguageSwitcher />
         </div>
@@ -70,35 +58,35 @@
 import { computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
-import { svnStatus, svnInfo } from '@/api/svn'
 import LanguageSwitcher from '@/components/LanguageSwitcher.vue'
+import { useWorkspace } from '@/composables/useWorkspace'
+import {
+  Connection,
+  Document,
+  Download,
+  Edit,
+  HomeFilled,
+  Upload,
+} from '@element-plus/icons-vue'
+
+const menuItems = [
+  { index: 'workspace', labelKey: 'menu.workspace', icon: HomeFilled },
+  { index: 'checkout', labelKey: 'menu.checkout', icon: Download },
+  { index: 'commit', labelKey: 'menu.commit', icon: Upload },
+  { index: 'log', labelKey: 'menu.log', icon: Document },
+  { index: 'diff', labelKey: 'menu.diff', icon: Connection },
+  { index: 'blame', labelKey: 'menu.blame', icon: Edit },
+] as const
 
 const router = useRouter()
 const route = useRoute()
 const workspaceStore = useWorkspaceStore()
+const { refreshStatus } = useWorkspace()
 
 const activeMenu = computed(() => route.name as string)
 
 const handleMenuSelect = (index: string) => {
   router.push({ name: index })
-}
-
-const refreshStatus = async () => {
-  if (!workspaceStore.currentPath) return
-
-  workspaceStore.isLoading = true
-  try {
-    const [status, info] = await Promise.all([
-      svnStatus(workspaceStore.currentPath),
-      svnInfo(workspaceStore.currentPath)
-    ])
-    workspaceStore.statusList = status
-    workspaceStore.svnInfo = info
-  } catch (err) {
-    console.error('刷新状态失败:', err)
-  } finally {
-    workspaceStore.isLoading = false
-  }
 }
 
 const openSettings = () => {
@@ -109,60 +97,103 @@ const openSettings = () => {
 <style scoped>
 .main-container {
   height: 100vh;
+  background: transparent;
 }
 
 .sidebar {
-  background: #304156;
+  width: 224px;
+  border-right: 1px solid rgba(198, 198, 210, 0.72);
+  background: rgba(32, 33, 42, 0.86);
   color: #fff;
+  backdrop-filter: blur(22px);
 }
 
 .logo {
   display: flex;
   align-items: center;
-  justify-content: center;
-  height: 60px;
-  font-size: 20px;
-  font-weight: bold;
-  gap: 10px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  min-height: 76px;
+  padding: 18px 18px 14px;
+  font-size: 18px;
+  font-weight: 800;
+  gap: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.logo small {
+  display: block;
+  margin-top: 2px;
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0;
+}
+
+.logo-mark {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #e4e2ff, #d7f5ee);
+  color: #3730a3;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
 }
 
 .sidebar-menu {
   border-right: none;
   background: transparent;
+  padding: 12px;
 }
 
 :deep(.el-menu-item) {
-  color: rgba(255, 255, 255, 0.7);
+  height: 44px;
+  margin-bottom: 6px;
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.72);
+  font-weight: 700;
 }
 
 :deep(.el-menu-item:hover),
 :deep(.el-menu-item.is-active) {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(228, 226, 255, 0.18);
   color: #fff;
+}
+
+:deep(.el-menu-item.is-active) {
+  box-shadow: inset 0 0 0 1px rgba(228, 226, 255, 0.2);
 }
 
 .header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: #fff;
-  border-bottom: 1px solid #e6e6e6;
-  padding: 0 20px;
+  min-height: 64px;
+  background: rgba(255, 253, 248, 0.74);
+  border-bottom: 1px solid rgba(198, 198, 210, 0.72);
+  padding: 0 22px;
+  backdrop-filter: blur(18px);
 }
 
 .header-left {
   flex: 1;
+  min-width: 0;
+}
+
+.header-title {
+  color: #2e3040;
+  font-size: 16px;
+  font-weight: 800;
 }
 
 .header-right {
   display: flex;
-  gap: 10px;
+  align-items: center;
+  gap: 8px;
 }
 
 .main-content {
-  background: #f5f7fa;
-  padding: 20px;
+  background: transparent;
+  padding: 22px;
   overflow: auto;
 }
 

@@ -3,13 +3,16 @@
     <el-card class="diff-card">
       <template #header>
         <div class="card-header">
-          <span>{{ $t('diff.title') }}</span>
+          <span class="view-title">
+            <el-icon><Connection /></el-icon>
+            {{ $t('diff.title') }}
+          </span>
           <div class="header-actions">
             <el-input
               v-model="currentPath"
               :placeholder="$t('diff.filePath')"
               clearable
-              style="width: 300px"
+              class="path-input"
             >
               <template #prepend>
                 <el-icon><Document /></el-icon>
@@ -24,9 +27,9 @@
       </template>
 
       <div class="diff-options">
-        <el-radio-group v-model="diffType">
-          <el-radio label="working">{{ $t('diff.workingCopy') }}</el-radio>
-          <el-radio label="revision">{{ $t('diff.betweenRevisions') }}</el-radio>
+        <el-radio-group v-model="diffType" class="mode-switch">
+          <el-radio-button label="working">{{ $t('diff.workingCopy') }}</el-radio-button>
+          <el-radio-button label="revision">{{ $t('diff.betweenRevisions') }}</el-radio-button>
         </el-radio-group>
 
         <div v-if="diffType === 'revision'" class="revision-inputs">
@@ -56,13 +59,30 @@
 
       <div v-else class="diff-content">
         <div class="diff-header">
-          <el-tag>{{ $t('diff.file') }}：{{ diffResult?.path }}</el-tag>
+          <el-tag class="path-tag">
+            <el-icon><Document /></el-icon>
+            {{ $t('diff.file') }}：{{ diffResult?.path }}
+          </el-tag>
           <el-tag v-if="diffResult?.old_revision && diffResult?.new_revision">
             {{ $t('common.version') }}：{{ diffResult?.old_revision }} → {{ diffResult?.new_revision }}
           </el-tag>
+          <el-tag type="success">+{{ diffStats.added }}</el-tag>
+          <el-tag type="danger">-{{ diffStats.removed }}</el-tag>
         </div>
 
-        <div class="diff-lines" v-html="formattedDiff"></div>
+        <div class="diff-lines" role="table" aria-label="Diff">
+          <div
+            v-for="line in diffLines"
+            :key="line.index"
+            class="diff-row"
+            :class="line.className"
+            role="row"
+          >
+            <span class="diff-line-number" role="cell">{{ line.index }}</span>
+            <span class="diff-marker" role="cell">{{ line.marker }}</span>
+            <code class="diff-code" role="cell">{{ line.text }}</code>
+          </div>
+        </div>
       </div>
     </el-card>
   </div>
@@ -71,10 +91,25 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import { svnDiff } from '@/api/svn'
+import { useWorkspaceStore } from '@/stores/workspace'
+import { useI18n } from 'vue-i18n'
 import type { DiffResult } from '@/types'
 
+const { t } = useI18n()
 const route = useRoute()
+const workspaceStore = useWorkspaceStore()
+
+type DiffLineType = 'added' | 'removed' | 'context' | 'meta'
+
+interface DiffLineRow {
+  index: number
+  marker: string
+  text: string
+  className: string
+  type: DiffLineType
+}
 
 const currentPath = ref('')
 const diffType = ref<'working' | 'revision'>('working')
@@ -83,30 +118,56 @@ const newRev = ref<number>()
 const loading = ref(false)
 const diffResult = ref<DiffResult | null>(null)
 
-const formattedDiff = computed(() => {
-  if (!diffResult.value?.diff) return ''
+const diffLines = computed<DiffLineRow[]>(() => {
+  if (!diffResult.value?.diff) return []
 
   const lines = diffResult.value.diff.split('\n')
-  return lines.map(line => {
+  return lines.map((line, index) => {
     if (line.startsWith('+') && !line.startsWith('+++')) {
-      return `<div class="diff-line diff-added">${escapeHtml(line)}</div>`
-    } else if (line.startsWith('-') && !line.startsWith('---')) {
-      return `<div class="diff-line diff-removed">${escapeHtml(line)}</div>`
-    } else {
-      return `<div class="diff-line">${escapeHtml(line)}</div>`
+      return {
+        index: index + 1,
+        marker: '+',
+        text: line.slice(1),
+        className: 'diff-added',
+        type: 'added',
+      }
     }
-  }).join('')
+
+    if (line.startsWith('-') && !line.startsWith('---')) {
+      return {
+        index: index + 1,
+        marker: '-',
+        text: line.slice(1),
+        className: 'diff-removed',
+        type: 'removed',
+      }
+    }
+
+    const isMeta = line.startsWith('@@') || line.startsWith('+++') || line.startsWith('---')
+    return {
+      index: index + 1,
+      marker: isMeta ? '@' : '',
+      text: line,
+      className: isMeta ? 'diff-meta' : 'diff-context',
+      type: isMeta ? 'meta' : 'context',
+    }
+  })
 })
 
-const escapeHtml = (text: string): string => {
-  const div = document.createElement('div')
-  div.textContent = text
-  return div.innerHTML
-}
+const diffStats = computed(() => {
+  return diffLines.value.reduce(
+    (stats, line) => {
+      if (line.type === 'added') stats.added += 1
+      if (line.type === 'removed') stats.removed += 1
+      return stats
+    },
+    { added: 0, removed: 0 }
+  )
+})
 
 const loadDiff = async () => {
-  const path = currentPath.value || route.query.path as string
-  if (!path) return
+  const file = currentPath.value || route.query.path as string
+  if (!file || !workspaceStore.currentPath) return
 
   loading.value = true
   diffResult.value = null
@@ -115,9 +176,10 @@ const loadDiff = async () => {
     const old = diffType.value === 'revision' ? oldRev.value : undefined
     const new_ = diffType.value === 'revision' ? newRev.value : undefined
 
-    diffResult.value = await svnDiff(path, old, new_)
+    diffResult.value = await svnDiff(workspaceStore.currentPath, file, old, new_)
   } catch (err) {
-    console.error('对比失败:', err)
+    diffResult.value = null
+    ElMessage.error(`${t('common.error')}：${err}`)
   } finally {
     loading.value = false
   }
@@ -136,6 +198,23 @@ watch(() => route.query.path, (path) => {
   height: 100%;
 }
 
+.diff-card {
+  height: 100%;
+}
+
+:deep(.diff-card > .el-card__body) {
+  display: flex;
+  flex-direction: column;
+  height: calc(100% - 57px);
+  min-height: 0;
+}
+
+.view-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .card-header {
   display: flex;
   justify-content: space-between;
@@ -144,14 +223,24 @@ watch(() => route.query.path, (path) => {
 
 .header-actions {
   display: flex;
+  align-items: center;
   gap: 10px;
+}
+
+.path-input {
+  width: min(420px, 42vw);
 }
 
 .diff-options {
   margin-bottom: 20px;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 20px;
+}
+
+.mode-switch :deep(.el-radio-button__inner) {
+  font-weight: 700;
 }
 
 .revision-inputs {
@@ -166,35 +255,103 @@ watch(() => route.query.path, (path) => {
 }
 
 .diff-content {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
   margin-top: 20px;
 }
 
 .diff-header {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   margin-bottom: 15px;
 }
 
+.path-tag {
+  max-width: min(720px, 100%);
+}
+
 .diff-lines {
-  background: #f6f8fa;
-  border: 1px solid #e1e4e8;
-  border-radius: 4px;
-  max-height: 600px;
+  flex: 1;
+  min-height: 320px;
+  background: #fbfbff;
+  border: 1px solid rgba(198, 198, 210, 0.8);
+  border-radius: 8px;
   overflow: auto;
-  font-family: 'Consolas', 'Monaco', monospace;
+  font-family: "Cascadia Mono", Consolas, Monaco, monospace;
   font-size: 13px;
 }
 
-.diff-line {
-  padding: 2px 8px;
+.diff-row {
+  display: grid;
+  grid-template-columns: 64px 34px minmax(max-content, 1fr);
+  min-width: max-content;
+  border-bottom: 1px solid rgba(226, 228, 238, 0.72);
+}
+
+.diff-line-number,
+.diff-marker {
+  user-select: none;
+  color: #747789;
+  background: rgba(241, 242, 251, 0.86);
+  text-align: right;
+}
+
+.diff-line-number {
+  padding: 3px 12px;
+}
+
+.diff-marker {
+  padding: 3px 10px;
+  text-align: center;
+  font-weight: 800;
+}
+
+.diff-code {
+  padding: 3px 12px;
+  color: #20212a;
   white-space: pre;
 }
 
 .diff-added {
-  background-color: #e6ffed;
+  background-color: #ecfdf3;
+}
+
+.diff-added .diff-marker,
+.diff-added .diff-line-number {
+  background: #dcfce7;
+  color: #15803d;
 }
 
 .diff-removed {
-  background-color: #ffeef0;
+  background-color: #fff1f2;
+}
+
+.diff-removed .diff-marker,
+.diff-removed .diff-line-number {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.diff-meta {
+  background: #eef2ff;
+}
+
+.diff-meta .diff-code,
+.diff-meta .diff-marker {
+  color: #4338ca;
+  font-weight: 800;
+}
+
+@media (max-width: 860px) {
+  .path-input {
+    width: 100%;
+  }
+
+  .header-actions {
+    width: 100%;
+  }
 }
 </style>

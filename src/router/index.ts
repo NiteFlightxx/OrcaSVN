@@ -1,12 +1,5 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import MainLayout from '@/layouts/MainLayout.vue'
-import WorkspaceView from '@/views/WorkspaceView.vue'
-import CheckoutView from '@/views/CheckoutView.vue'
-import CommitView from '@/views/CommitView.vue'
-import LogView from '@/views/LogView.vue'
-import DiffView from '@/views/DiffView.vue'
-import BlameView from '@/views/BlameView.vue'
-import SettingsView from '@/views/SettingsView.vue'
 
 const router = createRouter({
   history: createWebHashHistory(),
@@ -18,39 +11,50 @@ const router = createRouter({
         {
           path: '',
           name: 'workspace',
-          component: WorkspaceView,
+          component: () => import('@/views/WorkspaceView.vue'),
+          meta: { title: 'menu.workspace' },
         },
         {
           path: 'checkout',
           name: 'checkout',
-          component: CheckoutView,
+          component: () => import('@/views/CheckoutView.vue'),
+          meta: { title: 'menu.checkout' },
         },
         {
           path: 'commit',
           name: 'commit',
-          component: CommitView,
+          component: () => import('@/views/CommitView.vue'),
+          meta: { title: 'menu.commit' },
         },
         {
           path: 'log',
           name: 'log',
-          component: LogView,
+          component: () => import('@/views/LogView.vue'),
+          meta: { title: 'menu.log' },
         },
         {
           path: 'diff',
           name: 'diff',
-          component: DiffView,
+          component: () => import('@/views/DiffView.vue'),
+          meta: { title: 'menu.diff' },
         },
         {
           path: 'blame',
           name: 'blame',
-          component: BlameView,
+          component: () => import('@/views/BlameView.vue'),
+          meta: { title: 'menu.blame' },
         },
         {
           path: 'settings',
           name: 'settings',
-          component: SettingsView,
+          component: () => import('@/views/SettingsView.vue'),
+          meta: { title: 'nav.settings' },
         },
       ],
+    },
+    {
+      path: '/:pathMatch(.*)*',
+      redirect: '/',
     },
   ],
 })

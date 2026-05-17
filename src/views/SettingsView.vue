@@ -47,7 +47,7 @@
         </el-form-item>
 
         <el-form-item :label="$t('settings.theme')">
-          <el-radio-group v-model="settings.theme">
+          <el-radio-group v-model="settings.theme" @change="applyTheme">
             <el-radio label="light">{{ $t('settings.themeLight') }}</el-radio>
             <el-radio label="dark">{{ $t('settings.themeDark') }}</el-radio>
             <el-radio label="auto">{{ $t('settings.themeAuto') }}</el-radio>
@@ -55,8 +55,8 @@
         </el-form-item>
 
         <el-form-item>
-          <el-button type="primary" @click="saveSettings">{{ $t('common.save') }}</el-button>
-          <el-button @click="resetSettings">{{ $t('common.cancel') }}</el-button>
+          <el-button type="primary" @click="handleSave">{{ $t('common.save') }}</el-button>
+          <el-button @click="handleReset">{{ $t('common.cancel') }}</el-button>
         </el-form-item>
       </el-form>
 
@@ -73,47 +73,62 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useLocale } from '@/composables/useLocale'
+import { useSettings } from '@/composables/useSettings'
 
-const { locale, t } = useI18n()
+const { t } = useI18n()
 const { setLocale } = useLocale()
+const { settings, resetSettings } = useSettings()
 
 const languages = computed(() => [
   { label: t('language.zhCN'), value: 'zh-CN' },
+  { label: t('language.zhTW'), value: 'zh-TW' },
   { label: t('language.jaJP'), value: 'ja-JP' },
+  { label: t('language.koKR'), value: 'ko-KR' },
   { label: t('language.enUS'), value: 'en-US' },
 ])
 
-const settings = reactive({
-  svnPath: '',
-  encoding: 'utf-8',
-  logLimit: 50,
-  autoRefresh: true,
-  theme: 'auto' as 'light' | 'dark' | 'auto',
-})
-
-// 使用计算属性获取和设置当前语言
 const currentLanguage = computed({
-  get: () => locale.value,
-  set: (val: string) => setLocale(val)
+  get: () => settings.language,
+  set: (val: string) => {
+    settings.language = val
+    setLocale(val)
+  },
 })
 
-const saveSettings = () => {
-  setLocale(currentLanguage.value)
-  // TODO: 保存到本地存储
-  console.log('保存设置:', settings, '语言:', currentLanguage.value)
+function applyTheme(theme: string) {
+  const root = document.documentElement
+  root.classList.remove('theme-light', 'theme-dark')
+
+  if (theme === 'dark') {
+    root.classList.add('theme-dark')
+  } else if (theme === 'light') {
+    root.classList.add('theme-light')
+  } else {
+    // auto: follow system
+    if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      root.classList.add('theme-dark')
+    }
+  }
 }
 
-const resetSettings = () => {
-  settings.svnPath = ''
-  settings.encoding = 'utf-8'
-  settings.logLimit = 50
-  settings.autoRefresh = true
-  settings.theme = 'auto'
-  setLocale('zh-CN')
+function handleSave() {
+  setLocale(settings.language)
+  applyTheme(settings.theme)
 }
+
+function handleReset() {
+  resetSettings()
+  setLocale(settings.language)
+  applyTheme(settings.theme)
+}
+
+onMounted(() => {
+  setLocale(settings.language)
+  applyTheme(settings.theme)
+})
 </script>
 
 <style scoped>

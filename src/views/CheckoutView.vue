@@ -70,7 +70,9 @@ import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { svnCheckout } from '@/api/svn'
 import { open } from '@tauri-apps/plugin-dialog'
+import { useI18n } from 'vue-i18n'
 
+const { t } = useI18n()
 const router = useRouter()
 const workspaceStore = useWorkspaceStore()
 
@@ -87,7 +89,7 @@ const selectDirectory = async () => {
   const selected = await open({
     directory: true,
     multiple: false,
-    title: '选择目标目录'
+    title: t('dialog.selectTargetDirectory')
   })
 
   if (selected) {
@@ -107,15 +109,13 @@ const doCheckout = async () => {
     const result = await svnCheckout(form.url, form.path, form.revision)
     output.value = result.output
 
-    // 设置当前工作区
     workspaceStore.setCurrentPath(form.path)
 
-    // 跳转到工作区
     setTimeout(() => {
       router.push({ name: 'workspace' })
     }, 1000)
   } catch (err) {
-    output.value = `错误：${err}`
+    output.value = `${t('common.error')}：${err}`
   } finally {
     loading.value = false
   }

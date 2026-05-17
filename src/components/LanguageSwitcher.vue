@@ -29,7 +29,9 @@ const { setLocale } = useLocale()
 
 const languages = computed(() => [
   { label: t('language.zhCN'), value: 'zh-CN' },
+  { label: t('language.zhTW'), value: 'zh-TW' },
   { label: t('language.jaJP'), value: 'ja-JP' },
+  { label: t('language.koKR'), value: 'ko-KR' },
   { label: t('language.enUS'), value: 'en-US' },
 ])
 

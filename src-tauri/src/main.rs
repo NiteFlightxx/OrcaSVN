@@ -2,13 +2,6 @@ mod svn;
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct SvnCommand {
-    pub cmd: String,
-    pub args: Vec<String>,
-    pub path: Option<String>,
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CommandResult {
     pub success: bool,
@@ -96,17 +89,7 @@ async fn svn_commit(
 
 #[tauri::command]
 async fn svn_status(path: String) -> Result<Vec<SvnStatus>, String> {
-    eprintln!("svn_status called with path: {}", path);
-    match svn::status(&path).await {
-        Ok(status) => {
-            eprintln!("svn_status success: {} items", status.len());
-            Ok(status)
-        }
-        Err(e) => {
-            eprintln!("svn_status error: {:?}", e);
-            Err(e.to_string())
-        }
-    }
+    svn::status(&path).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -121,31 +104,22 @@ async fn svn_log(
 
 #[tauri::command]
 async fn svn_info(path: String) -> Result<SvnInfo, String> {
-    eprintln!("svn_info called with path: {}", path);
-    match svn::info(&path).await {
-        Ok(info) => {
-            eprintln!("svn_info success: {:?}", info);
-            Ok(info)
-        }
-        Err(e) => {
-            eprintln!("svn_info error: {:?}", e);
-            Err(e.to_string())
-        }
-    }
+    svn::info(&path).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 async fn svn_diff(
-    path: String,
+    workspace_path: String,
+    file: String,
     old_rev: Option<u64>,
     new_rev: Option<u64>,
 ) -> Result<DiffResult, String> {
-    svn::diff(&path, old_rev, new_rev).await.map_err(|e| e.to_string())
+    svn::diff(&workspace_path, &file, old_rev, new_rev).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn svn_blame(path: String) -> Result<Vec<svn::BlameLine>, String> {
-    svn::blame(&path).await.map_err(|e| e.to_string())
+async fn svn_blame(workspace_path: String, file: String) -> Result<Vec<svn::BlameLine>, String> {
+    svn::blame(&workspace_path, &file).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -225,12 +199,9 @@ async fn svn_merge(path: String, source: String, rev_start: u64, rev_end: u64) -
         .map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-fn select_directory() -> Result<Option<String>, String> {
-    Ok(None)
-}
-
 fn main() {
+    tracing_subscriber::fmt::init();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
@@ -251,7 +222,6 @@ fn main() {
             svn_cleanup,
             svn_switch,
             svn_merge,
-            select_directory,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

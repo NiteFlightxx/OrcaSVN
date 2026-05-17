@@ -1,6 +1,6 @@
 {
   "name": "OrcaSVN",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "OrcaSVN 客户端 - 基于 Tauri",
   "scripts": {
     "dev": "vite",
@@ -10,7 +10,6 @@
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.1",
-    "@material/web": "^2.4.1",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2",
     "@tauri-apps/plugin-fs": "^2",

@@ -39,15 +39,16 @@ export async function svnInfo(path: string): Promise<SvnInfo> {
 }
 
 export async function svnDiff(
-  path: string,
+  workspacePath: string,
+  file: string,
   oldRev?: number,
   newRev?: number
 ): Promise<DiffResult> {
-  return invoke<DiffResult>('svn_diff', { path, oldRev, newRev })
+  return invoke<DiffResult>('svn_diff', { workspacePath, file, oldRev, newRev })
 }
 
-export async function svnBlame(path: string): Promise<BlameLine[]> {
-  return invoke<BlameLine[]>('svn_blame', { path })
+export async function svnBlame(workspacePath: string, file: string): Promise<BlameLine[]> {
+  return invoke<BlameLine[]>('svn_blame', { workspacePath, file })
 }
 
 export async function svnAdd(path: string, files: string[]): Promise<CommandResult> {

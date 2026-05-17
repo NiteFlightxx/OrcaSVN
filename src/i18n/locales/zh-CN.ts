@@ -41,7 +41,9 @@ export default {
   language: {
     label: '语言',
     zhCN: '简体中文',
+    zhTW: '繁體中文',
     jaJP: '日本語',
+    koKR: '한국어',
     enUS: 'English',
   },
   settings: {
@@ -139,6 +141,10 @@ export default {
   dialog: {
     selectSVNWorkspaceDirectory: '选择 SVN 工作区目录',
     selectTargetDirectory: '选择目标目录',
+  },
+  switch: {
+    enterUrl: '请输入要切换的 SVN URL',
+    invalidUrl: '请输入有效的 URL（以 http:// 或 https:// 开头）',
   },
   menu: {
     workspace: '工作区',

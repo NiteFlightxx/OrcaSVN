@@ -40,8 +40,10 @@ export default {
   },
   language: {
     label: 'Language',
-    zhCN: '简体中文',
+    zhCN: 'Simplified Chinese',
+    zhTW: 'Traditional Chinese',
     jaJP: '日本語',
+    koKR: 'Korean',
     enUS: 'English',
   },
   settings: {
@@ -139,6 +141,10 @@ export default {
   dialog: {
     selectSVNWorkspaceDirectory: 'Select SVN Workspace Directory',
     selectTargetDirectory: 'Select Target Directory',
+  },
+  switch: {
+    enterUrl: 'Enter the SVN URL to switch to',
+    invalidUrl: 'Please enter a valid URL (starting with http:// or https://)',
   },
   menu: {
     workspace: 'Workspace',

@@ -41,7 +41,9 @@ export default {
   language: {
     label: '言語',
     zhCN: '簡体字',
+    zhTW: '繁体字',
     jaJP: '日本語',
+    koKR: '韓国語',
     enUS: '英語',
   },
   settings: {
@@ -139,6 +141,10 @@ export default {
   dialog: {
     selectSVNWorkspaceDirectory: 'SVN ワークスペースディレクトリを選択',
     selectTargetDirectory: 'ターゲットディレクトリを選択',
+  },
+  switch: {
+    enterUrl: '切り替え先の SVN URL を入力してください',
+    invalidUrl: '有効な URL を入力してください（http:// または https:// で始まる）',
   },
   menu: {
     workspace: 'ワークスペース',

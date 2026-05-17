@@ -28,3 +28,5 @@ src-tauri/target
 src-tauri/dist
 
 build-output.txt
+
+.minimax

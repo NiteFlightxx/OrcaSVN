@@ -15,7 +15,7 @@
             />
             <el-button @click="loadLogs" :loading="loading">
               <el-icon><Refresh /></el-icon>
-              {{ $t('common.load') }}
+              {{ $t('log.load') }}
             </el-button>
           </div>
         </div>
@@ -75,8 +75,12 @@ import { ref, onMounted } from 'vue'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { svnLog } from '@/api/svn'
 import type { SvnLogEntry } from '@/types'
-import { open } from '@tauri-apps/plugin-dialog'
+import { useI18n } from 'vue-i18n'
+import { useWorkspace } from '@/composables/useWorkspace'
+
+const { t, locale } = useI18n()
 const workspaceStore = useWorkspaceStore()
+const { openWorkspace: openWorkspaceDialog } = useWorkspace()
 
 const limit = ref(50)
 const logs = ref<SvnLogEntry[]>([])
@@ -85,15 +89,8 @@ const dialogVisible = ref(false)
 const selectedLog = ref<SvnLogEntry | null>(null)
 
 const openWorkspace = async () => {
-  const selected = await open({
-    directory: true,
-    multiple: false,
-    title: '选择 SVN 工作区目录'
-  })
-
-  if (selected) {
-    const path = Array.isArray(selected) ? selected[0] : selected
-    workspaceStore.setCurrentPath(path)
+  const success = await openWorkspaceDialog(t('dialog.selectSVNWorkspaceDirectory'))
+  if (success) {
     loadLogs()
   }
 }
@@ -105,7 +102,7 @@ const loadLogs = async () => {
   try {
     logs.value = await svnLog(workspaceStore.currentPath, limit.value)
   } catch (err) {
-    console.error('加载日志失败:', err)
+    workspaceStore.error = String(err)
   } finally {
     loading.value = false
   }
@@ -119,7 +116,7 @@ const handleRowClick = (row: SvnLogEntry) => {
 const formatDate = (dateStr: string): string => {
   if (!dateStr) return ''
   const date = new Date(dateStr)
-  return date.toLocaleString('zh-CN')
+  return date.toLocaleString(locale.value)
 }
 
 onMounted(() => {

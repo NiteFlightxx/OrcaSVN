@@ -1,10 +1,16 @@
 <template>
   <div class="workspace-view">
     <div v-if="!workspaceStore.currentPath" class="empty-workspace">
-      <el-empty :description="$t('workspace.emptyWorkspace')">
-        <el-button type="primary" @click="openWorkspace">{{ $t('workspace.openWorkspace') }}</el-button>
-        <el-button @click="doCheckout">{{ $t('common.checkout') }}</el-button>
-      </el-empty>
+      <div class="empty-panel">
+        <div class="empty-mark">
+          <el-icon><FolderOpened /></el-icon>
+        </div>
+        <h1>{{ $t('workspace.emptyWorkspace') }}</h1>
+        <div class="empty-actions">
+          <el-button type="primary" @click="openWorkspace">{{ $t('workspace.openWorkspace') }}</el-button>
+          <el-button @click="doCheckout">{{ $t('common.checkout') }}</el-button>
+        </div>
+      </div>
     </div>
 
     <div v-else class="workspace-content">
@@ -44,23 +50,45 @@
         </template>
 
         <div class="status-summary">
-          <el-tag type="success" effect="plain">{{ $t('workspace.statusModified') }}：{{ workspaceStore.modifiedCount }}</el-tag>
-          <el-tag type="warning" effect="plain">{{ $t('workspace.statusAdded') }}：{{ workspaceStore.addedCount }}</el-tag>
-          <el-tag type="danger" effect="plain">{{ $t('workspace.statusDeleted') }}：{{ workspaceStore.deletedCount }}</el-tag>
+          <div class="status-metric modified">
+            <span>{{ $t('workspace.statusModified') }}</span>
+            <strong>{{ workspaceStore.modifiedCount }}</strong>
+          </div>
+          <div class="status-metric added">
+            <span>{{ $t('workspace.statusAdded') }}</span>
+            <strong>{{ workspaceStore.addedCount }}</strong>
+          </div>
+          <div class="status-metric deleted">
+            <span>{{ $t('workspace.statusDeleted') }}</span>
+            <strong>{{ workspaceStore.deletedCount }}</strong>
+          </div>
         </div>
 
         <el-table :data="workspaceStore.statusList" style="width: 100%" max-height="400">
-          <el-table-column prop="status_code" :label="$t('commit.status')" width="60">
+          <el-table-column prop="status_code" :label="$t('commit.status')" width="180" align="center">
             <template #default="{ row }">
-              <span :class="getStatusClass(row.status_code)">{{ row.status_code }}</span>
+              <span class="status-badge" :class="getStatusClass(row.status_code)">
+                {{ $t(getStatusLabelKey(row.status_code)) }}
+              </span>
             </template>
           </el-table-column>
           <el-table-column prop="path" :label="$t('commit.file')" />
-          <el-table-column :label="$t('common.action')" width="200">
+          <el-table-column :label="$t('common.action')" width="236" fixed="right">
             <template #default="{ row }">
-              <el-button link @click="viewDiff(row.path)">{{ $t('common.diff') }}</el-button>
-              <el-button link @click="viewBlame(row.path)">{{ $t('common.blame') }}</el-button>
-              <el-button link type="danger" @click="revertFile(row.path)">{{ $t('common.revert') }}</el-button>
+              <div class="row-actions">
+                <el-button link @click="viewDiff(row.path)">
+                  <el-icon><Connection /></el-icon>
+                  {{ $t('common.diff') }}
+                </el-button>
+                <el-button link @click="viewBlame(row.path)">
+                  <el-icon><Edit /></el-icon>
+                  {{ $t('common.blame') }}
+                </el-button>
+                <el-button link type="danger" @click="revertFile(row.path)">
+                  <el-icon><RefreshLeft /></el-icon>
+                  {{ $t('common.revert') }}
+                </el-button>
+              </div>
             </template>
           </el-table-column>
         </el-table>
@@ -84,7 +112,7 @@
             {{ $t('common.delete') }}
           </el-button>
           <el-button @click="doCleanup">
-            <el-icon><Delete /></el-icon>
+            <el-icon><Brush /></el-icon>
             {{ $t('common.cleanup') }}
           </el-button>
           <el-button @click="doSwitch">
@@ -100,46 +128,19 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
-import { svnStatus, svnInfo, svnUpdate, svnCleanup, svnRevert } from '@/api/svn'
+import { svnUpdate, svnCleanup, svnRevert, svnAdd, svnDelete, svnSwitch } from '@/api/svn'
 import { open } from '@tauri-apps/plugin-dialog'
+import { ElMessageBox } from 'element-plus'
+import { useI18n } from 'vue-i18n'
+import { getStatusClass, getStatusLabelKey } from '@/composables/useSvnStatus'
+import { useWorkspace } from '@/composables/useWorkspace'
 
+const { t } = useI18n()
 const router = useRouter()
 const workspaceStore = useWorkspaceStore()
+const { openWorkspace: openWorkspaceDialog, refreshStatus } = useWorkspace()
 
-const openWorkspace = async () => {
-  const selected = await open({
-    directory: true,
-    multiple: false,
-    title: '选择 SVN 工作区目录'
-  })
-
-  if (selected) {
-    const path = Array.isArray(selected) ? selected[0] : selected
-    console.log('选择的路径:', path)
-    workspaceStore.setCurrentPath(path)
-
-    try {
-      console.log('开始加载 status...')
-      const status = await svnStatus(path)
-      console.log('status 加载完成:', status.length, 'items')
-      workspaceStore.statusList = status
-
-      console.log('开始加载 info...')
-      const info = await svnInfo(path)
-      console.log('info 加载完成:', info)
-      workspaceStore.svnInfo = info
-
-      console.log('加载完成，store 状态:', {
-        currentPath: workspaceStore.currentPath,
-        svnInfo: workspaceStore.svnInfo,
-        statusList: workspaceStore.statusList.length
-      })
-    } catch (err) {
-      console.error('加载工作区失败:', err)
-      workspaceStore.error = String(err)
-    }
-  }
-}
+const openWorkspace = () => openWorkspaceDialog(t('dialog.selectSVNWorkspaceDirectory'))
 
 const doCheckout = () => {
   router.push({ name: 'checkout' })
@@ -149,25 +150,6 @@ const closeWorkspace = () => {
   workspaceStore.clearWorkspace()
 }
 
-const refreshStatus = async () => {
-  if (!workspaceStore.currentPath) return
-
-  workspaceStore.isLoading = true
-  try {
-    const status = await svnStatus(workspaceStore.currentPath)
-    console.log('refresh status:', status.length, 'items')
-    workspaceStore.statusList = status
-
-    const info = await svnInfo(workspaceStore.currentPath)
-    console.log('refresh info:', info)
-    workspaceStore.svnInfo = info
-  } catch (err) {
-    console.error('刷新状态失败:', err)
-  } finally {
-    workspaceStore.isLoading = false
-  }
-}
-
 const doUpdate = async () => {
   if (!workspaceStore.currentPath) return
 
@@ -175,7 +157,7 @@ const doUpdate = async () => {
     await svnUpdate(workspaceStore.currentPath)
     await refreshStatus()
   } catch (err) {
-    console.error('更新失败:', err)
+    workspaceStore.error = String(err)
   }
 }
 
@@ -184,11 +166,41 @@ const doCommit = () => {
 }
 
 const doAdd = async () => {
-  console.log('添加文件')
+  if (!workspaceStore.currentPath) return
+
+  const selected = await open({
+    multiple: true,
+    title: t('common.add'),
+  })
+
+  if (!selected) return
+
+  const files = Array.isArray(selected) ? selected : [selected]
+  try {
+    await svnAdd(workspaceStore.currentPath, files)
+    await refreshStatus()
+  } catch (err) {
+    workspaceStore.error = String(err)
+  }
 }
 
 const doDelete = async () => {
-  console.log('删除文件')
+  if (!workspaceStore.currentPath) return
+
+  const selected = await open({
+    multiple: true,
+    title: t('common.delete'),
+  })
+
+  if (!selected) return
+
+  const files = Array.isArray(selected) ? selected : [selected]
+  try {
+    await svnDelete(workspaceStore.currentPath, files)
+    await refreshStatus()
+  } catch (err) {
+    workspaceStore.error = String(err)
+  }
 }
 
 const doCleanup = async () => {
@@ -196,13 +208,34 @@ const doCleanup = async () => {
 
   try {
     await svnCleanup(workspaceStore.currentPath)
+    await refreshStatus()
   } catch (err) {
-    console.error('清理失败:', err)
+    workspaceStore.error = String(err)
   }
 }
 
 const doSwitch = async () => {
-  console.log('切换分支')
+  if (!workspaceStore.currentPath) return
+
+  try {
+    const { value } = await ElMessageBox.prompt(
+      t('switch.enterUrl'),
+      t('common.switch'),
+      {
+        confirmButtonText: t('common.confirm'),
+        cancelButtonText: t('common.cancel'),
+        inputPattern: /^https?:\/\/.+/,
+        inputErrorMessage: t('switch.invalidUrl'),
+      }
+    )
+
+    if (value) {
+      await svnSwitch(workspaceStore.currentPath, value)
+      await refreshStatus()
+    }
+  } catch {
+    // user cancelled
+  }
 }
 
 const viewDiff = (path: string) => {
@@ -220,19 +253,11 @@ const revertFile = async (path: string) => {
     await svnRevert(workspaceStore.currentPath, [path])
     await refreshStatus()
   } catch (err) {
-    console.error('还原失败:', err)
+    workspaceStore.error = String(err)
   }
 }
 
-const getStatusClass = (statusCode: string): string => {
-  switch (statusCode) {
-    case 'A': return 'status-added'
-    case 'M': return 'status-modified'
-    case 'D': return 'status-deleted'
-    case '?': return 'status-unversioned'
-    default: return ''
-  }
-}
+
 </script>
 
 <style scoped>
@@ -247,11 +272,48 @@ const getStatusClass = (statusCode: string): string => {
   height: 100%;
 }
 
-.workspace-content {
+.empty-panel {
+  width: min(520px, 100%);
+  padding: 42px;
+  border: 1px solid rgba(198, 198, 210, 0.8);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.76);
+  box-shadow: var(--md-sys-elevation-2);
+  text-align: center;
+  backdrop-filter: blur(18px);
+}
+
+.empty-panel h1 {
+  margin: 18px 0 22px;
+  color: #20212a;
+  font-size: 22px;
+  line-height: 1.25;
+}
+
+.empty-mark {
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  margin: 0 auto;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--md-sys-color-primary-container), var(--md-sys-color-secondary-container));
+  color: var(--md-sys-color-primary);
+  font-size: 34px;
+}
+
+.empty-actions {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+}
+
+.workspace-content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
-  padding: 20px;
+  padding: 2px;
   height: 100%;
   overflow-y: auto;
 }
@@ -274,34 +336,94 @@ const getStatusClass = (statusCode: string): string => {
 }
 
 .status-summary {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 16px;
 }
 
+.status-metric {
+  min-height: 72px;
+  padding: 13px 14px;
+  border: 1px solid rgba(198, 198, 210, 0.72);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.status-metric span {
+  display: block;
+  color: #5b5d6b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.status-metric strong {
+  display: block;
+  margin-top: 6px;
+  color: #20212a;
+  font-size: 26px;
+  line-height: 1;
+}
+
+.status-metric.modified {
+  background: linear-gradient(135deg, #fef9c3, #fff);
+}
+
+.status-metric.added {
+  background: linear-gradient(135deg, #dcfce7, #fff);
+}
+
+.status-metric.deleted {
+  background: linear-gradient(135deg, #fee2e2, #fff);
+}
+
 .quick-actions {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
   gap: 12px;
 }
 
+.row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 82px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: #f5f5fb;
+  font-weight: 800;
+}
+
 .status-added {
-  color: #67c23a;
+  color: #15803d;
   font-weight: bold;
+  background: #dcfce7;
 }
 
 .status-modified {
-  color: #e6a23c;
+  color: #a16207;
   font-weight: bold;
+  background: #fef9c3;
 }
 
 .status-deleted {
-  color: #f56c6c;
+  color: #dc2626;
   font-weight: bold;
+  background: #fee2e2;
 }
 
 .status-unversioned {
-  color: #909399;
+  color: #6366f1;
+  background: #e0e7ff;
 }
 
 .mb-4 {
@@ -312,5 +434,11 @@ const getStatusClass = (statusCode: string): string => {
   color: #999;
   text-align: center;
   padding: 20px;
+}
+
+@media (max-width: 720px) {
+  .status-summary {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

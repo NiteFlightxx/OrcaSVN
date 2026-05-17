@@ -1,7 +1,7 @@
 export interface CommandResult {
   success: boolean
   output: string
-  error?: string
+  error: string | null
 }
 
 export interface SvnStatus {

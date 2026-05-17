@@ -25,17 +25,17 @@
 
         <el-form class="commit-form">
           <el-form-item :label="$t('commit.selectFiles')">
-            <el-checkbox-group v-model="selectedFiles">
-              <el-table :data="changedFiles" style="width: 100%">
-                <el-table-column type="selection" width="55" />
-                <el-table-column prop="status_code" :label="$t('commit.status')" width="60">
-                  <template #default="{ row }">
-                    <span :class="getStatusClass(row.status_code)">{{ row.status_code }}</span>
-                  </template>
-                </el-table-column>
-                <el-table-column prop="path" :label="$t('commit.file')" />
-              </el-table>
-            </el-checkbox-group>
+            <el-table :data="changedFiles" style="width: 100%" @selection-change="handleSelectionChange">
+              <el-table-column type="selection" width="55" />
+              <el-table-column prop="status_code" :label="$t('commit.status')" width="180" align="center">
+                <template #default="{ row }">
+                  <span class="status-badge" :class="getStatusClass(row.status_code)">
+                    {{ $t(getStatusLabelKey(row.status_code)) }}
+                  </span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="path" :label="$t('commit.file')" />
+            </el-table>
           </el-form-item>
 
           <el-form-item :label="$t('commit.commitMessage')" required>
@@ -71,14 +71,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { svnCommit } from '@/api/svn'
-import { open } from '@tauri-apps/plugin-dialog'
+import { useI18n } from 'vue-i18n'
+import { getStatusClass, getStatusLabelKey } from '@/composables/useSvnStatus'
+import { useWorkspace } from '@/composables/useWorkspace'
+import type { SvnStatus } from '@/types'
 
+const { t } = useI18n()
 const router = useRouter()
 const workspaceStore = useWorkspaceStore()
+const { openWorkspace: openWorkspaceDialog } = useWorkspace()
 
 const selectedFiles = ref<string[]>([])
 const commitMessage = ref('')
@@ -87,20 +92,17 @@ const output = ref('')
 
 const changedFiles = computed(() => {
   return workspaceStore.statusList.filter(
-    s => s.status_code !== ' ' && s.status_code !== ''
+    s => s.status_code !== 'normal' && s.status_code !== ''
   )
 })
 
-const openWorkspace = async () => {
-  const selected = await open({
-    directory: true,
-    multiple: false,
-    title: '选择 SVN 工作区目录'
-  })
+const handleSelectionChange = (rows: SvnStatus[]) => {
+  selectedFiles.value = rows.map(f => f.path)
+}
 
-  if (selected) {
-    const path = Array.isArray(selected) ? selected[0] : selected
-    workspaceStore.setCurrentPath(path)
+const openWorkspace = async () => {
+  const success = await openWorkspaceDialog(t('dialog.selectSVNWorkspaceDirectory'))
+  if (success) {
     router.push({ name: 'workspace' })
   }
 }
@@ -118,12 +120,11 @@ const doCommit = async () => {
     const result = await svnCommit(workspaceStore.currentPath, commitMessage.value, files)
     output.value = result.output
 
-    // 刷新状态
     setTimeout(() => {
       router.push({ name: 'workspace' })
     }, 1000)
   } catch (err) {
-    output.value = `错误：${err}`
+    output.value = `${t('common.error')}：${err}`
   } finally {
     loading.value = false
   }
@@ -134,20 +135,6 @@ const resetForm = () => {
   commitMessage.value = ''
   output.value = ''
 }
-
-const getStatusClass = (statusCode: string): string => {
-  switch (statusCode) {
-    case 'A': return 'status-added'
-    case 'M': return 'status-modified'
-    case 'D': return 'status-deleted'
-    default: return ''
-  }
-}
-
-onMounted(() => {
-  // 默认选中所有更改的文件
-  selectedFiles.value = changedFiles.value.map(f => f.path)
-})
 </script>
 
 <style scoped>
@@ -174,5 +161,37 @@ onMounted(() => {
 
 .output-textarea {
   font-family: 'Consolas', 'Monaco', monospace;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 82px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: #f5f5fb;
+  font-weight: 800;
+}
+
+.status-added {
+  color: #15803d;
+  background: #dcfce7;
+}
+
+.status-modified {
+  color: #a16207;
+  background: #fef9c3;
+}
+
+.status-deleted {
+  color: #dc2626;
+  background: #fee2e2;
+}
+
+.status-unversioned {
+  color: #6366f1;
+  background: #e0e7ff;
 }
 </style>
