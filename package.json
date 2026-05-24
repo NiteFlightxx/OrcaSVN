@@ -1,6 +1,6 @@
 {
   "name": "OrcaSVN",
-  "version": "0.2.0",
+  "version": "0.2.4",
   "description": "OrcaSVN 客户端 - 基于 Tauri",
   "scripts": {
     "dev": "vite",
