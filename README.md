@@ -34,7 +34,31 @@
 - Microsoft Visual Studio C++ Build Tools
 - WebView2 (Windows 10 1803+ 已内置)
 
-## 安装依赖
+## 安装
+
+### Windows
+
+```bash
+# 使用 winget 安装
+winget install OrcaSVN
+```
+
+或从 [Releases](https://github.com/wustites/OrcaSVN/releases) 页面下载安装包：
+- `OrcaSVN_x.x.x_x64-setup.exe` - NSIS 安装程序
+- `OrcaSVN_x.x.x_x64_en-US.msi` - MSI 安装程序
+
+### macOS
+
+从 [Releases](https://github.com/wustites/OrcaSVN/releases) 页面下载 `.dmg` 文件。
+
+### Linux
+
+从 [Releases](https://github.com/wustites/OrcaSVN/releases) 页面下载：
+- `.AppImage` - 通用 Linux 格式
+- `.deb` - Debian/Ubuntu
+- `.rpm` - Fedora/RHEL
+
+## 开发环境要求
 
 ```bash
 npm install
