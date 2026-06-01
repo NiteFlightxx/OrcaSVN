@@ -27,4 +27,21 @@ export default defineConfig(async () => ({
       ignored: ['**/src-tauri/**'],
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vue: ['vue', 'vue-router', 'pinia', 'vue-i18n'],
+          'element-plus': ['element-plus'],
+          'element-plus-icons': ['@element-plus/icons-vue'],
+          tauri: [
+            '@tauri-apps/api',
+            '@tauri-apps/plugin-dialog',
+            '@tauri-apps/plugin-fs',
+            '@tauri-apps/plugin-shell',
+          ],
+        },
+      },
+    },
+  },
 }))

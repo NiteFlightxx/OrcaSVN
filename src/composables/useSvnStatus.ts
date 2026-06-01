@@ -4,6 +4,7 @@ export function getStatusClass(statusCode: string): string {
     case 'modified': return 'status-modified'
     case 'deleted': return 'status-deleted'
     case 'unversioned': return 'status-unversioned'
+    case 'missing': return 'status-missing'
     default: return ''
   }
 }
@@ -14,6 +15,7 @@ export function getStatusLabelKey(statusCode: string): string {
     case 'modified': return 'status.modified'
     case 'deleted': return 'status.deleted'
     case 'unversioned': return 'status.unversioned'
+    case 'missing': return 'status.missing'
     default: return 'common.noData'
   }
 }

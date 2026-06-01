@@ -41,6 +41,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     isLoading.value = value
   }
 
+  function setError(value: string | null) {
+    error.value = value
+  }
+
   function clearWorkspace() {
     currentPath.value = null
     svnInfo.value = null
@@ -62,6 +66,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     setStatusList,
     setSvnInfo,
     setLoading,
+    setError,
     clearWorkspace,
   }
 })

@@ -19,6 +19,12 @@ export interface SvnLogEntry {
   author: string
   date: string
   message: string
+  changed_paths: SvnLogPath[]
+}
+
+export interface SvnLogPath {
+  path: string
+  action: string
 }
 
 export interface SvnInfo {

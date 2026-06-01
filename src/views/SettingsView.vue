@@ -10,7 +10,7 @@
         </div>
       </template>
 
-      <el-form :model="settings" label-width="150px" class="settings-form" label-position="left">
+      <el-form :model="settings" label-width="180px" class="settings-form" label-position="left">
         <div class="settings-section">
           <h3 class="section-title">
             <el-icon><Monitor /></el-icon>
@@ -60,7 +60,7 @@
             {{ $t('settings.svnSettings') }}
           </h3>
 
-          <el-form-item :label="$t('settings.svnPathPlaceholder')" class="form-item">
+          <el-form-item :label="$t('settings.svnPath')" class="form-item">
             <el-input
               v-model="settings.svnPath"
               :placeholder="$t('settings.svnPathPlaceholder')"
@@ -162,10 +162,7 @@ const languages = computed(() => [
 
 const currentLanguage = computed({
   get: () => settings.language,
-  set: (val: string) => {
-    settings.language = val
-    setLocale(val)
-  },
+  set: (val: string) => setLocale(val),
 })
 
 function applyTheme(theme: string) {
@@ -244,6 +241,20 @@ onMounted(() => {
 
 .form-item {
   margin-bottom: var(--app-spacing-md);
+}
+
+.settings-form :deep(.el-form-item__label) {
+  align-items: center;
+  justify-content: flex-start;
+  min-height: 40px;
+  padding-right: var(--app-spacing-md);
+  line-height: 1.35;
+  white-space: nowrap;
+  word-break: keep-all;
+}
+
+.settings-form :deep(.el-form-item__content) {
+  min-width: 0;
 }
 
 .theme-group {

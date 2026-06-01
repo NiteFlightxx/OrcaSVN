@@ -21,40 +21,59 @@
     </div>
 
     <div v-else class="workspace-content">
-      <el-card class="info-card animate-fade-in">
+      <div v-if="!infoExpanded && !workspaceStore.error" class="info-collapsed-bar animate-fade-in">
+        <span class="card-title">
+          <el-icon><InfoFilled /></el-icon>
+          {{ $t('workspace.repositoryInfo') }}
+        </span>
+        <el-button @click="infoExpanded = true" size="small" text>
+          <el-icon class="collapse-icon">
+            <ArrowDown />
+          </el-icon>
+          {{ $t('common.view') }}
+        </el-button>
+      </div>
+
+      <el-card v-else class="info-card animate-fade-in">
         <template #header>
           <div class="card-header">
             <span class="card-title">
               <el-icon><InfoFilled /></el-icon>
               {{ $t('workspace.repositoryInfo') }}
             </span>
-            <el-button @click="closeWorkspace" size="small" text>
-              <el-icon><Close /></el-icon>
-              {{ $t('common.close') }}
-            </el-button>
+            <div class="header-actions">
+              <el-button @click="infoExpanded = !infoExpanded" size="small" text>
+                <el-icon class="collapse-icon" :class="{ 'is-expanded': infoExpanded }">
+                  <ArrowDown />
+                </el-icon>
+                {{ infoExpanded ? $t('common.close') : $t('common.view') }}
+              </el-button>
+            </div>
           </div>
         </template>
         <el-alert v-if="workspaceStore.error" type="error" :title="workspaceStore.error" :closable="false" class="mb-4" show-icon />
-        <el-descriptions :column="responsiveColumns" border v-if="workspaceStore.svnInfo" class="info-descriptions">
-          <el-descriptions-item :label="$t('workspace.path')">
-            <span class="path-text">{{ workspaceStore.svnInfo.path }}</span>
-          </el-descriptions-item>
-          <el-descriptions-item label="URL">
-            <span class="url-text">{{ workspaceStore.svnInfo.url }}</span>
-          </el-descriptions-item>
-          <el-descriptions-item :label="$t('workspace.repositoryRoot')">
-            <span class="path-text">{{ workspaceStore.svnInfo.repository_root }}</span>
-          </el-descriptions-item>
-          <el-descriptions-item :label="$t('workspace.revision')">
-            <el-tag type="primary" size="small">r{{ workspaceStore.svnInfo.revision }}</el-tag>
-          </el-descriptions-item>
-          <el-descriptions-item :label="$t('workspace.type')">
-            <el-tag size="small">{{ workspaceStore.svnInfo.node_kind }}</el-tag>
-          </el-descriptions-item>
-        </el-descriptions>
-        <div v-else-if="!workspaceStore.isLoading" class="no-info">
-          <el-icon><InfoFilled /></el-icon>
-          <span>{{ $t('workspace.noRepositoryInfo') }}</span>
+        <div v-if="infoExpanded">
+          <el-descriptions :column="responsiveColumns" border v-if="workspaceStore.svnInfo" class="info-descriptions">
+            <el-descriptions-item :label="$t('workspace.path')">
+              <span class="path-text">{{ workspaceStore.svnInfo.path }}</span>
+            </el-descriptions-item>
+            <el-descriptions-item label="URL">
+              <span class="url-text">{{ workspaceStore.svnInfo.url }}</span>
+            </el-descriptions-item>
+            <el-descriptions-item :label="$t('workspace.repositoryRoot')">
+              <span class="path-text">{{ workspaceStore.svnInfo.repository_root }}</span>
+            </el-descriptions-item>
+            <el-descriptions-item :label="$t('workspace.revision')">
+              <el-tag type="primary" size="small">r{{ workspaceStore.svnInfo.revision }}</el-tag>
+            </el-descriptions-item>
+            <el-descriptions-item :label="$t('workspace.type')">
+              <el-tag size="small">{{ workspaceStore.svnInfo.node_kind }}</el-tag>
+            </el-descriptions-item>
+          </el-descriptions>
+          <div v-else-if="!workspaceStore.isLoading" class="no-info">
+            <el-icon><InfoFilled /></el-icon>
+            <span>{{ $t('workspace.noRepositoryInfo') }}</span>
+          </div>
         </div>
       </el-card>
 
@@ -108,6 +127,49 @@
           </div>
         </div>
 
+        <div class="selection-toolbar">
+          <span class="selection-count">
+            {{ $t('workspace.selectedFiles', { count: selectedFiles.length }) }}
+          </span>
+          <div class="selection-actions">
+            <el-button
+              type="primary"
+              size="small"
+              @click="doCommitSelected"
+              :disabled="selectedCommittableFiles.length === 0"
+            >
+              <el-icon><Upload /></el-icon>
+              {{ $t('common.commit') }}
+            </el-button>
+            <el-button
+              type="success"
+              size="small"
+              @click="doAddSelected"
+              :disabled="selectedUnversionedFiles.length === 0"
+            >
+              <el-icon><Plus /></el-icon>
+              {{ $t('common.add') }}
+            </el-button>
+            <el-button
+              type="danger"
+              size="small"
+              @click="doDeleteSelected"
+              :disabled="selectedMissingFiles.length === 0"
+            >
+              <el-icon><Delete /></el-icon>
+              {{ $t('workspace.markDeleted') }}
+            </el-button>
+            <el-button
+              size="small"
+              @click="doRevertSelected"
+              :disabled="selectedRevertableFiles.length === 0"
+            >
+              <el-icon><RefreshLeft /></el-icon>
+              {{ $t('common.revert') }}
+            </el-button>
+          </div>
+        </div>
+
         <el-table 
           :data="workspaceStore.statusList" 
           style="width: 100%" 
@@ -115,7 +177,10 @@
           stripe
           highlight-current-row
           class="status-table"
+          row-key="path"
+          @selection-change="handleSelectionChange"
         >
+          <el-table-column type="selection" width="48" align="center" />
           <el-table-column prop="status_code" :label="$t('commit.status')" width="140" align="center">
             <template #default="{ row }">
               <span class="status-badge" :class="getStatusClass(row.status_code)">
@@ -148,69 +213,59 @@
           </el-table-column>
         </el-table>
       </el-card>
-
-      <el-card class="actions-card animate-fade-in" style="animation-delay: 0.2s">
-        <template #header>
-          <span class="card-title">
-            <el-icon><Operation /></el-icon>
-            {{ $t('workspace.quickActions') }}
-          </span>
-        </template>
-        <div class="quick-actions">
-          <el-button @click="doCommit" class="action-btn">
-            <el-icon><Upload /></el-icon>
-            {{ $t('common.commit') }}
-          </el-button>
-          <el-button @click="doAdd" class="action-btn">
-            <el-icon><Plus /></el-icon>
-            {{ $t('common.add') }}
-          </el-button>
-          <el-button @click="doDelete" class="action-btn">
-            <el-icon><Delete /></el-icon>
-            {{ $t('common.delete') }}
-          </el-button>
-          <el-button @click="doCleanup" class="action-btn">
-            <el-icon><Brush /></el-icon>
-            {{ $t('common.cleanup') }}
-          </el-button>
-          <el-button @click="doSwitch" class="action-btn">
-            <el-icon><Switch /></el-icon>
-            {{ $t('common.switch') }}
-          </el-button>
-        </div>
-      </el-card>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
-import { svnUpdate, svnCleanup, svnRevert, svnAdd, svnDelete, svnSwitch } from '@/api/svn'
-import { open } from '@tauri-apps/plugin-dialog'
-import { ElMessageBox } from 'element-plus'
+import { svnUpdate, svnRevert, svnAdd, svnDelete } from '@/api/svn'
+import { ElMessageBox } from 'element-plus/es/components/message-box/index'
 import { useI18n } from 'vue-i18n'
 import { getStatusClass, getStatusLabelKey } from '@/composables/useSvnStatus'
 import { useWorkspace } from '@/composables/useWorkspace'
+import type { SvnStatus } from '@/types'
 
 const { t } = useI18n()
 const router = useRouter()
 const workspaceStore = useWorkspaceStore()
 const { openWorkspace: openWorkspaceDialog, refreshStatus } = useWorkspace()
 
+const windowWidth = ref(window.innerWidth)
+const infoExpanded = ref(false)
+const selectedFiles = ref<SvnStatus[]>([])
+
 const responsiveColumns = computed(() => {
-  return window.innerWidth > 860 ? 2 : 1
+  return windowWidth.value > 860 ? 2 : 1
+})
+
+const committableStatuses = new Set(['added', 'modified', 'deleted', 'replaced'])
+
+const isCommittable = (file: SvnStatus) => committableStatuses.has(file.status_code) || file.prop_status === 'modified'
+
+const selectedCommittableFiles = computed(() => selectedFiles.value.filter(isCommittable))
+const selectedUnversionedFiles = computed(() => selectedFiles.value.filter((file) => file.status_code === 'unversioned'))
+const selectedMissingFiles = computed(() => selectedFiles.value.filter((file) => file.status_code === 'missing'))
+const selectedRevertableFiles = computed(() => selectedFiles.value.filter((file) => isCommittable(file) || file.status_code === 'missing'))
+
+const updateWindowWidth = () => {
+  windowWidth.value = window.innerWidth
+}
+
+onMounted(() => {
+  window.addEventListener('resize', updateWindowWidth)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', updateWindowWidth)
 })
 
 const openWorkspace = () => openWorkspaceDialog(t('dialog.selectSVNWorkspaceDirectory'))
 
 const doCheckout = () => {
   router.push({ name: 'checkout' })
-}
-
-const closeWorkspace = () => {
-  workspaceStore.clearWorkspace()
 }
 
 const doUpdate = async () => {
@@ -220,84 +275,98 @@ const doUpdate = async () => {
     await svnUpdate(workspaceStore.currentPath)
     await refreshStatus()
   } catch (err) {
-    workspaceStore.error = String(err)
+    workspaceStore.setError(String(err))
   }
 }
 
-const doCommit = () => {
-  router.push({ name: 'commit' })
+const handleSelectionChange = (rows: SvnStatus[]) => {
+  selectedFiles.value = rows
 }
 
-const doAdd = async () => {
+const doCommitSelected = () => {
+  const files = selectedCommittableFiles.value.map((file) => file.path)
+  if (files.length === 0) return
+  router.push({ name: 'commit', query: { files } })
+}
+
+const doAddSelected = async () => {
   if (!workspaceStore.currentPath) return
+  if (selectedUnversionedFiles.value.length === 0) return
 
-  const selected = await open({
-    multiple: true,
-    title: t('common.add'),
-  })
+  const files = selectedUnversionedFiles.value.map((file) => file.path)
+  try {
+    await ElMessageBox.confirm(
+      t('workspace.addUnversionedConfirm', { count: files.length }),
+      t('workspace.quickAddUnversioned'),
+      {
+        confirmButtonText: t('common.confirm'),
+        cancelButtonText: t('common.cancel'),
+        type: 'warning',
+      }
+    )
+  } catch {
+    return
+  }
 
-  if (!selected) return
-
-  const files = Array.isArray(selected) ? selected : [selected]
   try {
     await svnAdd(workspaceStore.currentPath, files)
     await refreshStatus()
   } catch (err) {
-    workspaceStore.error = String(err)
+    workspaceStore.setError(String(err))
   }
 }
 
-const doDelete = async () => {
+const doDeleteSelected = async () => {
   if (!workspaceStore.currentPath) return
+  if (selectedMissingFiles.value.length === 0) return
 
-  const selected = await open({
-    multiple: true,
-    title: t('common.delete'),
-  })
+  const files = selectedMissingFiles.value.map((file) => file.path)
+  try {
+    await ElMessageBox.confirm(
+      t('workspace.deleteMissingConfirm', { count: files.length }),
+      t('workspace.quickDeleteMissing'),
+      {
+        confirmButtonText: t('common.confirm'),
+        cancelButtonText: t('common.cancel'),
+        type: 'warning',
+      }
+    )
+  } catch {
+    return
+  }
 
-  if (!selected) return
-
-  const files = Array.isArray(selected) ? selected : [selected]
   try {
     await svnDelete(workspaceStore.currentPath, files)
     await refreshStatus()
   } catch (err) {
-    workspaceStore.error = String(err)
+    workspaceStore.setError(String(err))
   }
 }
 
-const doCleanup = async () => {
+const doRevertSelected = async () => {
   if (!workspaceStore.currentPath) return
+  if (selectedRevertableFiles.value.length === 0) return
 
+  const files = selectedRevertableFiles.value.map((file) => file.path)
   try {
-    await svnCleanup(workspaceStore.currentPath)
-    await refreshStatus()
-  } catch (err) {
-    workspaceStore.error = String(err)
-  }
-}
-
-const doSwitch = async () => {
-  if (!workspaceStore.currentPath) return
-
-  try {
-    const { value } = await ElMessageBox.prompt(
-      t('switch.enterUrl'),
-      t('common.switch'),
+    await ElMessageBox.confirm(
+      t('workspace.revertSelectedConfirm', { count: files.length }),
+      t('common.revert'),
       {
         confirmButtonText: t('common.confirm'),
         cancelButtonText: t('common.cancel'),
-        inputPattern: /^https?:\/\/.+/,
-        inputErrorMessage: t('switch.invalidUrl'),
+        type: 'warning',
       }
     )
-
-    if (value) {
-      await svnSwitch(workspaceStore.currentPath, value)
-      await refreshStatus()
-    }
   } catch {
-    // user cancelled
+    return
+  }
+
+  try {
+    await svnRevert(workspaceStore.currentPath, files)
+    await refreshStatus()
+  } catch (err) {
+    workspaceStore.setError(String(err))
   }
 }
 
@@ -316,7 +385,7 @@ const revertFile = async (path: string) => {
     await svnRevert(workspaceStore.currentPath, [path])
     await refreshStatus()
   } catch (err) {
-    workspaceStore.error = String(err)
+    workspaceStore.setError(String(err))
   }
 }
 </script>
@@ -383,6 +452,7 @@ const revertFile = async (path: string) => {
 .workspace-content {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   gap: var(--app-spacing-md);
   padding: 2px;
   height: 100%;
@@ -390,9 +460,20 @@ const revertFile = async (path: string) => {
 }
 
 .info-card,
-.status-card,
-.actions-card {
+.status-card {
   flex-shrink: 0;
+}
+
+.info-collapsed-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 48px;
+  padding: 0 var(--app-spacing-md);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--app-radius-lg);
+  background: var(--el-bg-color);
+  box-shadow: var(--md-sys-elevation-1);
 }
 
 .card-header {
@@ -411,6 +492,14 @@ const revertFile = async (path: string) => {
 .header-actions {
   display: flex;
   gap: var(--app-spacing-sm);
+}
+
+.collapse-icon {
+  transition: transform var(--app-transition-fast);
+}
+
+.collapse-icon.is-expanded {
+  transform: rotate(180deg);
 }
 
 .info-descriptions {
@@ -530,14 +619,25 @@ const revertFile = async (path: string) => {
   font-size: 13px;
 }
 
-.quick-actions {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+.selection-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: var(--app-spacing);
+  padding: var(--app-spacing-sm) 0 var(--app-spacing);
 }
 
-.action-btn {
-  justify-content: flex-start;
+.selection-count {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.selection-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--app-spacing-sm);
 }
 
 .row-actions {
@@ -561,6 +661,11 @@ const revertFile = async (path: string) => {
   font-size: 12px;
 }
 
+.status-missing {
+  color: #9333ea;
+  background: #f3e8ff;
+}
+
 .mb-4 {
   margin-bottom: var(--app-spacing-md);
 }
@@ -569,9 +674,10 @@ const revertFile = async (path: string) => {
   .status-summary {
     grid-template-columns: 1fr;
   }
-  
-  .quick-actions {
-    grid-template-columns: repeat(2, 1fr);
+
+  .selection-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 
@@ -593,8 +699,9 @@ const revertFile = async (path: string) => {
     font-size: 24px;
   }
   
-  .quick-actions {
-    grid-template-columns: 1fr;
+  .selection-actions {
+    width: 100%;
+    justify-content: flex-start;
   }
 }
 </style>

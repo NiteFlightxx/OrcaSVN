@@ -1,4 +1,4 @@
-use crate::{SvnInfo, SvnLogEntry, SvnStatus};
+use crate::{SvnInfo, SvnLogEntry, SvnLogPath, SvnStatus};
 use quick_xml::events::Event;
 use quick_xml::Reader;
 
@@ -19,48 +19,50 @@ pub fn parse_status_xml(xml: &str) -> Result<Vec<SvnStatus>, SvnError> {
 
     loop {
         match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(ref e)) | Ok(Event::Empty(ref e)) => {
-                match e.name().as_ref() {
-                    b"entry" => {
-                        in_entry = true;
-                        for attr in e.attributes().flatten() {
-                            if attr.key.as_ref() == b"path" {
-                                current_path = String::from_utf8_lossy(&attr.value).to_string();
-                            }
+            Ok(Event::Start(ref e)) | Ok(Event::Empty(ref e)) => match e.name().as_ref() {
+                b"entry" => {
+                    in_entry = true;
+                    for attr in e.attributes().flatten() {
+                        if attr.key.as_ref() == b"path" {
+                            current_path = String::from_utf8_lossy(&attr.value).to_string();
                         }
                     }
-                    b"wc-status" if in_entry => {
-                        for attr in e.attributes().flatten() {
-                            match attr.key.as_ref() {
-                                b"item" => {
-                                    status_code = String::from_utf8_lossy(&attr.value).to_string();
-                                }
-                                b"props" => {
-                                    prop_status = String::from_utf8_lossy(&attr.value).to_string();
-                                }
-                                b"locked" => {
-                                    locked = attr.value.as_ref() == b"true";
-                                }
-                                b"switched" => {
-                                    switched = attr.value.as_ref() == b"true";
-                                }
-                                b"history" => {
-                                    history = attr.value.as_ref() == b"true";
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                    _ => {}
                 }
-            }
+                b"wc-status" if in_entry => {
+                    for attr in e.attributes().flatten() {
+                        match attr.key.as_ref() {
+                            b"item" => {
+                                status_code = String::from_utf8_lossy(&attr.value).to_string();
+                            }
+                            b"props" => {
+                                prop_status = String::from_utf8_lossy(&attr.value).to_string();
+                            }
+                            b"locked" => {
+                                locked = attr.value.as_ref() == b"true";
+                            }
+                            b"switched" => {
+                                switched = attr.value.as_ref() == b"true";
+                            }
+                            b"history" => {
+                                history = attr.value.as_ref() == b"true";
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                _ => {}
+            },
             Ok(Event::End(ref e)) => {
                 if e.name().as_ref() == b"entry" && in_entry {
                     statuses.push(SvnStatus {
                         path: current_path.clone(),
                         status: status_code.clone(),
                         status_code: status_code.clone(),
-                        prop_status: if prop_status.is_empty() { "none".to_string() } else { prop_status.clone() },
+                        prop_status: if prop_status.is_empty() {
+                            "none".to_string()
+                        } else {
+                            prop_status.clone()
+                        },
                         locked,
                         switched,
                         history,
@@ -93,32 +95,40 @@ pub fn parse_log_xml(xml: &str) -> Result<Vec<SvnLogEntry>, SvnError> {
     let mut in_author = false;
     let mut in_date = false;
     let mut in_msg = false;
+    let mut in_path = false;
 
     let mut revision: u64 = 0;
     let mut author = String::new();
     let mut date = String::new();
     let mut message = String::new();
+    let mut changed_paths: Vec<SvnLogPath> = Vec::new();
+    let mut path_action = String::new();
 
     loop {
         match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(ref e)) => {
-                match e.name().as_ref() {
-                    b"logentry" => {
-                        in_logentry = true;
-                        for attr in e.attributes().flatten() {
-                            if attr.key.as_ref() == b"revision" {
-                                revision = String::from_utf8_lossy(&attr.value)
-                                    .parse()
-                                    .unwrap_or(0);
-                            }
+            Ok(Event::Start(ref e)) => match e.name().as_ref() {
+                b"logentry" => {
+                    in_logentry = true;
+                    for attr in e.attributes().flatten() {
+                        if attr.key.as_ref() == b"revision" {
+                            revision = String::from_utf8_lossy(&attr.value).parse().unwrap_or(0);
                         }
                     }
-                    b"author" if in_logentry => in_author = true,
-                    b"date" if in_logentry => in_date = true,
-                    b"msg" if in_logentry => in_msg = true,
-                    _ => {}
                 }
-            }
+                b"author" if in_logentry => in_author = true,
+                b"date" if in_logentry => in_date = true,
+                b"msg" if in_logentry => in_msg = true,
+                b"path" if in_logentry => {
+                    in_path = true;
+                    path_action.clear();
+                    for attr in e.attributes().flatten() {
+                        if attr.key.as_ref() == b"action" {
+                            path_action = String::from_utf8_lossy(&attr.value).to_string();
+                        }
+                    }
+                }
+                _ => {}
+            },
             Ok(Event::Text(ref e)) => {
                 let text = e.unescape().unwrap_or_default().to_string();
                 if in_author {
@@ -127,26 +137,34 @@ pub fn parse_log_xml(xml: &str) -> Result<Vec<SvnLogEntry>, SvnError> {
                     date.push_str(&text);
                 } else if in_msg {
                     message.push_str(&text);
+                } else if in_path {
+                    changed_paths.push(SvnLogPath {
+                        path: text,
+                        action: path_action.clone(),
+                    });
                 }
             }
-            Ok(Event::End(ref e)) => {
-                match e.name().as_ref() {
-                    b"author" => in_author = false,
-                    b"date" => in_date = false,
-                    b"msg" => in_msg = false,
-                    b"logentry" => {
-                        entries.push(SvnLogEntry {
-                            revision,
-                            author: std::mem::take(&mut author),
-                            date: std::mem::take(&mut date),
-                            message: std::mem::take(&mut message),
-                        });
-                        revision = 0;
-                        in_logentry = false;
-                    }
-                    _ => {}
+            Ok(Event::End(ref e)) => match e.name().as_ref() {
+                b"author" => in_author = false,
+                b"date" => in_date = false,
+                b"msg" => in_msg = false,
+                b"path" => {
+                    in_path = false;
+                    path_action.clear();
                 }
-            }
+                b"logentry" => {
+                    entries.push(SvnLogEntry {
+                        revision,
+                        author: std::mem::take(&mut author),
+                        date: std::mem::take(&mut date),
+                        message: std::mem::take(&mut message),
+                        changed_paths: std::mem::take(&mut changed_paths),
+                    });
+                    revision = 0;
+                    in_logentry = false;
+                }
+                _ => {}
+            },
             Ok(Event::Eof) => break,
             Err(e) => return Err(SvnError::ParseError(e.to_string())),
             _ => {}
@@ -181,8 +199,12 @@ pub fn parse_info_xml(xml: &str) -> Result<SvnInfo, SvnError> {
                         in_entry = true;
                         for attr in e.attributes().flatten() {
                             match String::from_utf8_lossy(attr.key.as_ref()).as_ref() {
-                                "path" => path_val = String::from_utf8_lossy(&attr.value).to_string(),
-                                "kind" => node_kind = String::from_utf8_lossy(&attr.value).to_string(),
+                                "path" => {
+                                    path_val = String::from_utf8_lossy(&attr.value).to_string()
+                                }
+                                "kind" => {
+                                    node_kind = String::from_utf8_lossy(&attr.value).to_string()
+                                }
                                 _ => {}
                             }
                         }
@@ -191,9 +213,8 @@ pub fn parse_info_xml(xml: &str) -> Result<SvnInfo, SvnError> {
                     "commit" if in_entry => {
                         for attr in e.attributes().flatten() {
                             if attr.key.as_ref() == b"revision" {
-                                revision = String::from_utf8_lossy(&attr.value)
-                                    .parse()
-                                    .unwrap_or(0);
+                                revision =
+                                    String::from_utf8_lossy(&attr.value).parse().unwrap_or(0);
                             }
                         }
                     }
@@ -326,6 +347,7 @@ mod tests {
 <logentry revision="100">
 <author>john</author>
 <date>2024-01-15T10:30:00Z</date>
+<paths><path action="M">/trunk/src/main.rs</path></paths>
 <msg>Fix bug</msg>
 </logentry>
 </log>"#;
@@ -335,6 +357,9 @@ mod tests {
         assert_eq!(result[0].revision, 100);
         assert_eq!(result[0].author, "john");
         assert_eq!(result[0].message, "Fix bug");
+        assert_eq!(result[0].changed_paths.len(), 1);
+        assert_eq!(result[0].changed_paths[0].action, "M");
+        assert_eq!(result[0].changed_paths[0].path, "/trunk/src/main.rs");
     }
 
     #[test]
@@ -373,7 +398,8 @@ mod tests {
 
     #[test]
     fn test_parse_blame_text() {
-        let output = "     1  john    First line\n     2  jane    Second line\n    10  john    Modified";
+        let output =
+            "     1  john    First line\n     2  jane    Second line\n    10  john    Modified";
         let result = parse_blame_text(output).unwrap();
         assert_eq!(result.len(), 3);
         assert_eq!(result[0].revision, 1);

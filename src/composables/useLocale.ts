@@ -1,12 +1,15 @@
 import { useI18n } from 'vue-i18n'
-import zhCn from 'element-plus/dist/locale/zh-cn.mjs'
-import zhTw from 'element-plus/dist/locale/zh-tw.mjs'
-import ja from 'element-plus/dist/locale/ja.mjs'
-import ko from 'element-plus/dist/locale/ko.mjs'
-import en from 'element-plus/dist/locale/en.mjs'
+import zhCn from 'element-plus/es/locale/lang/zh-cn'
+import zhTw from 'element-plus/es/locale/lang/zh-tw'
+import ja from 'element-plus/es/locale/lang/ja'
+import ko from 'element-plus/es/locale/lang/ko'
+import en from 'element-plus/es/locale/lang/en'
 import { computed } from 'vue'
+import { useSettings } from '@/composables/useSettings'
 
-const localeMap: Record<string, any> = {
+type ElementLocale = typeof zhCn
+
+const localeMap: Record<string, ElementLocale> = {
   'zh-CN': zhCn,
   'zh-TW': zhTw,
   'ja-JP': ja,
@@ -14,10 +17,9 @@ const localeMap: Record<string, any> = {
   'en-US': en,
 }
 
-const STORAGE_KEY = 'orcasvn-settings'
-
 export function useLocale() {
   const { locale } = useI18n()
+  const { settings, updateSettings } = useSettings()
 
   const elementLocale = computed(() => {
     return localeMap[locale.value] || zhCn
@@ -25,13 +27,9 @@ export function useLocale() {
 
   const setLocale = (newLocale: string) => {
     locale.value = newLocale
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY)
-      const settings = stored ? JSON.parse(stored) : {}
-      settings.language = newLocale
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
-    } catch {
-      // ignore
+
+    if (settings.language !== newLocale) {
+      updateSettings({ language: newLocale })
     }
   }
 

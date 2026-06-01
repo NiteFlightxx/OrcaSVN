@@ -28,6 +28,13 @@ pub struct SvnLogEntry {
     pub author: String,
     pub date: String,
     pub message: String,
+    pub changed_paths: Vec<SvnLogPath>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SvnLogPath {
+    pub path: String,
+    pub action: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -54,7 +61,8 @@ async fn svn_checkout(
     path: String,
     revision: Option<u64>,
 ) -> Result<CommandResult, String> {
-    svn::checkout(&url, &path, revision).await
+    svn::checkout(&url, &path, revision)
+        .await
         .map(|output| CommandResult {
             success: true,
             output,
@@ -65,7 +73,8 @@ async fn svn_checkout(
 
 #[tauri::command]
 async fn svn_update(path: String, revision: Option<u64>) -> Result<CommandResult, String> {
-    svn::update(&path, revision).await
+    svn::update(&path, revision)
+        .await
         .map(|output| CommandResult {
             success: true,
             output,
@@ -80,7 +89,8 @@ async fn svn_commit(
     message: String,
     files: Option<Vec<String>>,
 ) -> Result<CommandResult, String> {
-    svn::commit(&path, &message, files.as_deref()).await
+    svn::commit(&path, &message, files.as_deref())
+        .await
         .map(|output| CommandResult {
             success: true,
             output,
@@ -101,7 +111,9 @@ async fn svn_log(
     start_rev: Option<u64>,
     end_rev: Option<u64>,
 ) -> Result<Vec<SvnLogEntry>, String> {
-    svn::log(&path, limit, start_rev, end_rev).await.map_err(|e| e.to_string())
+    svn::log(&path, limit, start_rev, end_rev)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -116,17 +128,22 @@ async fn svn_diff(
     old_rev: Option<u64>,
     new_rev: Option<u64>,
 ) -> Result<DiffResult, String> {
-    svn::diff(&workspace_path, &file, old_rev, new_rev).await.map_err(|e| e.to_string())
+    svn::diff(&workspace_path, &file, old_rev, new_rev)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 async fn svn_blame(workspace_path: String, file: String) -> Result<Vec<svn::BlameLine>, String> {
-    svn::blame(&workspace_path, &file).await.map_err(|e| e.to_string())
+    svn::blame(&workspace_path, &file)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 async fn svn_add(path: String, files: Vec<String>) -> Result<CommandResult, String> {
-    svn::add(&path, &files).await
+    svn::add(&path, &files)
+        .await
         .map(|output| CommandResult {
             success: true,
             output,
@@ -137,7 +154,8 @@ async fn svn_add(path: String, files: Vec<String>) -> Result<CommandResult, Stri
 
 #[tauri::command]
 async fn svn_delete(path: String, files: Vec<String>) -> Result<CommandResult, String> {
-    svn::delete(&path, &files).await
+    svn::delete(&path, &files)
+        .await
         .map(|output| CommandResult {
             success: true,
             output,
@@ -148,7 +166,8 @@ async fn svn_delete(path: String, files: Vec<String>) -> Result<CommandResult, S
 
 #[tauri::command]
 async fn svn_revert(path: String, files: Vec<String>) -> Result<CommandResult, String> {
-    svn::revert(&path, &files).await
+    svn::revert(&path, &files)
+        .await
         .map(|output| CommandResult {
             success: true,
             output,
@@ -158,8 +177,13 @@ async fn svn_revert(path: String, files: Vec<String>) -> Result<CommandResult, S
 }
 
 #[tauri::command]
-async fn svn_resolve(path: String, files: Vec<String>, strategy: String) -> Result<CommandResult, String> {
-    svn::resolve(&path, &files, &strategy).await
+async fn svn_resolve(
+    path: String,
+    files: Vec<String>,
+    strategy: String,
+) -> Result<CommandResult, String> {
+    svn::resolve(&path, &files, &strategy)
+        .await
         .map(|output| CommandResult {
             success: true,
             output,
@@ -170,7 +194,8 @@ async fn svn_resolve(path: String, files: Vec<String>, strategy: String) -> Resu
 
 #[tauri::command]
 async fn svn_cleanup(path: String) -> Result<CommandResult, String> {
-    svn::cleanup(&path).await
+    svn::cleanup(&path)
+        .await
         .map(|output| CommandResult {
             success: true,
             output,
@@ -181,7 +206,8 @@ async fn svn_cleanup(path: String) -> Result<CommandResult, String> {
 
 #[tauri::command]
 async fn svn_switch(path: String, url: String) -> Result<CommandResult, String> {
-    svn::switch_cmd(&path, &url).await
+    svn::switch_cmd(&path, &url)
+        .await
         .map(|output| CommandResult {
             success: true,
             output,
@@ -191,8 +217,14 @@ async fn svn_switch(path: String, url: String) -> Result<CommandResult, String> 
 }
 
 #[tauri::command]
-async fn svn_merge(path: String, source: String, rev_start: u64, rev_end: u64) -> Result<CommandResult, String> {
-    svn::merge(&path, &source, rev_start, rev_end).await
+async fn svn_merge(
+    path: String,
+    source: String,
+    rev_start: u64,
+    rev_end: u64,
+) -> Result<CommandResult, String> {
+    svn::merge(&path, &source, rev_start, rev_end)
+        .await
         .map(|output| CommandResult {
             success: true,
             output,

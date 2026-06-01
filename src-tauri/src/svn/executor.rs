@@ -1,5 +1,5 @@
-use std::process::Command;
-use std::time::Duration;
+use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 use thiserror::Error;
 use tokio::task::spawn_blocking;
 
@@ -25,14 +25,20 @@ pub async fn execute_svn_allow_diff(args: &[&str], path: Option<&str>) -> Result
     execute_svn_inner(args, path, true).await
 }
 
-async fn execute_svn_inner(args: &[&str], path: Option<&str>, allow_diff_exit: bool) -> Result<String, SvnError> {
+async fn execute_svn_inner(
+    args: &[&str],
+    path: Option<&str>,
+    allow_diff_exit: bool,
+) -> Result<String, SvnError> {
     let args_vec: Vec<String> = args.iter().map(|s| s.to_string()).collect();
     let path_str = path.map(|s| s.to_string());
 
-    let result = tokio::time::timeout(SVN_TIMEOUT, spawn_blocking(move || {
+    spawn_blocking(move || {
         let mut cmd = Command::new("svn");
         cmd.args(&args_vec);
         cmd.arg("--non-interactive");
+        cmd.stdout(Stdio::piped());
+        cmd.stderr(Stdio::piped());
 
         if let Some(p) = path_str.as_ref() {
             cmd.current_dir(p);
@@ -45,13 +51,31 @@ async fn execute_svn_inner(args: &[&str], path: Option<&str>, allow_diff_exit: b
             cmd.creation_flags(CREATE_NO_WINDOW);
         }
 
-        let output = cmd.output().map_err(|e| {
+        let mut child = cmd.spawn().map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
                 SvnError::SvnNotFound
             } else {
                 SvnError::CommandFailed(e.to_string())
             }
         })?;
+
+        let started = Instant::now();
+        let output = loop {
+            match child.try_wait() {
+                Ok(Some(_)) => {
+                    break child
+                        .wait_with_output()
+                        .map_err(|e| SvnError::CommandFailed(e.to_string()))?
+                }
+                Ok(None) if started.elapsed() >= SVN_TIMEOUT => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err(SvnError::Timeout);
+                }
+                Ok(None) => std::thread::sleep(Duration::from_millis(100)),
+                Err(e) => return Err(SvnError::CommandFailed(e.to_string())),
+            }
+        };
 
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -61,15 +85,30 @@ async fn execute_svn_inner(args: &[&str], path: Option<&str>, allow_diff_exit: b
         } else if allow_diff_exit && output.status.code() == Some(1) {
             Ok(stdout)
         } else {
-            Err(SvnError::CommandFailed(format!(
-                "{}\n{}",
-                stdout, stderr
-            )))
+            Err(SvnError::CommandFailed(format!("{}\n{}", stdout, stderr)))
         }
-    }))
+    })
     .await
-    .map_err(|_| SvnError::Timeout)?
-    .map_err(|e| SvnError::CommandFailed(format!("SVN 进程异常退出：{}", e)))?;
+    .map_err(|e| SvnError::CommandFailed(format!("SVN 进程异常退出：{}", e)))?
+}
 
-    result
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn captures_svn_stdout() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build()
+            .expect("failed to build tokio runtime");
+
+        let result = runtime.block_on(execute_svn(&["--version", "--quiet"], None));
+
+        match result {
+            Ok(output) => assert!(!output.trim().is_empty()),
+            Err(SvnError::SvnNotFound) => {}
+            Err(err) => panic!("unexpected svn executor error: {err}"),
+        }
+    }
 }

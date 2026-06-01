@@ -35,7 +35,9 @@
               </div>
               <div class="info-item">
                 <span class="info-label">{{ $t('commit.changedFiles') }}：</span>
-                <el-tag type="primary" size="small">{{ changedFiles.length }} {{ $t('commit.filesCount', { count: changedFiles.length }) }}</el-tag>
+                <el-tag type="primary" size="small">
+                  {{ $t('commit.filesCount', { count: changedFiles.length }) }}
+                </el-tag>
               </div>
             </div>
           </template>
@@ -44,6 +46,7 @@
         <el-form class="commit-form" label-position="top">
           <el-form-item :label="$t('commit.selectFiles')" class="file-selection">
             <el-table 
+              ref="commitTable"
               :data="changedFiles" 
               style="width: 100%" 
               @selection-change="handleSelectionChange"
@@ -51,8 +54,9 @@
               highlight-current-row
               max-height="300"
               class="file-table"
+              row-key="path"
             >
-              <el-table-column type="selection" width="50" align="center" />
+              <el-table-column type="selection" width="50" align="center" :reserve-selection="true" />
               <el-table-column prop="status_code" :label="$t('commit.status')" width="120" align="center">
                 <template #default="{ row }">
                   <span class="status-badge" :class="getStatusClass(row.status_code)">
@@ -84,7 +88,12 @@
           </el-form-item>
 
           <el-form-item class="form-actions">
-            <el-button type="primary" @click="doCommit" :loading="loading" :disabled="!commitMessage">
+            <el-button
+              type="primary"
+              @click="doCommit"
+              :loading="loading"
+              :disabled="!commitMessage || changedFiles.length === 0"
+            >
               <el-icon><Upload /></el-icon>
               {{ $t('common.commit') }}
             </el-button>
@@ -116,8 +125,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, nextTick, onMounted, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { svnCommit } from '@/api/svn'
 import { useI18n } from 'vue-i18n'
@@ -127,23 +136,63 @@ import type { SvnStatus } from '@/types'
 
 const { t } = useI18n()
 const router = useRouter()
+const route = useRoute()
 const workspaceStore = useWorkspaceStore()
 const { openWorkspace: openWorkspaceDialog } = useWorkspace()
 
+const commitTable = ref()
 const selectedFiles = ref<string[]>([])
 const commitMessage = ref('')
 const loading = ref(false)
 const output = ref('')
 
+const committableStatuses = new Set(['added', 'modified', 'deleted', 'replaced'])
+
 const changedFiles = computed(() => {
   return workspaceStore.statusList.filter(
-    s => s.status_code !== 'normal' && s.status_code !== ''
+    s => committableStatuses.has(s.status_code) || s.prop_status === 'modified'
   )
 })
 
 const handleSelectionChange = (rows: SvnStatus[]) => {
   selectedFiles.value = rows.map(f => f.path)
 }
+
+const routeSelectedFiles = computed(() => {
+  const files = route.query.files
+  if (Array.isArray(files)) {
+    return files.filter((file): file is string => typeof file === 'string')
+  }
+  return typeof files === 'string' ? [files] : []
+})
+
+const routeCommittableFiles = computed(() => {
+  const selected = new Set(routeSelectedFiles.value)
+  return changedFiles.value
+    .filter((file) => selected.has(file.path))
+    .map((file) => file.path)
+})
+
+const applyRouteSelection = async () => {
+  const files = routeSelectedFiles.value
+  if (files.length === 0) return
+
+  selectedFiles.value = routeCommittableFiles.value
+  await nextTick()
+  if (!commitTable.value) return
+
+  commitTable.value?.clearSelection()
+
+  changedFiles.value.forEach((file) => {
+    if (files.includes(file.path)) {
+      commitTable.value?.toggleRowSelection(file, true)
+    }
+  })
+}
+
+onMounted(applyRouteSelection)
+watch(changedFiles, applyRouteSelection, { immediate: true, flush: 'post' })
+watch(() => route.query.files, applyRouteSelection, { flush: 'post' })
 
 const openWorkspace = async () => {
   const success = await openWorkspaceDialog(t('dialog.selectSVNWorkspaceDirectory'))
@@ -161,7 +210,8 @@ const doCommit = async () => {
   output.value = ''
 
   try {
-    const files = selectedFiles.value.length > 0 ? selectedFiles.value : undefined
+    const selected = selectedFiles.value.length > 0 ? selectedFiles.value : routeCommittableFiles.value
+    const files = selected.length > 0 ? selected : undefined
     const result = await svnCommit(workspaceStore.currentPath, commitMessage.value, files)
     output.value = result.output
 
@@ -179,6 +229,7 @@ const resetForm = () => {
   selectedFiles.value = []
   commitMessage.value = ''
   output.value = ''
+  commitTable.value?.clearSelection()
 }
 </script>
 

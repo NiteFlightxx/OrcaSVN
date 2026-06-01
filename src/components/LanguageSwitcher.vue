@@ -1,7 +1,12 @@
 <template>
   <el-dropdown @command="handleLanguageChange">
     <el-button text>
-      <el-icon><Globe /></el-icon>
+      <svg class="language-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="12" r="9" />
+        <path d="M3 12h18" />
+        <path d="M12 3c2.4 2.5 3.6 5.5 3.6 9s-1.2 6.5-3.6 9" />
+        <path d="M12 3c-2.4 2.5-3.6 5.5-3.6 9s1.2 6.5 3.6 9" />
+      </svg>
       {{ currentLanguageLabel }}
       <el-icon class="el-icon--right"><ArrowDown /></el-icon>
     </el-button>
@@ -44,3 +49,16 @@ const handleLanguageChange = (command: string) => {
   setLocale(command)
 }
 </script>
+
+<style scoped>
+.language-icon {
+  width: 17px;
+  height: 17px;
+  color: currentColor;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+</style>

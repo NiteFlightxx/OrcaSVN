@@ -38,8 +38,41 @@
       </div>
 
       <div v-else class="log-content">
+        <div class="log-filters">
+          <el-input
+            v-model="filters.author"
+            :placeholder="$t('log.searchAuthor')"
+            clearable
+            size="small"
+          />
+          <el-input
+            v-model="filters.keyword"
+            :placeholder="$t('log.searchKeyword')"
+            clearable
+            size="small"
+          />
+          <el-input
+            v-model="filters.dateFrom"
+            type="date"
+            :placeholder="$t('log.dateFrom')"
+            clearable
+            size="small"
+          />
+          <el-input
+            v-model="filters.dateTo"
+            type="date"
+            :placeholder="$t('log.dateTo')"
+            clearable
+            size="small"
+          />
+          <el-button size="small" @click="resetFilters">
+            <el-icon><RefreshLeft /></el-icon>
+            {{ $t('common.reset') }}
+          </el-button>
+        </div>
+
         <el-table
-          :data="logs"
+          :data="filteredLogs"
           style="width: 100%"
           max-height="600"
           @row-click="handleRowClick"
@@ -72,6 +105,13 @@
           <el-table-column prop="message" :label="$t('log.commitMessage')" show-overflow-tooltip>
             <template #default="{ row }">
               <span class="message-text">{{ row.message }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column :label="$t('log.changedFiles')" width="110" align="center">
+            <template #default="{ row }">
+              <el-tag size="small" effect="plain">
+                {{ row.changed_paths?.length || 0 }}
+              </el-tag>
             </template>
           </el-table-column>
         </el-table>
@@ -112,6 +152,32 @@
               <pre>{{ selectedLog.message }}</pre>
             </div>
           </div>
+
+          <div class="changed-files-section">
+            <h4 class="message-title">
+              <el-icon><Document /></el-icon>
+              {{ $t('log.changedFiles') }}
+            </h4>
+            <el-table
+              :data="selectedLog.changed_paths || []"
+              max-height="260"
+              stripe
+              class="changed-files-table"
+            >
+              <el-table-column :label="$t('commit.status')" width="96" align="center">
+                <template #default="{ row }">
+                  <el-tag size="small" :type="getActionTagType(row.action)">
+                    {{ getActionLabel(row.action) }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column :label="$t('commit.file')" show-overflow-tooltip>
+                <template #default="{ row }">
+                  <span class="file-path">{{ row.path }}</span>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
         </div>
         
         <template #footer>
@@ -125,7 +191,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, reactive, ref, onMounted } from 'vue'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { svnLog } from '@/api/svn'
 import type { SvnLogEntry } from '@/types'
@@ -141,6 +207,32 @@ const logs = ref<SvnLogEntry[]>([])
 const loading = ref(false)
 const dialogVisible = ref(false)
 const selectedLog = ref<SvnLogEntry | null>(null)
+const filters = reactive({
+  author: '',
+  keyword: '',
+  dateFrom: '',
+  dateTo: '',
+})
+
+const filteredLogs = computed(() => {
+  const author = filters.author.trim().toLowerCase()
+  const keyword = filters.keyword.trim().toLowerCase()
+  const from = filters.dateFrom ? new Date(`${filters.dateFrom}T00:00:00`) : null
+  const to = filters.dateTo ? new Date(`${filters.dateTo}T23:59:59.999`) : null
+
+  return logs.value.filter((entry) => {
+    const date = new Date(entry.date)
+    const paths = entry.changed_paths?.map((item) => item.path).join('\n') || ''
+    const searchable = `${entry.message}\n${paths}\nr${entry.revision}`.toLowerCase()
+
+    return (
+      (!author || entry.author.toLowerCase().includes(author)) &&
+      (!keyword || searchable.includes(keyword)) &&
+      (!from || date >= from) &&
+      (!to || date <= to)
+    )
+  })
+})
 
 const openWorkspace = async () => {
   const success = await openWorkspaceDialog(t('dialog.selectSVNWorkspaceDirectory'))
@@ -156,7 +248,7 @@ const loadLogs = async () => {
   try {
     logs.value = await svnLog(workspaceStore.currentPath, limit.value)
   } catch (err) {
-    workspaceStore.error = String(err)
+    workspaceStore.setError(String(err))
   } finally {
     loading.value = false
   }
@@ -165,6 +257,29 @@ const loadLogs = async () => {
 const handleRowClick = (row: SvnLogEntry) => {
   selectedLog.value = row
   dialogVisible.value = true
+}
+
+const resetFilters = () => {
+  filters.author = ''
+  filters.keyword = ''
+  filters.dateFrom = ''
+  filters.dateTo = ''
+}
+
+const getActionLabel = (action: string) => {
+  const key = `log.action${action || 'Unknown'}`
+  const translated = t(key)
+  return translated === key ? action || t('common.noData') : translated
+}
+
+const getActionTagType = (action: string) => {
+  switch (action) {
+    case 'A': return 'success'
+    case 'D': return 'danger'
+    case 'M': return 'warning'
+    case 'R': return 'primary'
+    default: return 'info'
+  }
 }
 
 const formatDate = (dateStr: string): string => {
@@ -234,6 +349,13 @@ onMounted(() => {
   overflow: auto;
 }
 
+.log-filters {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(180px, 2fr) minmax(140px, 1fr) minmax(140px, 1fr) auto;
+  gap: var(--app-spacing-sm);
+  margin-bottom: var(--app-spacing);
+}
+
 .log-table {
   border-radius: var(--app-radius-md);
   overflow: hidden;
@@ -292,6 +414,10 @@ onMounted(() => {
   margin-top: var(--app-spacing-sm);
 }
 
+.changed-files-section {
+  margin-top: var(--app-spacing-sm);
+}
+
 .message-title {
   display: flex;
   align-items: center;
@@ -325,6 +451,16 @@ onMounted(() => {
   color: var(--el-text-color-primary);
 }
 
+.changed-files-table {
+  border-radius: var(--app-radius-md);
+  overflow: hidden;
+}
+
+.file-path {
+  font-family: "Cascadia Mono", Consolas, Monaco, monospace;
+  font-size: 13px;
+}
+
 @media (max-width: 860px) {
   .card-header {
     flex-direction: column;
@@ -335,11 +471,19 @@ onMounted(() => {
   .header-actions {
     width: 100%;
   }
+
+  .log-filters {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 @media (max-width: 640px) {
   .log-dialog {
     width: 90% !important;
+  }
+
+  .log-filters {
+    grid-template-columns: 1fr;
   }
 }
 </style>

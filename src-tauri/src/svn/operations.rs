@@ -28,7 +28,11 @@ pub async fn update(path: &str, revision: Option<u64>) -> Result<String, SvnErro
     execute_svn(&args_refs, Some(path)).await
 }
 
-pub async fn commit(path: &str, message: &str, files: Option<&[String]>) -> Result<String, SvnError> {
+pub async fn commit(
+    path: &str,
+    message: &str,
+    files: Option<&[String]>,
+) -> Result<String, SvnError> {
     let mut args: Vec<String> = vec!["commit".to_string(), "-m".to_string(), message.to_string()];
 
     if let Some(file_list) = files {
@@ -53,7 +57,11 @@ pub async fn log(
     start_rev: Option<u64>,
     end_rev: Option<u64>,
 ) -> Result<Vec<SvnLogEntry>, SvnError> {
-    let mut args: Vec<String> = vec!["log".to_string(), "--xml".to_string()];
+    let mut args: Vec<String> = vec![
+        "log".to_string(),
+        "--xml".to_string(),
+        "--verbose".to_string(),
+    ];
 
     if let Some(lim) = limit {
         args.push("-l".to_string());
@@ -94,7 +102,12 @@ pub async fn blame(workspace: &str, file: &str) -> Result<Vec<BlameLine>, SvnErr
     parse_blame_text(&output)
 }
 
-pub async fn diff(workspace: &str, file: &str, old_rev: Option<u64>, new_rev: Option<u64>) -> Result<DiffResult, SvnError> {
+pub async fn diff(
+    workspace: &str,
+    file: &str,
+    old_rev: Option<u64>,
+    new_rev: Option<u64>,
+) -> Result<DiffResult, SvnError> {
     let mut args: Vec<String> = vec!["diff".to_string()];
 
     if let Some(old) = old_rev {
@@ -148,7 +161,11 @@ pub async fn revert(path: &str, files: &[String]) -> Result<String, SvnError> {
 }
 
 pub async fn resolve(path: &str, files: &[String], strategy: &str) -> Result<String, SvnError> {
-    let mut args: Vec<String> = vec!["resolve".to_string(), "--accept".to_string(), strategy.to_string()];
+    let mut args: Vec<String> = vec![
+        "resolve".to_string(),
+        "--accept".to_string(),
+        strategy.to_string(),
+    ];
     for file in files {
         args.push(file.clone());
     }
@@ -166,7 +183,12 @@ pub async fn switch_cmd(path: &str, url: &str) -> Result<String, SvnError> {
     execute_svn(&args, Some(path)).await
 }
 
-pub async fn merge(path: &str, source: &str, rev_start: u64, rev_end: u64) -> Result<String, SvnError> {
+pub async fn merge(
+    path: &str,
+    source: &str,
+    rev_start: u64,
+    rev_end: u64,
+) -> Result<String, SvnError> {
     let args = vec![
         "merge".to_string(),
         "-r".to_string(),

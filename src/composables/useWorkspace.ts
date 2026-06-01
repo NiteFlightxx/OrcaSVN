@@ -15,18 +15,24 @@ export function useWorkspace() {
     if (!selected) return false
 
     const path = Array.isArray(selected) ? selected[0] : selected
-    workspaceStore.setCurrentPath(path)
+    workspaceStore.setLoading(true)
+    workspaceStore.setError(null)
 
     try {
-      const status = await svnStatus(path)
-      workspaceStore.setStatusList(status)
+      const [status, info] = await Promise.all([
+        svnStatus(path),
+        svnInfo(path),
+      ])
 
-      const info = await svnInfo(path)
+      workspaceStore.setCurrentPath(path)
+      workspaceStore.setStatusList(status)
       workspaceStore.setSvnInfo(info)
       return true
     } catch (err) {
-      workspaceStore.error = String(err)
+      workspaceStore.setError(String(err))
       return false
+    } finally {
+      workspaceStore.setLoading(false)
     }
   }
 
@@ -34,6 +40,7 @@ export function useWorkspace() {
     if (!workspaceStore.currentPath) return
 
     workspaceStore.setLoading(true)
+    workspaceStore.setError(null)
     try {
       const [status, info] = await Promise.all([
         svnStatus(workspaceStore.currentPath),
@@ -42,7 +49,7 @@ export function useWorkspace() {
       workspaceStore.setStatusList(status)
       workspaceStore.setSvnInfo(info)
     } catch (err) {
-      workspaceStore.error = String(err)
+      workspaceStore.setError(String(err))
     } finally {
       workspaceStore.setLoading(false)
     }

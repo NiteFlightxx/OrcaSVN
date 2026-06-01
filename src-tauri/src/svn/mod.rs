@@ -1,5 +1,5 @@
 mod executor;
-mod parser;
 mod operations;
+mod parser;
 
 pub use operations::*;

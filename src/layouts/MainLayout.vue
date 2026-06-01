@@ -29,12 +29,31 @@
     <el-container>
       <el-header class="header">
         <div class="header-left">
-          <el-breadcrumb v-if="workspaceStore.currentPath" class="breadcrumb">
-            <el-breadcrumb-item>
+          <div v-if="workspaceStore.currentPath" class="workspace-nav">
+            <div class="workspace-path">
               <el-icon><FolderOpened /></el-icon>
-              {{ workspaceStore.currentPath }}
-            </el-breadcrumb-item>
-          </el-breadcrumb>
+              <span>{{ workspaceStore.currentPath }}</span>
+            </div>
+            <div class="workspace-actions">
+              <el-button
+                class="switch-workspace-btn"
+                circle
+                size="small"
+                :title="$t('workspace.switchWorkspace')"
+                @click="switchWorkspace"
+              >
+                <el-icon><FolderOpened /></el-icon>
+              </el-button>
+              <el-button
+                circle
+                size="small"
+                :title="$t('workspace.closeWorkspace')"
+                @click="closeWorkspace"
+              >
+                <el-icon><Close /></el-icon>
+              </el-button>
+            </div>
+          </div>
           <div v-else class="header-title">{{ $t('menu.workspace') }}</div>
         </div>
         <div class="header-right">
@@ -77,6 +96,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import LanguageSwitcher from '@/components/LanguageSwitcher.vue'
 import { useWorkspace } from '@/composables/useWorkspace'
+import { useI18n } from 'vue-i18n'
 import {
   Connection,
   Document,
@@ -97,8 +117,9 @@ const menuItems = [
 
 const router = useRouter()
 const route = useRoute()
+const { t } = useI18n()
 const workspaceStore = useWorkspaceStore()
-const { refreshStatus } = useWorkspace()
+const { openWorkspace, refreshStatus } = useWorkspace()
 
 const isCollapsed = ref(false)
 const cachedViews = ref(['WorkspaceView', 'LogView'])
@@ -111,6 +132,14 @@ const handleMenuSelect = (index: string) => {
 
 const openSettings = () => {
   router.push({ name: 'settings' })
+}
+
+const switchWorkspace = async () => {
+  await openWorkspace(t('dialog.selectSVNWorkspaceDirectory'))
+}
+
+const closeWorkspace = () => {
+  workspaceStore.clearWorkspace()
 }
 </script>
 
@@ -225,20 +254,68 @@ const openSettings = () => {
   min-width: 0;
 }
 
-.breadcrumb {
-  font-weight: 600;
+.workspace-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--app-spacing);
 }
 
-:deep(.el-breadcrumb__inner) {
+.workspace-path {
   display: inline-flex;
+  min-width: 0;
   align-items: center;
   gap: 6px;
-  color: var(--el-text-color-primary);
   font-weight: 600;
 }
 
-:deep(.el-breadcrumb__inner .el-icon) {
+.workspace-path .el-icon {
   font-size: 16px;
+  flex-shrink: 0;
+}
+
+.workspace-path span {
+  overflow: hidden;
+  color: var(--el-text-color-primary);
+  font-family: "Cascadia Mono", Consolas, Monaco, monospace;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 8px;
+  margin-right: var(--app-spacing-md);
+}
+
+.switch-workspace-btn {
+  border-color: #4f46e5;
+  background: #4f46e5;
+  color: #fff;
+}
+
+.workspace-actions .el-button {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  padding: 0;
+  border-radius: 10px;
+  margin-left: 0;
+}
+
+.switch-workspace-btn:hover,
+.switch-workspace-btn:focus {
+  border-color: #4338ca;
+  background: #4338ca;
+  color: #fff;
+}
+
+.switch-workspace-btn:active {
+  border-color: #3730a3;
+  background: #3730a3;
+  color: #fff;
 }
 
 .header-title {
@@ -319,6 +396,10 @@ const openSettings = () => {
   
   .header {
     padding: 0 var(--app-spacing-md);
+  }
+
+  .workspace-actions {
+    display: none;
   }
   
   .main-content {
