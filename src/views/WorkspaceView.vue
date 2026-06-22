@@ -131,7 +131,7 @@
                 </el-button>
               </el-tooltip>
               <el-tooltip :content="$t('common.revert')" placement="top">
-                <el-button text size="small" type="danger" @click.stop="revertFile(file.path)">
+                <el-button text size="small" type="danger" @click.stop="revertFile(file)">
                   <el-icon><RefreshLeft /></el-icon>
                 </el-button>
               </el-tooltip>
@@ -195,7 +195,7 @@
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
-import { svnUpdate, svnCleanup, svnRevert, svnDiff } from '@/api/svn'
+import { deleteUnversioned, svnUpdate, svnCleanup, svnRevert, svnDiff } from '@/api/svn'
 import { useI18n } from 'vue-i18n'
 import { getStatusClass, getStatusLabelKey } from '@/composables/useSvnStatus'
 import { useWorkspace } from '@/composables/useWorkspace'
@@ -328,10 +328,15 @@ const viewDiff = (path: string) => {
   router.push({ name: 'diff', query: { path } })
 }
 
-const revertFile = async (path: string) => {
+const revertFile = async (file: SvnStatus) => {
   if (!workspaceStore.currentPath) return
+  const path = file.path
   try {
-    await svnRevert(workspaceStore.currentPath, [path])
+    if (file.status_code === 'unversioned') {
+      await deleteUnversioned(workspaceStore.currentPath, [path])
+    } else {
+      await svnRevert(workspaceStore.currentPath, [path])
+    }
     await refreshStatus()
     if (selectedFile.value === path) {
       selectedFile.value = null
@@ -714,7 +719,7 @@ const revertFile = async (path: string) => {
 .diff-row {
   display: grid;
   grid-template-columns: 48px 24px 1fr;
-  border-bottom: 1px solid rgba(226, 228, 238, 0.3);
+  border-bottom: 1px solid rgba(226, 228, 238, 0.16);
 }
 
 .diff-line-number,
@@ -774,6 +779,10 @@ const revertFile = async (path: string) => {
 /* 暗色主题 */
 .theme-dark .diff-lines {
   background: #1a1a2e;
+}
+
+.theme-dark .diff-row {
+  border-bottom-color: rgba(143, 160, 174, 0.1);
 }
 
 .theme-dark .diff-line-number,

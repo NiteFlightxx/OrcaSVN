@@ -18,7 +18,11 @@
           </h3>
           
           <el-form-item :label="$t('language.label')" class="form-item">
-            <el-select v-model="currentLanguage" style="width: 200px" class="language-select">
+            <el-select
+              v-model="currentLanguage"
+              class="settings-control language-select"
+              popper-class="settings-select-dropdown"
+            >
               <el-option
                 v-for="lang in languages"
                 :key="lang.value"
@@ -64,6 +68,7 @@
             <el-input
               v-model="settings.svnPath"
               :placeholder="$t('settings.svnPathPlaceholder')"
+              class="settings-control settings-path-input"
               clearable
             >
               <template #prefix>
@@ -73,7 +78,11 @@
           </el-form-item>
 
           <el-form-item :label="$t('settings.encoding')" class="form-item">
-            <el-select v-model="settings.encoding" style="width: 200px">
+            <el-select
+              v-model="settings.encoding"
+              class="settings-control"
+              popper-class="settings-select-dropdown"
+            >
               <el-option label="UTF-8" value="utf-8" />
               <el-option label="GBK" value="gbk" />
               <el-option label="GB2312" value="gb2312" />
@@ -83,30 +92,14 @@
           <el-form-item :label="$t('settings.logLimit')" class="form-item">
             <el-input-number
               v-model="settings.logLimit"
+              class="settings-control"
               :min="1"
               :max="1000"
               :step="10"
               controls-position="right"
             />
           </el-form-item>
-
-          <el-form-item :label="$t('settings.autoRefresh')" class="form-item">
-            <el-switch v-model="settings.autoRefresh" />
-          </el-form-item>
         </div>
-
-        <el-divider />
-
-        <el-form-item class="form-actions">
-          <el-button type="primary" @click="handleSave">
-            <el-icon><Check /></el-icon>
-            {{ $t('common.save') }}
-          </el-button>
-          <el-button @click="handleReset">
-            <el-icon><RefreshLeft /></el-icon>
-            {{ $t('common.cancel') }}
-          </el-button>
-        </el-form-item>
       </el-form>
 
       <el-divider />
@@ -131,10 +124,6 @@
               <span class="detail-label">{{ $t('common.version') }}：</span>
               <el-tag size="small" type="primary">{{ appVersion }}</el-tag>
             </div>
-            <div class="detail-item">
-              <span class="detail-label">{{ $t('common.techStack') }}：</span>
-              <span class="detail-value">Tauri + Rust + Vue 3 + TypeScript</span>
-            </div>
           </div>
         </div>
       </div>
@@ -152,7 +141,7 @@ import packageInfo from '../../package.json'
 
 const { t } = useI18n()
 const { setLocale } = useLocale()
-const { settings, resetSettings } = useSettings()
+const { settings } = useSettings()
 const appVersion = packageInfo.version
 
 const languages = computed(() => [
@@ -167,17 +156,6 @@ const currentLanguage = computed({
   get: () => settings.language,
   set: (val: string) => setLocale(val),
 })
-
-function handleSave() {
-  setLocale(settings.language)
-  applyTheme(settings.theme)
-}
-
-function handleReset() {
-  resetSettings()
-  setLocale(settings.language)
-  applyTheme(settings.theme)
-}
 
 onMounted(() => {
   setLocale(settings.language)
@@ -244,6 +222,15 @@ onMounted(() => {
   min-width: 0;
 }
 
+.settings-control {
+  width: 260px;
+  max-width: 100%;
+}
+
+.settings-path-input {
+  width: 260px;
+}
+
 .theme-group {
   display: flex;
   gap: var(--app-spacing);
@@ -261,10 +248,6 @@ onMounted(() => {
 
 .theme-option .el-icon {
   font-size: 16px;
-}
-
-.form-actions {
-  margin-bottom: 0;
 }
 
 .about-section {
@@ -342,6 +325,11 @@ onMounted(() => {
   .settings-form :deep(.el-form-item__label) {
     text-align: left;
     padding-bottom: 4px;
+  }
+
+  .settings-control,
+  .settings-path-input {
+    width: 100%;
   }
   
   .theme-group {

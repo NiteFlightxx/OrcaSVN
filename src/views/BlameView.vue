@@ -17,6 +17,9 @@
               <template #prepend>
                 <el-icon><Document /></el-icon>
               </template>
+              <template #append>
+                <el-button @click="browseFile">{{ $t('common.browse') }}</el-button>
+              </template>
             </el-input>
             <el-button @click="loadBlame" :loading="loading" type="primary">
               <el-icon><Edit /></el-icon>
@@ -93,10 +96,12 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import { open } from '@tauri-apps/plugin-dialog'
 import { ElMessage } from 'element-plus/es/components/message/index'
 import { svnBlame } from '@/api/svn'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useI18n } from 'vue-i18n'
+import { toWorkspaceRelativePath } from '@/utils/workspacePath'
 import type { BlameLine } from '@/types'
 
 const { t } = useI18n()
@@ -114,8 +119,44 @@ const annotatedBlameLines = computed(() => {
   }))
 })
 
-const loadBlame = async () => {
+const resolveCurrentFilePath = (): string | null => {
   const file = currentPath.value || route.query.path as string
+  if (!file || !workspaceStore.currentPath) return null
+
+  const relativePath = toWorkspaceRelativePath(file, workspaceStore.currentPath)
+  if (relativePath === null) {
+    ElMessage.warning(t('diff.fileOutsideWorkspace'))
+    return null
+  }
+  if (!relativePath) return null
+
+  currentPath.value = relativePath
+  return relativePath
+}
+
+const browseFile = async () => {
+  if (!workspaceStore.currentPath) return
+
+  const selected = await open({
+    directory: false,
+    multiple: false,
+    defaultPath: workspaceStore.currentPath,
+    title: t('dialog.selectFile'),
+  })
+
+  if (!selected) return
+
+  const selectedPath = Array.isArray(selected) ? selected[0] : selected
+  const relativePath = toWorkspaceRelativePath(selectedPath, workspaceStore.currentPath)
+  if (relativePath === null || !relativePath) {
+    ElMessage.warning(t('diff.fileOutsideWorkspace'))
+    return
+  }
+  currentPath.value = relativePath
+}
+
+const loadBlame = async () => {
+  const file = resolveCurrentFilePath()
   if (!file || !workspaceStore.currentPath) return
 
   loading.value = true

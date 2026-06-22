@@ -36,7 +36,7 @@ export default {
     update: '업데이트',
     commit: '커밋',
     version: '버전',
-    techStack: '기술 스택',
+    all: '전체',
   },
   language: {
     label: '언어',
@@ -47,11 +47,12 @@ export default {
     enUS: 'English',
   },
   settings: {
+    appearance: '모양',
+    svnSettings: 'SVN 설정',
     svnPath: 'SVN 실행 파일',
-    svnPathPlaceholder: 'svn 실행 파일 경로(PATH를 사용하려면 비워 두세요)',
+    svnPathPlaceholder: 'svn 실행 파일 경로',
     encoding: '기본 인코딩',
     logLimit: '기본 로그 로드 개수',
-    autoRefresh: '자동 새로고침',
     theme: '테마',
     themeLight: '라이트',
     themeDark: '다크',
@@ -93,6 +94,8 @@ export default {
     selectedFiles: '{count}개 파일 선택됨',
     markDeleted: '삭제 표시',
     error: '오류',
+    noChanges: '변경된 파일이 없습니다',
+    noWorkspace: '작업 공간이 열려 있지 않습니다',
   },
   log: {
     title: '로그 - 커밋 기록 보기',
@@ -121,6 +124,7 @@ export default {
   },
   commit: {
     title: '커밋 - 변경 사항 제출',
+    output: '커밋 출력',
     currentWorkspace: '현재 작업 공간',
     changedFiles: '변경된 파일',
     selectFiles: '파일 선택',
@@ -133,6 +137,7 @@ export default {
   },
   checkout: {
     title: '체크아웃 - 저장소에서 코드 가져오기',
+    output: '체크아웃 출력',
     repositoryUrl: '저장소 URL',
     repositoryUrlPlaceholder: '예: https://svn.example.com/repo/trunk',
     targetDirectory: '대상 디렉터리',
@@ -157,10 +162,14 @@ export default {
     selectFileAndCompare: '파일을 선택하고 비교를 클릭하세요',
     file: '파일',
     version: '버전',
+    selectFile: '파일을 선택하여 비교 보기',
+    fileOutsideWorkspace: '현재 작업 공간 안의 파일을 선택하세요',
+    noDiff: '차이 없음',
   },
   blame: {
     title: '블레임 (Blame)',
     load: '불러오기',
+    lines: '줄',
     selectFileToBlame: '블레임을 볼 파일을 선택하세요',
     revision: '리비전',
     author: '작성자',
@@ -179,6 +188,7 @@ export default {
   dialog: {
     selectSVNWorkspaceDirectory: 'SVN 작업 공간 디렉터리 선택',
     selectTargetDirectory: '대상 디렉터리 선택',
+    selectFile: '파일 선택',
   },
   switch: {
     enterUrl: '전환할 SVN URL을 입력하세요',
@@ -193,5 +203,11 @@ export default {
     blame: '블레임',
     settings: '설정',
     refresh: '새로고침',
+    openIn: 'Open in',
+  },
+  openIn: {
+    explorer: '파일 탐색기',
+    vscode: 'VS Code',
+    terminal: '터미널',
   },
 }

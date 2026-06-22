@@ -3,12 +3,175 @@
 mod svn;
 
 use serde::{Deserialize, Serialize};
+use std::env;
+use std::fs;
+use std::path::{Component, Path, PathBuf};
+use std::process::Command;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CommandResult {
     pub success: bool,
     pub output: String,
     pub error: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+enum OpenTarget {
+    Explorer,
+    Vscode,
+    Terminal,
+}
+
+#[tauri::command]
+async fn open_workspace_target(path: String, target: OpenTarget) -> Result<(), String> {
+    match target {
+        OpenTarget::Explorer => {
+            let mut command = Command::new("explorer");
+            command.arg(&path);
+            spawn_command(command)
+        }
+        OpenTarget::Vscode => {
+            let mut code_command = Command::new("code");
+            code_command.arg(&path);
+            if spawn_command(code_command).is_ok() {
+                return Ok(());
+            }
+
+            for executable in vscode_candidates() {
+                let mut command = Command::new(executable);
+                command.arg(&path);
+                if spawn_command(command).is_ok() {
+                    return Ok(());
+                }
+            }
+
+            Err("failed to open workspace: VS Code executable was not found".to_string())
+        }
+        OpenTarget::Terminal => open_terminal(&path),
+    }
+}
+
+fn spawn_command(mut command: Command) -> Result<(), String> {
+    command
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("failed to open workspace: {e}"))
+}
+
+#[tauri::command]
+async fn delete_unversioned(path: String, files: Vec<String>) -> Result<CommandResult, String> {
+    let workspace = fs::canonicalize(&path).map_err(|e| format!("invalid workspace path: {e}"))?;
+    let mut removed = Vec::new();
+
+    for file in files {
+        let target = resolve_workspace_child(&workspace, &file)?;
+        if !target.exists() {
+            return Err(format!("file does not exist: {file}"));
+        }
+
+        let canonical_target = fs::canonicalize(&target)
+            .map_err(|e| format!("failed to resolve file path '{file}': {e}"))?;
+        if !canonical_target.starts_with(&workspace) {
+            return Err(format!("refusing to delete outside workspace: {file}"));
+        }
+
+        if canonical_target.is_dir() {
+            fs::remove_dir_all(&canonical_target)
+                .map_err(|e| format!("failed to delete directory '{file}': {e}"))?;
+        } else {
+            fs::remove_file(&canonical_target)
+                .map_err(|e| format!("failed to delete file '{file}': {e}"))?;
+        }
+        removed.push(file);
+    }
+
+    Ok(CommandResult {
+        success: true,
+        output: removed.join("\n"),
+        error: None,
+    })
+}
+
+fn resolve_workspace_child(workspace: &Path, file: &str) -> Result<PathBuf, String> {
+    let relative = Path::new(file);
+    if relative.is_absolute() {
+        return Err(format!("absolute paths are not allowed: {file}"));
+    }
+
+    let mut target = workspace.to_path_buf();
+    for component in relative.components() {
+        match component {
+            Component::Normal(part) => target.push(part),
+            Component::CurDir => {}
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+                return Err(format!("invalid path outside workspace: {file}"));
+            }
+        }
+    }
+
+    Ok(target)
+}
+
+fn vscode_candidates() -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+
+    if let Ok(local_app_data) = env::var("LOCALAPPDATA") {
+        candidates
+            .push(PathBuf::from(&local_app_data).join("Programs\\Microsoft VS Code\\Code.exe"));
+        candidates.push(
+            PathBuf::from(&local_app_data)
+                .join("Programs\\Microsoft VS Code Insiders\\Code - Insiders.exe"),
+        );
+    }
+
+    if let Ok(program_files) = env::var("ProgramFiles") {
+        candidates.push(PathBuf::from(&program_files).join("Microsoft VS Code\\Code.exe"));
+        candidates.push(
+            PathBuf::from(&program_files).join("Microsoft VS Code Insiders\\Code - Insiders.exe"),
+        );
+    }
+
+    if let Ok(program_files_x86) = env::var("ProgramFiles(x86)") {
+        candidates.push(PathBuf::from(&program_files_x86).join("Microsoft VS Code\\Code.exe"));
+        candidates.push(
+            PathBuf::from(&program_files_x86)
+                .join("Microsoft VS Code Insiders\\Code - Insiders.exe"),
+        );
+    }
+
+    candidates
+}
+
+fn open_terminal(path: &str) -> Result<(), String> {
+    let mut pwsh = Command::new("cmd");
+    pwsh.args(["/C", "start", "", "pwsh", "-NoExit", "-Command"]);
+    pwsh.arg(format!(
+        "Set-Location -LiteralPath '{}'",
+        escape_powershell_literal(path)
+    ));
+    if spawn_command(pwsh).is_ok() {
+        return Ok(());
+    }
+
+    let mut powershell = Command::new("cmd");
+    powershell.args(["/C", "start", "", "powershell", "-NoExit", "-Command"]);
+    powershell.arg(format!(
+        "Set-Location -LiteralPath '{}'",
+        escape_powershell_literal(path)
+    ));
+    if spawn_command(powershell).is_ok() {
+        return Ok(());
+    }
+
+    let mut cmd = Command::new("cmd");
+    cmd.args(["/C", "start", "", "cmd", "/K"]);
+    cmd.arg(format!("cd /d \"{}\"", path));
+    spawn_command(cmd)
+}
+
+fn escape_powershell_literal(path: &str) -> String {
+    path.replace('\'', "''")
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -256,6 +419,8 @@ fn main() {
             svn_cleanup,
             svn_switch,
             svn_merge,
+            open_workspace_target,
+            delete_unversioned,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

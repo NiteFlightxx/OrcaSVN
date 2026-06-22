@@ -36,7 +36,6 @@ export default {
     update: '更新',
     commit: '提交',
     version: '版本',
-    techStack: '技术栈',
     all: '全部',
   },
   language: {
@@ -48,11 +47,12 @@ export default {
     enUS: 'English',
   },
   settings: {
+    appearance: '外观',
+    svnSettings: 'SVN 配置',
     svnPath: 'SVN 可执行文件',
-    svnPathPlaceholder: 'svn 可执行文件路径（留空使用 PATH 中的）',
+    svnPathPlaceholder: 'svn 可执行文件路径',
     encoding: '默认编码',
     logLimit: '日志默认加载条数',
-    autoRefresh: '自动刷新',
     theme: '主题',
     themeLight: '浅色',
     themeDark: '深色',
@@ -124,6 +124,7 @@ export default {
   },
   commit: {
     title: '提交 - 提交更改',
+    output: '提交输出',
     currentWorkspace: '当前工作区',
     changedFiles: '待提交文件',
     selectFiles: '选择文件',
@@ -136,6 +137,7 @@ export default {
   },
   checkout: {
     title: '检出 - 从仓库检出代码',
+    output: '检出输出',
     repositoryUrl: '仓库 URL',
     repositoryUrlPlaceholder: '例如：https://svn.example.com/repo/trunk',
     targetDirectory: '目标目录',
@@ -161,11 +163,13 @@ export default {
     file: '文件',
     version: '版本',
     selectFile: '选择文件查看差异',
+    fileOutsideWorkspace: '请选择当前工作区内的文件',
     noDiff: '没有差异',
   },
   blame: {
     title: '注解 (Blame)',
     load: '加载',
+    lines: '行',
     selectFileToBlame: '选择文件查看注解',
     revision: '版本',
     author: '作者',
@@ -184,6 +188,7 @@ export default {
   dialog: {
     selectSVNWorkspaceDirectory: '选择 SVN 工作区目录',
     selectTargetDirectory: '选择目标目录',
+    selectFile: '选择文件',
   },
   switch: {
     enterUrl: '请输入要切换的 SVN URL',
@@ -198,5 +203,11 @@ export default {
     blame: '注解',
     settings: '设置',
     refresh: '刷新',
+    openIn: 'Open in',
+  },
+  openIn: {
+    explorer: '资源管理器',
+    vscode: 'VS Code',
+    terminal: '终端',
   },
 }

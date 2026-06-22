@@ -36,7 +36,7 @@ export default {
     update: '更新',
     commit: '提交',
     version: '版本',
-    techStack: '技術棧',
+    all: '全部',
   },
   language: {
     label: '語言',
@@ -47,11 +47,12 @@ export default {
     enUS: 'English',
   },
   settings: {
+    appearance: '外觀',
+    svnSettings: 'SVN 設定',
     svnPath: 'SVN 可執行檔',
-    svnPathPlaceholder: 'svn 可執行檔路徑（留空使用 PATH 中的）',
+    svnPathPlaceholder: 'svn 可執行檔路徑',
     encoding: '預設編碼',
     logLimit: '日誌預設載入筆數',
-    autoRefresh: '自動重新整理',
     theme: '主題',
     themeLight: '淺色',
     themeDark: '深色',
@@ -93,6 +94,8 @@ export default {
     selectedFiles: '已選擇 {count} 個檔案',
     markDeleted: '標記刪除',
     error: '錯誤',
+    noChanges: '沒有變更的檔案',
+    noWorkspace: '未開啟工作區',
   },
   log: {
     title: '日誌 - 檢視提交歷史',
@@ -121,6 +124,7 @@ export default {
   },
   commit: {
     title: '提交 - 提交變更',
+    output: '提交輸出',
     currentWorkspace: '目前工作區',
     changedFiles: '待提交檔案',
     selectFiles: '選擇檔案',
@@ -133,6 +137,7 @@ export default {
   },
   checkout: {
     title: '檢出 - 從倉庫檢出程式碼',
+    output: '檢出輸出',
     repositoryUrl: '倉庫 URL',
     repositoryUrlPlaceholder: '例如：https://svn.example.com/repo/trunk',
     targetDirectory: '目標目錄',
@@ -157,10 +162,14 @@ export default {
     selectFileAndCompare: '選擇檔案並點擊比對',
     file: '檔案',
     version: '版本',
+    selectFile: '選擇檔案檢視差異',
+    fileOutsideWorkspace: '請選擇目前工作區內的檔案',
+    noDiff: '沒有差異',
   },
   blame: {
     title: '註解 (Blame)',
     load: '載入',
+    lines: '行',
     selectFileToBlame: '選擇檔案檢視註解',
     revision: '版本',
     author: '作者',
@@ -179,6 +188,7 @@ export default {
   dialog: {
     selectSVNWorkspaceDirectory: '選擇 SVN 工作區目錄',
     selectTargetDirectory: '選擇目標目錄',
+    selectFile: '選擇檔案',
   },
   switch: {
     enterUrl: '請輸入要切換的 SVN URL',
@@ -193,5 +203,11 @@ export default {
     blame: '註解',
     settings: '設定',
     refresh: '重新整理',
+    openIn: 'Open in',
+  },
+  openIn: {
+    explorer: '資源管理器',
+    vscode: 'VS Code',
+    terminal: '終端機',
   },
 }

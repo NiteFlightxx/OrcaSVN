@@ -9,7 +9,7 @@
           </span>
           <div class="header-actions">
             <span class="loaded-count">{{ $t('log.loadedCount', { count: logs.length }) }}</span>
-            <el-button @click="reloadLogs" :loading="loading" type="primary" size="small">
+            <el-button @click="reloadLogs(true)" :loading="loading" type="primary" size="small">
               <el-icon><Refresh /></el-icon>
               {{ $t('log.load') }}
             </el-button>
@@ -31,38 +31,42 @@
 
       <div v-else ref="logScroller" class="log-content" @scroll="handleScroll">
         <div class="log-filters">
-          <el-input
+          <el-select
             v-model="filters.author"
             :placeholder="$t('log.searchAuthor')"
-            clearable
+            class="author-select"
+            filterable
+            :disabled="authorOptions.length === 0"
             size="small"
-          />
+          >
+            <el-option
+              v-for="option in authorOptions"
+              :key="option.value"
+              :label="option.label"
+              :value="option.value"
+            />
+          </el-select>
           <el-input
             v-model="filters.keyword"
             :placeholder="$t('log.searchKeyword')"
             clearable
             size="small"
           />
-          <label class="date-filter">
-            <span>{{ $t('log.dateFrom') }}</span>
-            <input
-              v-model="filters.dateFrom"
-              type="text"
-              inputmode="numeric"
-              placeholder="YYYY/MM/DD"
-              :aria-label="$t('log.dateFrom')"
-            />
-          </label>
-          <label class="date-filter">
-            <span>{{ $t('log.dateTo') }}</span>
-            <input
-              v-model="filters.dateTo"
-              type="text"
-              inputmode="numeric"
-              placeholder="YYYY/MM/DD"
-              :aria-label="$t('log.dateTo')"
-            />
-          </label>
+          <el-date-picker
+            v-model="dateRange"
+            type="daterange"
+            value-format="YYYY-MM-DD"
+            format="YYYY/MM/DD"
+            :start-placeholder="$t('log.dateFrom')"
+            :end-placeholder="$t('log.dateTo')"
+            range-separator="-"
+            popper-class="log-date-range-dropdown"
+            class="log-date-range"
+            clearable
+            unlink-panels
+            :editable="false"
+            size="small"
+          />
           <el-button size="small" @click="resetFilters">
             <el-icon><RefreshLeft /></el-icon>
             {{ $t('common.reset') }}
@@ -223,13 +227,34 @@ const logScroller = ref<HTMLElement | null>(null)
 let requestGeneration = 0
 const dialogVisible = ref(false)
 const selectedLog = ref<SvnLogEntry | null>(null)
-const filters = reactive({
-  author: '',
+const LOG_CACHE_TTL_MS = 5 * 60 * 1000
+type LogCacheEntry = {
+  entries: SvnLogEntry[]
+  cachedAt: number
+}
+const logPageCache = new Map<string, LogCacheEntry>()
+const logCacheVersion = ref(0)
+const currentAuthor = ref('')
+
+const getDefaultFilters = () => ({
+  author: currentAuthor.value,
   keyword: '',
   dateFrom: '',
   dateTo: '',
 })
+
+const filters = reactive({
+  ...getDefaultFilters(),
+})
 const pageSize = computed(() => Math.max(1, settings.logLimit || 50))
+
+const dateRange = computed<string[]>({
+  get: () => filters.dateFrom && filters.dateTo ? [filters.dateFrom, filters.dateTo] : [],
+  set: (value: string[]) => {
+    filters.dateFrom = value?.[0] || ''
+    filters.dateTo = value?.[1] || ''
+  },
+})
 
 const parseFilterDate = (value: string, endOfDay = false): Date | null => {
   const match = value.trim().match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$/)
@@ -241,6 +266,103 @@ const parseFilterDate = (value: string, endOfDay = false): Date | null => {
   const date = new Date(year, month - 1, day, endOfDay ? 23 : 0, endOfDay ? 59 : 0, endOfDay ? 59 : 0, endOfDay ? 999 : 0)
   if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null
   return date
+}
+
+const getLogCacheKey = (path: string, limit: number, startRev?: number, endRev?: number) => {
+  return JSON.stringify({ path, limit, startRev: startRev ?? null, endRev: endRev ?? null })
+}
+
+const getCachedLogPage = (path: string, limit: number, startRev?: number, endRev?: number) => {
+  const key = getLogCacheKey(path, limit, startRev, endRev)
+  const cached = logPageCache.get(key)
+  if (!cached) return null
+  if (Date.now() - cached.cachedAt > LOG_CACHE_TTL_MS) {
+    logPageCache.delete(key)
+    return null
+  }
+  return cached.entries
+}
+
+const setCachedLogPage = (
+  path: string,
+  limit: number,
+  entries: SvnLogEntry[],
+  startRev?: number,
+  endRev?: number
+) => {
+  const key = getLogCacheKey(path, limit, startRev, endRev)
+  logPageCache.set(key, {
+    entries: entries.map(entry => ({
+      ...entry,
+      changed_paths: [...(entry.changed_paths || [])],
+    })),
+    cachedAt: Date.now(),
+  })
+  logCacheVersion.value += 1
+}
+
+const clearLogCacheForPath = (path: string) => {
+  let changed = false
+  for (const key of logPageCache.keys()) {
+    try {
+      const parsed = JSON.parse(key) as { path?: string }
+      if (parsed.path === path) {
+        logPageCache.delete(key)
+        changed = true
+      }
+    } catch {
+      logPageCache.delete(key)
+      changed = true
+    }
+  }
+  if (changed) logCacheVersion.value += 1
+}
+
+const getCachedAuthorsForPath = (path: string | null) => {
+  if (!path) return []
+  logCacheVersion.value
+
+  const authors = new Set<string>()
+  for (const [key, cached] of logPageCache.entries()) {
+    try {
+      const parsed = JSON.parse(key) as { path?: string }
+      if (parsed.path !== path) continue
+      cached.entries.forEach(entry => {
+        if (entry.author) authors.add(entry.author)
+      })
+    } catch {
+      // Ignore malformed cache keys; they will be removed by the next explicit refresh.
+    }
+  }
+  return [...authors]
+}
+
+const knownAuthors = computed(() => {
+  const authors = new Set<string>()
+  logs.value.forEach(entry => {
+    if (entry.author) authors.add(entry.author)
+  })
+  getCachedAuthorsForPath(workspaceStore.currentPath).forEach(author => authors.add(author))
+  return [...authors]
+})
+
+const authorOptions = computed(() => {
+  const self = currentAuthor.value || knownAuthors.value[0] || ''
+  const otherAuthors = knownAuthors.value
+    .filter(author => author && author !== self)
+    .sort((a, b) => a.localeCompare(b, locale.value))
+
+  return [
+    ...(self ? [{ label: self, value: self }] : []),
+    ...otherAuthors.map(author => ({ label: author, value: author })),
+  ]
+})
+
+const setDefaultAuthorFromLogs = (entries: SvnLogEntry[]) => {
+  const author = entries.find(entry => entry.author)?.author
+  if (!author) return
+  if (!currentAuthor.value) currentAuthor.value = author
+  if (!filters.author) filters.author = currentAuthor.value
 }
 
 const filteredLogs = computed(() => {
@@ -270,25 +392,25 @@ const openWorkspace = async () => {
   }
 }
 
-const fetchLogPage = async (generation: number, startRev?: number) => {
+const fetchLogPage = async (generation: number, startRev?: number, refreshCache = false) => {
   if (!workspaceStore.currentPath || loading.value || loadingMore.value || !hasMore.value) return
 
   const requestedPath = workspaceStore.currentPath
+  const limit = pageSize.value
+  const endRev = startRev === undefined ? undefined : 1
   const initialLoad = startRev === undefined
   if (initialLoad) loading.value = true
   else loadingMore.value = true
   try {
-    const batch = await svnLog(
-      requestedPath,
-      pageSize.value,
-      startRev,
-      startRev === undefined ? undefined : 1
-    )
+    const cachedBatch = refreshCache ? null : getCachedLogPage(requestedPath, limit, startRev, endRev)
+    const batch = cachedBatch || await svnLog(requestedPath, limit, startRev, endRev)
+    if (!cachedBatch) setCachedLogPage(requestedPath, limit, batch, startRev, endRev)
     if (generation !== requestGeneration || requestedPath !== workspaceStore.currentPath) return
     const knownRevisions = new Set(logs.value.map(entry => entry.revision))
     const newEntries = batch.filter(entry => !knownRevisions.has(entry.revision))
     logs.value = initialLoad ? batch : [...logs.value, ...newEntries]
-    hasMore.value = batch.length >= pageSize.value && batch[batch.length - 1]?.revision !== 1
+    if (initialLoad) setDefaultAuthorFromLogs(batch)
+    hasMore.value = batch.length >= limit && batch[batch.length - 1]?.revision !== 1
   } catch (err) {
     if (generation === requestGeneration) workspaceStore.setError(String(err))
   } finally {
@@ -299,15 +421,16 @@ const fetchLogPage = async (generation: number, startRev?: number) => {
   }
 }
 
-const reloadLogs = async (force = false) => {
-  if (!force && (loading.value || loadingMore.value)) return
+const reloadLogs = async (refreshCache = false) => {
+  if (!refreshCache && (loading.value || loadingMore.value)) return
+  if (refreshCache && workspaceStore.currentPath) clearLogCacheForPath(workspaceStore.currentPath)
 
   const generation = ++requestGeneration
   logs.value = []
   hasMore.value = true
   loading.value = false
   loadingMore.value = false
-  await fetchLogPage(generation)
+  await fetchLogPage(generation, undefined, refreshCache)
   await nextTick()
   if (logScroller.value) logScroller.value.scrollTop = 0
 }
@@ -352,10 +475,7 @@ const openChangedPathDiff = (row: SvnLogPath) => {
 }
 
 const resetFilters = () => {
-  filters.author = ''
-  filters.keyword = ''
-  filters.dateFrom = ''
-  filters.dateTo = ''
+  Object.assign(filters, getDefaultFilters())
 }
 
 const getActionLabel = (action: string) => {
@@ -393,16 +513,21 @@ onActivated(() => {
 watch(
   () => workspaceStore.currentPath,
   (path, oldPath) => {
-    if (path && path !== oldPath) reloadLogs(true)
+    if (path && path !== oldPath) {
+      currentAuthor.value = ''
+      reloadLogs(true)
+    }
     if (!path) {
       requestGeneration += 1
       logs.value = []
+      currentAuthor.value = ''
       hasMore.value = true
       loading.value = false
       loadingMore.value = false
     }
   }
 )
+
 </script>
 
 <style scoped>
@@ -467,44 +592,32 @@ watch(
 
 .log-filters {
   display: grid;
-  grid-template-columns: minmax(120px, 1fr) minmax(180px, 2fr) minmax(140px, 1fr) minmax(140px, 1fr) auto;
+  grid-template-columns: minmax(120px, 1fr) minmax(180px, 2fr) 380px auto;
   gap: var(--app-spacing-sm);
   margin-bottom: var(--app-spacing);
 }
 
-.date-filter {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-  height: 28px;
-  overflow: hidden;
-  border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: 4px;
-  background: #fff;
-}
-
-.date-filter:focus-within {
-  border-color: var(--md-sys-color-primary);
-}
-
-.date-filter span {
-  flex-shrink: 0;
-  padding: 0 7px;
-  border-right: 1px solid var(--md-sys-color-outline-variant);
-  color: var(--el-text-color-secondary);
-  font-size: 10px;
-}
-
-.date-filter input {
-  min-width: 0;
+.author-select {
   width: 100%;
-  height: 100%;
-  padding: 0 6px;
-  border: 0;
-  outline: 0;
-  background: transparent;
+}
+
+.log-date-range {
+  width: 100%;
+  min-width: 0;
+}
+
+.log-date-range :deep(.el-range-input) {
   color: var(--el-text-color-primary);
-  font: inherit;
+}
+
+.log-date-range :deep(.el-range-input::placeholder) {
+  color: var(--el-text-color-placeholder);
+}
+
+.log-date-range :deep(.el-range-separator),
+.log-date-range :deep(.el-range__icon),
+.log-date-range :deep(.el-range__close-icon) {
+  color: var(--el-text-color-secondary);
 }
 
 .log-table {

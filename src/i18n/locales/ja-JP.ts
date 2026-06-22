@@ -36,7 +36,7 @@ export default {
     update: 'アップデート',
     commit: 'コミット',
     version: 'バージョン',
-    techStack: 'テクノロジースタック',
+    all: 'すべて',
   },
   language: {
     label: '言語',
@@ -47,11 +47,12 @@ export default {
     enUS: '英語',
   },
   settings: {
+    appearance: '外観',
+    svnSettings: 'SVN 設定',
     svnPath: 'SVN 実行ファイル',
-    svnPathPlaceholder: 'svn 実行ファイルのパス（PATH の場合は空欄）',
+    svnPathPlaceholder: 'svn 実行ファイルのパス',
     encoding: 'デフォルトのエンコーディング',
     logLimit: 'ログのデフォルト読み込み件数',
-    autoRefresh: '自動更新',
     theme: 'テーマ',
     themeLight: 'ライト',
     themeDark: 'ダーク',
@@ -93,6 +94,8 @@ export default {
     selectedFiles: '{count} 個のファイルを選択中',
     markDeleted: '削除としてマーク',
     error: 'エラー',
+    noChanges: '変更されたファイルはありません',
+    noWorkspace: 'ワークスペースが開かれていません',
   },
   log: {
     title: 'ログ - コミット履歴を表示',
@@ -121,6 +124,7 @@ export default {
   },
   commit: {
     title: 'コミット - 変更を送信',
+    output: 'コミット出力',
     currentWorkspace: '現在のワークスペース',
     changedFiles: '変更されたファイル',
     selectFiles: 'ファイルを選択',
@@ -133,6 +137,7 @@ export default {
   },
   checkout: {
     title: 'チェックアウト - リポジトリからコードをチェックアウト',
+    output: 'チェックアウト出力',
     repositoryUrl: 'リポジトリ URL',
     repositoryUrlPlaceholder: '例：https://svn.example.com/repo/trunk',
     targetDirectory: 'ターゲットディレクトリ',
@@ -157,10 +162,14 @@ export default {
     selectFileAndCompare: 'ファイルを選択して比較をクリック',
     file: 'ファイル',
     version: 'バージョン',
+    selectFile: 'ファイルを選択して差分を表示',
+    fileOutsideWorkspace: '現在のワークスペース内のファイルを選択してください',
+    noDiff: '差分はありません',
   },
   blame: {
     title: 'ブレイム (Blame)',
     load: '読み込み',
+    lines: '行',
     selectFileToBlame: 'ファイルを選択してブレイムを表示',
     revision: 'リビジョン',
     author: '作者',
@@ -179,6 +188,7 @@ export default {
   dialog: {
     selectSVNWorkspaceDirectory: 'SVN ワークスペースディレクトリを選択',
     selectTargetDirectory: 'ターゲットディレクトリを選択',
+    selectFile: 'ファイルを選択',
   },
   switch: {
     enterUrl: '切り替え先の SVN URL を入力してください',
@@ -193,5 +203,11 @@ export default {
     blame: 'ブレイム',
     settings: '設定',
     refresh: '更新',
+    openIn: 'Open in',
+  },
+  openIn: {
+    explorer: 'エクスプローラー',
+    vscode: 'VS Code',
+    terminal: 'ターミナル',
   },
 }

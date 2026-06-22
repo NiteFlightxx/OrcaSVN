@@ -36,7 +36,6 @@ export default {
     update: 'Update',
     commit: 'Commit',
     version: 'Version',
-    techStack: 'Tech Stack',
     all: 'All',
   },
   language: {
@@ -48,11 +47,12 @@ export default {
     enUS: 'English',
   },
   settings: {
+    appearance: 'Appearance',
+    svnSettings: 'SVN Configuration',
     svnPath: 'SVN Executable',
-    svnPathPlaceholder: 'svn executable path (leave empty for PATH)',
+    svnPathPlaceholder: 'svn executable path',
     encoding: 'Default Encoding',
     logLimit: 'Default Log Batch Size',
-    autoRefresh: 'Auto Refresh',
     theme: 'Theme',
     themeLight: 'Light',
     themeDark: 'Dark',
@@ -124,6 +124,7 @@ export default {
   },
   commit: {
     title: 'Commit - Submit Changes',
+    output: 'Commit Output',
     currentWorkspace: 'Current Workspace',
     changedFiles: 'Changed Files',
     selectFiles: 'Select Files',
@@ -136,6 +137,7 @@ export default {
   },
   checkout: {
     title: 'Checkout - Checkout Code from Repository',
+    output: 'Checkout Output',
     repositoryUrl: 'Repository URL',
     repositoryUrlPlaceholder: 'e.g., https://svn.example.com/repo/trunk',
     targetDirectory: 'Target Directory',
@@ -161,11 +163,13 @@ export default {
     file: 'File',
     version: 'Version',
     selectFile: 'Select a file to view diff',
+    fileOutsideWorkspace: 'Select a file inside the current workspace',
     noDiff: 'No diff',
   },
   blame: {
     title: 'Blame',
     load: 'Load',
+    lines: 'lines',
     selectFileToBlame: 'Select a file to view blame',
     revision: 'Revision',
     author: 'Author',
@@ -184,6 +188,7 @@ export default {
   dialog: {
     selectSVNWorkspaceDirectory: 'Select SVN Workspace Directory',
     selectTargetDirectory: 'Select Target Directory',
+    selectFile: 'Select File',
   },
   switch: {
     enterUrl: 'Enter the SVN URL to switch to',
@@ -198,5 +203,11 @@ export default {
     blame: 'Blame',
     settings: 'Settings',
     refresh: 'Refresh',
+    openIn: 'Open in',
+  },
+  openIn: {
+    explorer: 'Explorer',
+    vscode: 'VS Code',
+    terminal: 'Terminal',
   },
 }

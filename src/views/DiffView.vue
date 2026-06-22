@@ -17,6 +17,9 @@
               <template #prepend>
                 <el-icon><Document /></el-icon>
               </template>
+              <template #append>
+                <el-button @click="browseFile">{{ $t('common.browse') }}</el-button>
+              </template>
             </el-input>
             <el-button @click="loadDiff" :loading="loading" type="primary">
               <el-icon><Connection /></el-icon>
@@ -110,10 +113,12 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import { open } from '@tauri-apps/plugin-dialog'
 import { ElMessage } from 'element-plus/es/components/message/index'
 import { svnDiff } from '@/api/svn'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useI18n } from 'vue-i18n'
+import { toWorkspaceRelativePath } from '@/utils/workspacePath'
 import type { DiffResult } from '@/types'
 
 const { t } = useI18n()
@@ -186,8 +191,44 @@ const diffStats = computed(() => {
   )
 })
 
-const loadDiff = async () => {
+const resolveCurrentFilePath = (): string | null => {
   const file = currentPath.value || route.query.path as string
+  if (!file || !workspaceStore.currentPath) return null
+
+  const relativePath = toWorkspaceRelativePath(file, workspaceStore.currentPath)
+  if (relativePath === null) {
+    ElMessage.warning(t('diff.fileOutsideWorkspace'))
+    return null
+  }
+  if (!relativePath) return null
+
+  currentPath.value = relativePath
+  return relativePath
+}
+
+const browseFile = async () => {
+  if (!workspaceStore.currentPath) return
+
+  const selected = await open({
+    directory: false,
+    multiple: false,
+    defaultPath: workspaceStore.currentPath,
+    title: t('dialog.selectFile'),
+  })
+
+  if (!selected) return
+
+  const selectedPath = Array.isArray(selected) ? selected[0] : selected
+  const relativePath = toWorkspaceRelativePath(selectedPath, workspaceStore.currentPath)
+  if (relativePath === null || !relativePath) {
+    ElMessage.warning(t('diff.fileOutsideWorkspace'))
+    return
+  }
+  currentPath.value = relativePath
+}
+
+const loadDiff = async () => {
+  const file = resolveCurrentFilePath()
   if (!file || !workspaceStore.currentPath) return
 
   const generation = ++requestGeneration
@@ -381,7 +422,7 @@ watch(
   display: grid;
   grid-template-columns: 64px 34px minmax(max-content, 1fr);
   min-width: max-content;
-  border-bottom: 1px solid rgba(226, 228, 238, 0.6);
+  border-bottom: 1px solid rgba(226, 228, 238, 0.18);
   transition: background-color var(--app-transition-fast);
 }
 
@@ -447,6 +488,10 @@ watch(
 .theme-dark .diff-lines {
   background: #1a1a2e;
   border-color: var(--md-sys-color-outline-variant);
+}
+
+.theme-dark .diff-row {
+  border-bottom-color: rgba(143, 160, 174, 0.12);
 }
 
 .theme-dark .diff-line-number,

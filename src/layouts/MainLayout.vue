@@ -24,6 +24,30 @@
           <el-icon><Refresh /></el-icon>
           <span>{{ $t('menu.refresh') }}</span>
         </button>
+        <el-dropdown
+          trigger="click"
+          popper-class="toolbar-dropdown"
+          :disabled="!workspaceStore.currentPath"
+          @command="openCurrentWorkspaceIn"
+        >
+          <button class="tool-button" :disabled="!workspaceStore.currentPath">
+            <el-icon><Operation /></el-icon>
+            <span>{{ $t('menu.openIn') }}</span>
+          </button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="explorer">
+                {{ $t('openIn.explorer') }}
+              </el-dropdown-item>
+              <el-dropdown-item command="vscode">
+                {{ $t('openIn.vscode') }}
+              </el-dropdown-item>
+              <el-dropdown-item command="terminal">
+                {{ $t('openIn.terminal') }}
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
         <button class="tool-button" :class="{ active: routeName === 'log' }" @click="navigateTo('log')">
           <el-icon><Document /></el-icon>
           <span>{{ $t('menu.log') }}</span>
@@ -138,9 +162,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { ElMessage } from 'element-plus/es/components/message/index'
+import { openWorkspaceTarget, type OpenWorkspaceTarget } from '@/api/svn'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useWorkspace } from '@/composables/useWorkspace'
 import LanguageSwitcher from '@/components/LanguageSwitcher.vue'
@@ -153,6 +179,8 @@ const workspaceStore = useWorkspaceStore()
 const { refreshStatus, restoreLastWorkspace } = useWorkspace()
 const appVersion = packageInfo.version
 const cachedViews = ref(['WorkspaceView', 'LogView'])
+const statusRefreshIntervalMs = 10_000
+let statusRefreshTimer: number | undefined
 
 const repositoryName = computed(() => {
   const path = workspaceStore.currentPath
@@ -168,7 +196,31 @@ const currentRouteTitle = computed(() => {
 
 const navigateTo = (name: string) => router.push({ name })
 
-onMounted(restoreLastWorkspace)
+const openCurrentWorkspaceIn = async (target: OpenWorkspaceTarget) => {
+  if (!workspaceStore.currentPath) return
+
+  try {
+    await openWorkspaceTarget(workspaceStore.currentPath, target)
+  } catch (err) {
+    ElMessage.error(`${t('common.error')}：${err}`)
+  }
+}
+
+const refreshStatusSilently = async () => {
+  if (!workspaceStore.currentPath || workspaceStore.isLoading) return
+  await refreshStatus()
+}
+
+onMounted(async () => {
+  await restoreLastWorkspace()
+  statusRefreshTimer = window.setInterval(refreshStatusSilently, statusRefreshIntervalMs)
+})
+
+onUnmounted(() => {
+  if (statusRefreshTimer !== undefined) {
+    window.clearInterval(statusRefreshTimer)
+  }
+})
 </script>
 
 <style scoped>
@@ -286,6 +338,16 @@ onMounted(restoreLastWorkspace)
 .tool-button:hover {
   background: #edf3f9;
   color: #123a55;
+}
+
+.tool-button:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+.tool-button:disabled:hover {
+  color: #526173;
+  background: transparent;
 }
 
 .tool-button.active {

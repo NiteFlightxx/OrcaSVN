@@ -63,6 +63,10 @@ export async function svnRevert(path: string, files: string[]): Promise<CommandR
   return invoke<CommandResult>('svn_revert', { path, files })
 }
 
+export async function deleteUnversioned(path: string, files: string[]): Promise<CommandResult> {
+  return invoke<CommandResult>('delete_unversioned', { path, files })
+}
+
 export async function svnResolve(
   path: string,
   files: string[],
@@ -86,4 +90,13 @@ export async function svnMerge(
   revEnd: number
 ): Promise<CommandResult> {
   return invoke<CommandResult>('svn_merge', { path, source, revStart, revEnd })
+}
+
+export type OpenWorkspaceTarget = 'explorer' | 'vscode' | 'terminal'
+
+export async function openWorkspaceTarget(
+  path: string,
+  target: OpenWorkspaceTarget
+): Promise<void> {
+  return invoke<void>('open_workspace_target', { path, target })
 }

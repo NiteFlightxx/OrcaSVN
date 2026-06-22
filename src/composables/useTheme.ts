@@ -9,7 +9,11 @@ export function applyTheme(theme: AppSettings['theme']) {
   document.documentElement.classList.toggle('theme-dark', isDark)
   document.documentElement.classList.toggle('dark', isDark)
   document.documentElement.classList.toggle('theme-light', !isDark)
+  document.body.classList.toggle('theme-dark', isDark)
+  document.body.classList.toggle('dark', isDark)
+  document.body.classList.toggle('theme-light', !isDark)
   document.documentElement.style.colorScheme = isDark ? 'dark' : 'light'
+  document.body.style.colorScheme = isDark ? 'dark' : 'light'
 }
 
 export function initializeTheme() {

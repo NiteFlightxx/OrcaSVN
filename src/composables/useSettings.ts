@@ -1,10 +1,10 @@
 import { reactive, watch } from 'vue'
+import { detectSystemLocale } from '@/i18n'
 
 export interface AppSettings {
   svnPath: string
   encoding: string
   logLimit: number
-  autoRefresh: boolean
   theme: 'light' | 'dark' | 'auto'
   language: string
 }
@@ -15,9 +15,8 @@ const defaults: AppSettings = {
   svnPath: '',
   encoding: 'utf-8',
   logLimit: 50,
-  autoRefresh: true,
   theme: 'auto',
-  language: 'zh-CN',
+  language: detectSystemLocale(),
 }
 
 function loadSettings(): AppSettings {

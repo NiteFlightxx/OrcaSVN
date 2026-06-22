@@ -46,8 +46,8 @@ export function useWorkspace() {
     return loadWorkspace(path)
   }
 
-  async function refreshStatus(): Promise<void> {
-    if (!workspaceStore.currentPath) return
+  async function refreshStatus(): Promise<boolean> {
+    if (!workspaceStore.currentPath) return false
 
     workspaceStore.setLoading(true)
     workspaceStore.setError(null)
@@ -58,8 +58,10 @@ export function useWorkspace() {
       ])
       workspaceStore.setStatusList(status)
       workspaceStore.setSvnInfo(info)
+      return true
     } catch (err) {
       workspaceStore.setError(String(err))
+      return false
     } finally {
       workspaceStore.setLoading(false)
     }
