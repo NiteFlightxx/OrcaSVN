@@ -66,7 +66,17 @@
               </el-table-column>
               <el-table-column prop="path" :label="$t('commit.file')" show-overflow-tooltip>
                 <template #default="{ row }">
-                  <span class="file-path">{{ row.path }}</span>
+                  <button class="file-path-link" type="button" @click="viewDiff(row.path)">
+                    {{ row.path }}
+                  </button>
+                </template>
+              </el-table-column>
+              <el-table-column :label="$t('common.action')" width="90" align="center">
+                <template #default="{ row }">
+                  <el-button text size="small" @click="viewDiff(row.path)">
+                    <el-icon><Connection /></el-icon>
+                    {{ $t('common.diff') }}
+                  </el-button>
                 </template>
               </el-table-column>
             </el-table>
@@ -128,7 +138,7 @@
 import { ref, computed, nextTick, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
-import { svnCommit } from '@/api/svn'
+import { svnAdd, svnCommit } from '@/api/svn'
 import { useI18n } from 'vue-i18n'
 import { getStatusClass, getStatusLabelKey } from '@/composables/useSvnStatus'
 import { useWorkspace } from '@/composables/useWorkspace'
@@ -138,7 +148,7 @@ const { t } = useI18n()
 const router = useRouter()
 const route = useRoute()
 const workspaceStore = useWorkspaceStore()
-const { openWorkspace: openWorkspaceDialog } = useWorkspace()
+const { openWorkspace: openWorkspaceDialog, refreshStatus } = useWorkspace()
 
 const commitTable = ref()
 const selectedFiles = ref<string[]>([])
@@ -146,7 +156,7 @@ const commitMessage = ref('')
 const loading = ref(false)
 const output = ref('')
 
-const committableStatuses = new Set(['added', 'modified', 'deleted', 'replaced'])
+const committableStatuses = new Set(['added', 'modified', 'deleted', 'replaced', 'unversioned'])
 
 const changedFiles = computed(() => {
   return workspaceStore.statusList.filter(
@@ -211,9 +221,19 @@ const doCommit = async () => {
 
   try {
     const selected = selectedFiles.value.length > 0 ? selectedFiles.value : routeCommittableFiles.value
-    const files = selected.length > 0 ? selected : undefined
+    const files = selected.length > 0 ? selected : changedFiles.value.map(file => file.path)
+    const targetFileSet = new Set(files)
+    const unversionedFiles = changedFiles.value
+      .filter(file => file.status_code === 'unversioned' && targetFileSet.has(file.path))
+      .map(file => file.path)
+
+    if (unversionedFiles.length > 0) {
+      await svnAdd(workspaceStore.currentPath, unversionedFiles)
+    }
+
     const result = await svnCommit(workspaceStore.currentPath, commitMessage.value, files)
     output.value = result.output
+    await refreshStatus()
 
     setTimeout(() => {
       router.push({ name: 'workspace' })
@@ -223,6 +243,10 @@ const doCommit = async () => {
   } finally {
     loading.value = false
   }
+}
+
+const viewDiff = (path: string) => {
+  router.push({ name: 'diff', query: { path } })
 }
 
 const resetForm = () => {
@@ -318,6 +342,22 @@ const resetForm = () => {
 .file-path {
   font-family: "Cascadia Mono", Consolas, Monaco, monospace;
   font-size: 13px;
+}
+
+.file-path-link {
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--md-sys-color-primary);
+  font-family: "Cascadia Mono", Consolas, Monaco, monospace;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.file-path-link:hover {
+  text-decoration: underline;
 }
 
 .message-input {

@@ -72,6 +72,12 @@ pub async fn update(path: &str, revision: Option<u64>) -> Result<String, SvnErro
     execute_svn(&args_refs, Some(path)).await
 }
 
+pub async fn remote_info(path: &str) -> Result<SvnInfo, SvnError> {
+    let args = vec!["info", "-r", "HEAD", "--xml"];
+    let output = execute_svn(&args, Some(path)).await?;
+    parse_info_xml(&output)
+}
+
 pub async fn commit(
     path: &str,
     message: &str,

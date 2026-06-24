@@ -20,6 +20,10 @@
           <el-icon><FolderOpened /></el-icon>
           <span>{{ $t('menu.workspace') }}</span>
         </button>
+        <button class="tool-button" :class="{ active: routeName === 'log' }" @click="navigateTo('log')">
+          <el-icon><Document /></el-icon>
+          <span>{{ $t('menu.log') }}</span>
+        </button>
         <button class="tool-button" @click="refreshStatus" :disabled="workspaceStore.isLoading">
           <el-icon><Refresh /></el-icon>
           <span>{{ $t('menu.refresh') }}</span>
@@ -48,10 +52,6 @@
             </el-dropdown-menu>
           </template>
         </el-dropdown>
-        <button class="tool-button" :class="{ active: routeName === 'log' }" @click="navigateTo('log')">
-          <el-icon><Document /></el-icon>
-          <span>{{ $t('menu.log') }}</span>
-        </button>
       </div>
 
       <button class="repository-title" @click="navigateTo('workspace')">
@@ -64,6 +64,10 @@
         <button class="tool-button" :class="{ active: routeName === 'commit' }" @click="navigateTo('commit')">
           <el-icon><Upload /></el-icon>
           <span>{{ $t('menu.commit') }}</span>
+        </button>
+        <button class="tool-button" :class="{ active: routeName === 'update' }" @click="navigateTo('update')">
+          <el-icon><RefreshRight /></el-icon>
+          <span>{{ $t('menu.update') }}</span>
         </button>
         <button class="tool-button" :class="{ active: routeName === 'diff' }" @click="navigateTo('diff')">
           <el-icon><Connection /></el-icon>
@@ -95,8 +99,8 @@
         <div class="sidebar-section">
           <div class="sidebar-heading">WORKING COPY</div>
           <button :class="{ active: routeName === 'workspace' }" @click="navigateTo('workspace')">
-            <el-icon><Document /></el-icon>
-            <span>{{ $t('workspace.fileStatus') }}</span>
+            <el-icon><FolderOpened /></el-icon>
+            <span>{{ $t('menu.workspace') }}</span>
             <b>{{ workspaceStore.statusList.length }}</b>
           </button>
           <button :class="{ active: routeName === 'log' }" @click="navigateTo('log')">
@@ -109,6 +113,10 @@
           <button :class="{ active: routeName === 'commit' }" @click="navigateTo('commit')">
             <el-icon><Upload /></el-icon>
             <span>{{ $t('menu.commit') }}</span>
+          </button>
+          <button :class="{ active: routeName === 'update' }" @click="navigateTo('update')">
+            <el-icon><RefreshRight /></el-icon>
+            <span>{{ $t('menu.update') }}</span>
           </button>
           <button :class="{ active: routeName === 'diff' }" @click="navigateTo('diff')">
             <el-icon><Connection /></el-icon>
@@ -546,6 +554,7 @@ onUnmounted(() => {
 
 .route-content :deep(.checkout-view),
 .route-content :deep(.commit-view),
+.route-content :deep(.update-view),
 .route-content :deep(.settings-view),
 .route-content :deep(.log-view),
 .route-content :deep(.diff-view),
@@ -572,14 +581,16 @@ onUnmounted(() => {
 }
 
 .route-content :deep(.checkout-view),
-.route-content :deep(.commit-view) {
+.route-content :deep(.commit-view),
+.route-content :deep(.update-view) {
   display: flex;
   min-height: 100%;
   background: var(--md-sys-color-surface);
 }
 
 .route-content :deep(.checkout-card),
-.route-content :deep(.commit-card) {
+.route-content :deep(.commit-card),
+.route-content :deep(.update-card) {
   display: flex;
   flex: 1;
   flex-direction: column;
@@ -588,7 +599,8 @@ onUnmounted(() => {
 }
 
 .route-content :deep(.checkout-card > .el-card__body),
-.route-content :deep(.commit-card > .el-card__body) {
+.route-content :deep(.commit-card > .el-card__body),
+.route-content :deep(.update-card > .el-card__body) {
   flex: 1;
   background: var(--md-sys-color-surface);
 }

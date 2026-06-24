@@ -205,6 +205,10 @@ pub fn parse_info_xml(xml: &str) -> Result<SvnInfo, SvnError> {
                                 "kind" => {
                                     node_kind = String::from_utf8_lossy(&attr.value).to_string()
                                 }
+                                "revision" => {
+                                    revision =
+                                        String::from_utf8_lossy(&attr.value).parse().unwrap_or(0)
+                                }
                                 _ => {}
                             }
                         }
@@ -212,7 +216,7 @@ pub fn parse_info_xml(xml: &str) -> Result<SvnInfo, SvnError> {
                     "wc-info" if in_entry => in_wc_info = true,
                     "commit" if in_entry => {
                         for attr in e.attributes().flatten() {
-                            if attr.key.as_ref() == b"revision" {
+                            if attr.key.as_ref() == b"revision" && revision == 0 {
                                 revision =
                                     String::from_utf8_lossy(&attr.value).parse().unwrap_or(0);
                             }

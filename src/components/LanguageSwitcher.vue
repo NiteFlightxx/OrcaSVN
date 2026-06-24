@@ -51,6 +51,26 @@ const handleLanguageChange = (command: string) => {
 </script>
 
 <style scoped>
+.language-switcher-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 48px;
+  gap: 5px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 5px;
+  color: #526173;
+  background: transparent;
+  font-size: 10px;
+}
+
+.language-switcher-button:hover,
+.language-switcher-button:focus {
+  color: #123a55;
+  background: #edf3f9;
+}
+
 .language-icon {
   width: 17px;
   height: 17px;
@@ -60,5 +80,9 @@ const handleLanguageChange = (command: string) => {
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-width: 2;
+}
+
+.language-switcher-button :deep(.el-icon--right) {
+  margin-left: 0;
 }
 </style>

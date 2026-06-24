@@ -45,6 +45,10 @@ export async function svnInfo(path: string): Promise<SvnInfo> {
   return invoke<SvnInfo>('svn_info', { path })
 }
 
+export async function svnRemoteInfo(path: string): Promise<SvnInfo> {
+  return invoke<SvnInfo>('svn_remote_info', { path })
+}
+
 export async function svnDiff(
   workspacePath: string,
   file: string,

@@ -144,34 +144,39 @@ fn vscode_candidates() -> Vec<PathBuf> {
 }
 
 fn open_terminal(path: &str) -> Result<(), String> {
-    let mut pwsh = Command::new("cmd");
-    pwsh.args(["/C", "start", "", "pwsh", "-NoExit", "-Command"]);
-    pwsh.arg(format!(
-        "Set-Location -LiteralPath '{}'",
-        escape_powershell_literal(path)
-    ));
-    if spawn_command(pwsh).is_ok() {
-        return Ok(());
+    let workspace = PathBuf::from(path);
+    let mut errors = Vec::new();
+
+    let mut windows_terminal = Command::new("wt");
+    windows_terminal.args(["-d", path]);
+    match spawn_command(windows_terminal) {
+        Ok(()) => return Ok(()),
+        Err(error) => errors.push(format!("wt: {error}")),
     }
 
-    let mut powershell = Command::new("cmd");
-    powershell.args(["/C", "start", "", "powershell", "-NoExit", "-Command"]);
-    powershell.arg(format!(
-        "Set-Location -LiteralPath '{}'",
-        escape_powershell_literal(path)
-    ));
-    if spawn_command(powershell).is_ok() {
-        return Ok(());
+    let mut pwsh = Command::new("pwsh");
+    pwsh.arg("-NoExit").current_dir(&workspace);
+    match spawn_command(pwsh) {
+        Ok(()) => return Ok(()),
+        Err(error) => errors.push(format!("pwsh: {error}")),
+    }
+
+    let mut powershell = Command::new("powershell");
+    powershell.arg("-NoExit").current_dir(&workspace);
+    match spawn_command(powershell) {
+        Ok(()) => return Ok(()),
+        Err(error) => errors.push(format!("powershell: {error}")),
     }
 
     let mut cmd = Command::new("cmd");
-    cmd.args(["/C", "start", "", "cmd", "/K"]);
-    cmd.arg(format!("cd /d \"{}\"", path));
-    spawn_command(cmd)
-}
-
-fn escape_powershell_literal(path: &str) -> String {
-    path.replace('\'', "''")
+    cmd.arg("/K").current_dir(&workspace);
+    match spawn_command(cmd) {
+        Ok(()) => Ok(()),
+        Err(error) => {
+            errors.push(format!("cmd: {error}"));
+            Err(format!("failed to open terminal: {}", errors.join("; ")))
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -307,6 +312,11 @@ async fn svn_info(path: String) -> Result<SvnInfo, String> {
 }
 
 #[tauri::command]
+async fn svn_remote_info(path: String) -> Result<SvnInfo, String> {
+    svn::remote_info(&path).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 async fn svn_diff(
     workspace_path: String,
     file: String,
@@ -433,6 +443,7 @@ fn main() {
             svn_log,
             svn_current_user,
             svn_info,
+            svn_remote_info,
             svn_diff,
             svn_blame,
             svn_add,

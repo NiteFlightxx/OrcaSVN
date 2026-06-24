@@ -1,15 +1,6 @@
 <template>
   <div class="settings-view">
     <el-card class="settings-card animate-fade-in">
-      <template #header>
-        <div class="card-header">
-          <span class="card-title">
-            <el-icon><Setting /></el-icon>
-            {{ $t('nav.settings') }}
-          </span>
-        </div>
-      </template>
-
       <el-form :model="settings" label-width="180px" class="settings-form" label-position="left">
         <div class="settings-section">
           <h3 class="section-title">
@@ -173,21 +164,8 @@ onMounted(() => {
   border-radius: var(--app-radius-lg);
 }
 
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.card-title {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--app-spacing-sm);
-  font-weight: 700;
-}
-
 .settings-form {
-  margin-top: var(--app-spacing-md);
+  margin-top: 0;
 }
 
 .settings-section {

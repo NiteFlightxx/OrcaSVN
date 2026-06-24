@@ -68,7 +68,6 @@
           <div><span>{{ $t('workspace.revision') }}</span><strong>r{{ workspaceStore.svnInfo.revision }}</strong></div>
         </div>
         <div class="sidebar-actions">
-          <button @click="doUpdate" :disabled="isUpdating"><el-icon><RefreshRight /></el-icon>{{ $t('common.update') }}</button>
           <button @click="doCleanup"><el-icon><Brush /></el-icon>{{ $t('common.cleanup') }}</button>
         </div>
       </aside>
@@ -81,10 +80,6 @@
             {{ $t('workspace.fileStatus') }}
           </span>
           <div class="header-actions">
-            <el-button size="small" @click="doUpdate" :loading="isUpdating">
-              <el-icon><RefreshRight /></el-icon>
-              {{ $t('common.update') }}
-            </el-button>
             <el-button text size="small" @click="refreshStatus" :loading="workspaceStore.isLoading">
               <el-icon><Refresh /></el-icon>
             </el-button>
@@ -129,15 +124,19 @@
             </span>
             <span class="file-path" :title="file.path">{{ file.path }}</span>
             <div class="file-actions">
-              <el-tooltip :content="$t('common.diff')" placement="top">
-                <el-button text size="small" @click.stop="viewDiff(file.path)">
-                  <el-icon><Connection /></el-icon>
-                </el-button>
+              <el-tooltip :content="$t('common.diff')" placement="top" :show-after="150">
+                <span class="file-action-trigger" :title="$t('common.diff')" @click.stop>
+                  <el-button text size="small" :aria-label="$t('common.diff')" @click="viewDiff(file.path)">
+                    <el-icon><Connection /></el-icon>
+                  </el-button>
+                </span>
               </el-tooltip>
-              <el-tooltip :content="$t('common.revert')" placement="top">
-                <el-button text size="small" type="danger" @click.stop="revertFile(file)">
-                  <el-icon><RefreshLeft /></el-icon>
-                </el-button>
+              <el-tooltip :content="$t('common.revert')" placement="top" :show-after="150">
+                <span class="file-action-trigger" :title="$t('common.revert')" @click.stop>
+                  <el-button text size="small" type="danger" :aria-label="$t('common.revert')" @click="revertFile(file)">
+                    <el-icon><RefreshLeft /></el-icon>
+                  </el-button>
+                </span>
               </el-tooltip>
             </div>
           </div>
@@ -199,9 +198,8 @@
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
-import { deleteUnversioned, svnUpdate, svnCleanup, svnRevert, svnDiff } from '@/api/svn'
+import { deleteUnversioned, svnCleanup, svnRevert, svnDiff } from '@/api/svn'
 import { useI18n } from 'vue-i18n'
-import { ElMessage } from 'element-plus/es/components/message/index'
 import { getStatusClass, getStatusLabelKey } from '@/composables/useSvnStatus'
 import { useWorkspace } from '@/composables/useWorkspace'
 import type { SvnStatus, DiffResult } from '@/types'
@@ -213,7 +211,6 @@ const { openWorkspace: openWorkspaceDialog, refreshStatus } = useWorkspace()
 
 const filter = ref<'all' | 'modified' | 'added' | 'conflicted' | 'missing'>('all')
 const selectedFile = ref<string | null>(null)
-const isUpdating = ref(false)
 const isLoadingDiff = ref(false)
 const diffResult = ref<DiffResult | null>(null)
 const workspaceName = computed(() => {
@@ -305,21 +302,6 @@ const closeWorkspace = () => {
 const doCheckout = () => router.push({ name: 'checkout' })
 
 const doCommit = () => router.push({ name: 'commit' })
-
-const doUpdate = async () => {
-  if (!workspaceStore.currentPath) return
-  isUpdating.value = true
-  try {
-    await svnUpdate(workspaceStore.currentPath)
-    await refreshStatus()
-    ElMessage.success(`${t('common.update')} ${t('common.success')}`)
-  } catch (err) {
-    workspaceStore.setError(String(err))
-    ElMessage.error(`${t('common.error')}：${err}`)
-  } finally {
-    isUpdating.value = false
-  }
-}
 
 const doCleanup = async () => {
   if (!workspaceStore.currentPath) return
@@ -657,12 +639,32 @@ const revertFile = async (file: SvnStatus) => {
 .file-actions {
   display: flex;
   gap: 2px;
-  opacity: 0;
-  transition: opacity var(--app-transition-fast);
+  opacity: .45;
+  transition:
+    opacity var(--app-transition-fast),
+    transform var(--app-transition-fast);
+}
+
+.file-actions :deep(.el-button) {
+  width: 26px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid transparent;
+  background: var(--el-fill-color-light);
+}
+
+.file-actions :deep(.el-button:hover) {
+  border-color: var(--md-sys-color-outline-variant);
+  background: var(--el-fill-color);
+}
+
+.file-action-trigger {
+  display: inline-flex;
 }
 
 .file-item:hover .file-actions {
   opacity: 1;
+  transform: translateX(-1px);
 }
 
 .empty-files {

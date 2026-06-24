@@ -21,6 +21,7 @@
           <el-input
             v-model="form.url"
             :placeholder="$t('checkout.repositoryUrlPlaceholder')"
+            class="checkout-control"
             clearable
           >
             <template #prefix>
@@ -33,6 +34,7 @@
           <el-input
             v-model="form.path"
             :placeholder="$t('checkout.selectTargetDirectory')"
+            class="checkout-control"
             clearable
           >
             <template #prefix>
@@ -52,6 +54,7 @@
             v-model.number="form.revision"
             type="number"
             :placeholder="$t('checkout.revisionPlaceholder')"
+            class="checkout-control revision-control"
             clearable
           >
             <template #prefix>
@@ -212,6 +215,15 @@ const resetForm = () => {
   margin-bottom: var(--app-spacing-lg);
 }
 
+.checkout-control {
+  width: 520px;
+  max-width: 100%;
+}
+
+.revision-control {
+  width: 240px;
+}
+
 .form-actions {
   margin-bottom: 0;
   margin-top: var(--app-spacing-lg);
@@ -265,6 +277,11 @@ const resetForm = () => {
     text-align: left;
     padding-bottom: 4px;
     width: 100% !important;
+  }
+
+  .checkout-control,
+  .revision-control {
+    width: 100%;
   }
   
   .form-actions {

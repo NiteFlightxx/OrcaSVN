@@ -627,6 +627,19 @@ watch(
   width: 100%;
 }
 
+.author-select :deep(.el-select__wrapper.is-focused),
+.author-select :deep(.el-select__wrapper.is-focus) {
+  box-shadow: 0 0 0 1px #0b668f inset;
+}
+
+.author-select :deep(.el-select__input),
+.author-select :deep(.el-select__input:focus),
+.author-select :deep(.el-select__input:focus-visible) {
+  border: 0;
+  outline: none;
+  box-shadow: none;
+}
+
 .log-date-range {
   width: 100%;
   min-width: 0;

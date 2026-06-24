@@ -27,6 +27,12 @@ const router = createRouter({
           meta: { title: 'menu.commit' },
         },
         {
+          path: 'update',
+          name: 'update',
+          component: () => import('@/views/UpdateView.vue'),
+          meta: { title: 'menu.update' },
+        },
+        {
           path: 'log',
           name: 'log',
           component: () => import('@/views/LogView.vue'),
