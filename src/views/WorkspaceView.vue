@@ -81,6 +81,10 @@
             {{ $t('workspace.fileStatus') }}
           </span>
           <div class="header-actions">
+            <el-button size="small" @click="doUpdate" :loading="isUpdating">
+              <el-icon><RefreshRight /></el-icon>
+              {{ $t('common.update') }}
+            </el-button>
             <el-button text size="small" @click="refreshStatus" :loading="workspaceStore.isLoading">
               <el-icon><Refresh /></el-icon>
             </el-button>
@@ -197,6 +201,7 @@ import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { deleteUnversioned, svnUpdate, svnCleanup, svnRevert, svnDiff } from '@/api/svn'
 import { useI18n } from 'vue-i18n'
+import { ElMessage } from 'element-plus/es/components/message/index'
 import { getStatusClass, getStatusLabelKey } from '@/composables/useSvnStatus'
 import { useWorkspace } from '@/composables/useWorkspace'
 import type { SvnStatus, DiffResult } from '@/types'
@@ -307,8 +312,10 @@ const doUpdate = async () => {
   try {
     await svnUpdate(workspaceStore.currentPath)
     await refreshStatus()
+    ElMessage.success(`${t('common.update')} ${t('common.success')}`)
   } catch (err) {
     workspaceStore.setError(String(err))
+    ElMessage.error(`${t('common.error')}：${err}`)
   } finally {
     isUpdating.value = false
   }
