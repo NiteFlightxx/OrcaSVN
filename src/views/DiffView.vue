@@ -92,7 +92,7 @@
           </div>
         </div>
 
-        <div class="diff-lines" role="table" aria-label="Diff">
+        <div class="diff-lines" role="table" :aria-label="$t('diff.title')">
           <div
             v-for="line in diffLines"
             :key="line.index"

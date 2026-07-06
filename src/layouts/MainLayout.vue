@@ -99,11 +99,11 @@
           <span class="repository-copy">
             <strong>{{ repositoryName }}</strong>
             <small v-if="workspaceStore.svnInfo">r{{ workspaceStore.svnInfo.revision }}</small>
-            <small v-else>Subversion client</small>
+            <small v-else>{{ $t('workspace.svnClient') }}</small>
           </span>
         </div>
         <div class="sidebar-section">
-          <div class="sidebar-heading">WORKING COPY</div>
+          <div class="sidebar-heading">{{ $t('workspace.workingCopy') }}</div>
           <button :class="{ active: routeName === 'workspace' }" @click="navigateTo('workspace')">
             <el-icon><FolderOpened /></el-icon>
             <span>{{ $t('menu.workspace') }}</span>
@@ -115,7 +115,7 @@
           </button>
         </div>
         <div class="sidebar-section">
-          <div class="sidebar-heading">REPOSITORY</div>
+          <div class="sidebar-heading">{{ $t('workspace.repository') }}</div>
           <button :class="{ active: routeName === 'commit' }" @click="navigateTo('commit')">
             <el-icon><Upload /></el-icon>
             <span>{{ $t('menu.commit') }}</span>
@@ -134,7 +134,7 @@
           </button>
         </div>
         <div class="sidebar-section">
-          <div class="sidebar-heading">APPLICATION</div>
+          <div class="sidebar-heading">{{ $t('workspace.application') }}</div>
           <button :class="{ active: routeName === 'checkout' }" @click="navigateTo('checkout')">
             <el-icon><Download /></el-icon>
             <span>{{ $t('menu.checkout') }}</span>
@@ -167,7 +167,7 @@
     <footer class="fork-status">
       <span>{{ workspaceStore.currentPath || $t('workspace.noWorkspace') }}</span>
       <div>
-        <span v-if="workspaceStore.hasChanges">{{ workspaceStore.statusList.length }} changes</span>
+        <span v-if="workspaceStore.hasChanges">{{ $t('workspace.changeCount', { count: workspaceStore.statusList.length }) }}</span>
         <span v-if="workspaceStore.svnInfo">r{{ workspaceStore.svnInfo.revision }}</span>
         <span>v{{ appVersion }}</span>
       </div>
@@ -198,7 +198,7 @@ let statusRefreshTimer: number | undefined
 
 const repositoryName = computed(() => {
   const path = workspaceStore.currentPath
-  if (!path) return 'Welcome'
+  if (!path) return t('workspace.welcomeRepository')
   return path.split(/[\\/]/).filter(Boolean).pop() || path
 })
 

@@ -734,6 +734,34 @@ onUnmounted(() => {
   padding: var(--app-spacing-lg) 0 var(--app-spacing-xl);
 }
 
+:global(.theme-dark) .log-query-state,
+:global(.dark) .log-query-state {
+  color: #8fa0ae;
+}
+
+:global(.theme-dark) .query-status,
+:global(.dark) .query-status {
+  color: #b8e5f5;
+}
+
+:global(.theme-dark) .log-table,
+:global(.dark) .log-table {
+  --el-table-border-color: rgba(115, 115, 115, .12);
+  border: 1px solid rgba(115, 115, 115, .1);
+}
+
+:global(.theme-dark) .log-table :deep(.el-table__inner-wrapper::before),
+:global(.theme-dark) .log-table :deep(.el-table__inner-wrapper::after),
+:global(.dark) .log-table :deep(.el-table__inner-wrapper::before),
+:global(.dark) .log-table :deep(.el-table__inner-wrapper::after) {
+  background-color: rgba(115, 115, 115, .1);
+}
+
+:global(.theme-dark) .empty-log-result,
+:global(.dark) .empty-log-result {
+  color: #8fa0ae;
+}
+
 .author-cell,
 .date-cell {
   display: flex;

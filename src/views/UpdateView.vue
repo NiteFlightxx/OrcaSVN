@@ -296,6 +296,24 @@ watch(
   font-size: 18px;
 }
 
+:global(.theme-dark) .revision-strip div,
+:global(.dark) .revision-strip div {
+  border-color: rgba(115, 115, 115, .14);
+  background: var(--md-sys-color-surface-container);
+}
+
+:global(.theme-dark) .revision-strip span,
+:global(.theme-dark) .section-header span,
+:global(.dark) .revision-strip span,
+:global(.dark) .section-header span {
+  color: #8fa0ae;
+}
+
+:global(.theme-dark) .revision-strip strong,
+:global(.dark) .revision-strip strong {
+  color: #e2eaf0;
+}
+
 .update-section {
   min-height: 0;
 }
@@ -318,18 +336,23 @@ watch(
   overflow: hidden;
 }
 
-:global(.theme-dark) .update-table {
+:global(.theme-dark) .update-table,
+:global(.dark) .update-table {
   --el-table-border-color: rgba(115, 115, 115, .12);
   border: 1px solid rgba(115, 115, 115, .1);
 }
 
 :global(.theme-dark) .update-table :deep(.el-table__inner-wrapper::before),
-:global(.theme-dark) .update-table :deep(.el-table__inner-wrapper::after) {
+:global(.theme-dark) .update-table :deep(.el-table__inner-wrapper::after),
+:global(.dark) .update-table :deep(.el-table__inner-wrapper::before),
+:global(.dark) .update-table :deep(.el-table__inner-wrapper::after) {
   background-color: rgba(115, 115, 115, .1);
 }
 
 :global(.theme-dark) .update-table :deep(th.el-table__cell),
-:global(.theme-dark) .update-table :deep(td.el-table__cell) {
+:global(.theme-dark) .update-table :deep(td.el-table__cell),
+:global(.dark) .update-table :deep(th.el-table__cell),
+:global(.dark) .update-table :deep(td.el-table__cell) {
   border-color: rgba(115, 115, 115, .1);
 }
 
@@ -338,7 +361,7 @@ watch(
   background: linear-gradient(
     90deg,
     transparent,
-    rgba(148, 163, 184, .24),
+    rgba(115, 115, 115, .18),
     transparent
   );
 }
@@ -376,6 +399,16 @@ watch(
 
 .file-link:hover {
   text-decoration: underline;
+}
+
+:global(.theme-dark) .file-link,
+:global(.dark) .file-link {
+  color: #8fd0e8;
+}
+
+:global(.theme-dark) .file-link:hover,
+:global(.dark) .file-link:hover {
+  color: #b8e5f5;
 }
 
 @media (max-width: 860px) {

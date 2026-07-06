@@ -96,7 +96,7 @@
             </div>
             <div class="about-info">
               <h4>OrcaSVN</h4>
-              <p class="about-subtitle">SVN Workbench</p>
+              <p class="about-subtitle">{{ $t('settings.aboutSubtitle') }}</p>
             </div>
           </div>
           <div class="about-details">

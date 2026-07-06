@@ -1073,13 +1073,13 @@ body {
   --md-sys-color-primary-hover: #8fd0e8;
   --md-sys-color-primary-active: #b8e5f5;
   --md-sys-color-primary-container: #163f52;
-  --md-sys-color-surface: #17212b;
-  --md-sys-color-surface-dim: #111a22;
-  --md-sys-color-surface-container: #202d39;
-  --md-sys-color-surface-container-high: #2d3d4b;
-  --md-sys-color-surface-container-highest: #354859;
-  --md-sys-color-outline: #536473;
-  --md-sys-color-outline-variant: #33424f;
+  --md-sys-color-surface: #13212b;
+  --md-sys-color-surface-dim: #0f1a22;
+  --md-sys-color-surface-container: #172632;
+  --md-sys-color-surface-container-high: #20313e;
+  --md-sys-color-surface-container-highest: #243745;
+  --md-sys-color-outline: #3d4c56;
+  --md-sys-color-outline-variant: #26323b;
   --el-color-primary: #58a6c6;
   --el-color-primary-light-3: #7fc1dc;
   --el-color-primary-light-5: #6aa9c2;
@@ -1090,22 +1090,22 @@ body {
   --el-text-color-regular: #b9c6d0;
   --el-text-color-secondary: #8fa0ae;
   --el-text-color-placeholder: #6f8291;
-  --el-fill-color-light: #243440;
-  --el-fill-color-lighter: #1c2a35;
-  --el-fill-color: #202d39;
-  --el-fill-color-dark: #2d3d4b;
-  --el-fill-color-darker: #354859;
-  --el-bg-color: #17212b;
-  --el-bg-color-overlay: #202d39;
-  --el-border-color: #536473;
-  --el-border-color-light: #33424f;
-  --el-fill-color-blank: #17212b;
-  --el-table-header-bg-color: #202d39;
-  --el-table-row-hover-bg-color: #243b49;
-  --el-table-border-color: #33424f;
-  --el-dropdown-menuItem-hover-fill: #2d3d4b;
+  --el-fill-color-light: #1a2b37;
+  --el-fill-color-lighter: #162630;
+  --el-fill-color: #172632;
+  --el-fill-color-dark: #20313e;
+  --el-fill-color-darker: #243745;
+  --el-bg-color: #13212b;
+  --el-bg-color-overlay: #172632;
+  --el-border-color: #3d4c56;
+  --el-border-color-light: #26323b;
+  --el-fill-color-blank: #13212b;
+  --el-table-header-bg-color: #172632;
+  --el-table-row-hover-bg-color: #182a36;
+  --el-table-border-color: rgba(115, 115, 115, .14);
+  --el-dropdown-menuItem-hover-fill: #20313e;
   --el-dropdown-menuItem-hover-color: #e2eaf0;
-  --el-popper-bg-color-light: #202d39;
+  --el-popper-bg-color-light: #172632;
 }
 
 /* Desktop shell and late Fork-style overrides */
@@ -1214,8 +1214,20 @@ body {
   --el-table-bg-color: var(--md-sys-color-surface);
   --el-table-tr-bg-color: var(--md-sys-color-surface);
   --el-table-expanded-cell-bg-color: var(--md-sys-color-surface);
-  --el-table-current-row-bg-color: #294858;
-  --el-table-row-hover-bg-color: #243b49;
+  --el-table-current-row-bg-color: #173f52;
+  --el-table-row-hover-bg-color: #182a36;
+  --el-table-border-color: rgba(115, 115, 115, .14);
+  border-color: rgba(115, 115, 115, .12);
+}
+
+.theme-dark .el-table th.el-table__cell,
+.theme-dark .el-table td.el-table__cell {
+  border-color: rgba(115, 115, 115, .12);
+}
+
+.theme-dark .el-table__inner-wrapper::before,
+.theme-dark .el-table__inner-wrapper::after {
+  background-color: rgba(115, 115, 115, .1);
 }
 
 .theme-dark .el-button:not(.el-button--primary):not(.is-text):not(.is-link):hover,

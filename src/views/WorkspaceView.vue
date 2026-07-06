@@ -17,7 +17,7 @@
       </aside>
       <div class="empty-content">
         <div class="welcome-mark"><el-icon><FolderOpened /></el-icon></div>
-        <h2>Welcome to OrcaSVN</h2>
+        <h2>{{ $t('workspace.welcomeTitle') }}</h2>
         <p>{{ $t('workspace.emptyDescription') }}</p>
         <div class="empty-actions">
           <el-button type="primary" @click="openWorkspace">
@@ -41,7 +41,7 @@
           <button @click="closeWorkspace"><el-icon><Close /></el-icon></button>
         </div>
         <div class="sidebar-section">
-          <div class="sidebar-heading">WORKING COPY</div>
+          <div class="sidebar-heading">{{ $t('workspace.workingCopy') }}</div>
           <button class="sidebar-row active" @click="setFilter('all')">
             <el-icon><Document /></el-icon>
             <span>{{ $t('workspace.fileStatus') }}</span>
@@ -53,7 +53,7 @@
           </button>
         </div>
         <div class="sidebar-section">
-          <div class="sidebar-heading">REPOSITORY</div>
+          <div class="sidebar-heading">{{ $t('workspace.repository') }}</div>
           <button class="sidebar-row" @click="router.push({ name: 'log' })">
             <el-icon><List /></el-icon>
             <span>{{ $t('menu.log') }}</span>
@@ -1276,6 +1276,137 @@ const revertFile = async (file: SvnStatus) => {
 .diff-code {
   padding-top: 1px;
   padding-bottom: 1px;
+}
+
+:global(.theme-dark) .workspace-layout,
+:global(.dark) .workspace-layout {
+  background: var(--md-sys-color-surface-dim);
+}
+
+:global(.theme-dark) .center-panel,
+:global(.theme-dark) .right-panel,
+:global(.dark) .center-panel,
+:global(.dark) .right-panel {
+  background: var(--md-sys-color-surface) !important;
+}
+
+:global(.theme-dark) .right-panel,
+:global(.dark) .right-panel {
+  border-left-color: rgba(115, 115, 115, .18) !important;
+}
+
+:global(.theme-dark) .panel-header,
+:global(.theme-dark) .diff-header,
+:global(.dark) .panel-header,
+:global(.dark) .diff-header {
+  background: var(--md-sys-color-surface-container) !important;
+  border-color: rgba(115, 115, 115, .16) !important;
+}
+
+:global(.theme-dark) .panel-title,
+:global(.dark) .panel-title {
+  color: #d7e1e8 !important;
+}
+
+:global(.theme-dark) .status-summary,
+:global(.dark) .status-summary {
+  background: var(--md-sys-color-surface-container) !important;
+  border-color: rgba(115, 115, 115, .14) !important;
+}
+
+:global(.theme-dark) .status-badge,
+:global(.dark) .status-badge {
+  color: #9cadb9;
+  border-color: transparent;
+  background: transparent !important;
+}
+
+:global(.theme-dark) .status-badge:hover,
+:global(.dark) .status-badge:hover {
+  color: #d7e1e8;
+  background: var(--md-sys-color-surface-container-high) !important;
+}
+
+:global(.theme-dark) .status-badge.active,
+:global(.dark) .status-badge.active {
+  color: #e8f7fc !important;
+  border-color: #315567 !important;
+  background: #173f52 !important;
+}
+
+:global(.theme-dark) .status-badge.active .badge-label,
+:global(.dark) .status-badge.active .badge-label {
+  color: #d7eef7 !important;
+}
+
+:global(.theme-dark) .file-list,
+:global(.dark) .file-list {
+  background: var(--md-sys-color-surface);
+}
+
+:global(.theme-dark) .file-item,
+:global(.dark) .file-item {
+  color: #c7d3dc !important;
+  background: var(--md-sys-color-surface) !important;
+  border-bottom-color: rgba(115, 115, 115, .12) !important;
+}
+
+:global(.theme-dark) .file-item:hover,
+:global(.dark) .file-item:hover {
+  color: #e2eaf0 !important;
+  background: var(--el-table-row-hover-bg-color) !important;
+}
+
+:global(.theme-dark) .file-item.selected,
+:global(.dark) .file-item.selected {
+  color: #f5fbff !important;
+  background: #0f6389 !important;
+}
+
+:global(.theme-dark) .file-actions :deep(.el-button),
+:global(.dark) .file-actions :deep(.el-button) {
+  color: #aebdca;
+  background: #1a2b37;
+  border-color: rgba(115, 115, 115, .16);
+}
+
+:global(.theme-dark) .file-actions :deep(.el-button:hover),
+:global(.dark) .file-actions :deep(.el-button:hover) {
+  color: #e2eaf0;
+  background: var(--md-sys-color-surface-container-highest);
+  border-color: rgba(143, 160, 174, .28);
+}
+
+:global(.theme-dark) .empty-diff,
+:global(.theme-dark) .empty-files,
+:global(.dark) .empty-diff,
+:global(.dark) .empty-files {
+  color: #8fa0ae;
+}
+
+:global(.theme-dark) .empty-diff .el-icon,
+:global(.theme-dark) .empty-files .el-icon,
+:global(.dark) .empty-diff .el-icon,
+:global(.dark) .empty-files .el-icon {
+  color: #6f8291;
+}
+
+:global(.theme-dark) .file-context-menu,
+:global(.dark) .file-context-menu {
+  border-color: rgba(115, 115, 115, .2);
+  background: var(--md-sys-color-surface-container);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .34);
+}
+
+:global(.theme-dark) .context-menu-item,
+:global(.dark) .context-menu-item {
+  color: #c7d3dc;
+}
+
+:global(.theme-dark) .context-menu-item:hover,
+:global(.dark) .context-menu-item:hover {
+  color: #e2eaf0;
+  background: var(--md-sys-color-surface-container-high);
 }
 
 @media (max-width: 860px) {
