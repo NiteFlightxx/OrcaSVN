@@ -20,6 +20,7 @@ import { ElForm, ElFormItem } from 'element-plus/es/components/form/index'
 import { ElIcon } from 'element-plus/es/components/icon/index'
 import { ElInput } from 'element-plus/es/components/input/index'
 import { ElInputNumber } from 'element-plus/es/components/input-number/index'
+import { ElLoading } from 'element-plus/es/components/loading/index'
 import { ElMenu, ElMenuItem } from 'element-plus/es/components/menu/index'
 import { ElOption, ElSelect } from 'element-plus/es/components/select/index'
 import {
@@ -41,6 +42,7 @@ import {
   Check,
   Close,
   Connection,
+  CopyDocument,
   Delete,
   Document,
   Download,
@@ -51,6 +53,7 @@ import {
   InfoFilled,
   Link,
   List,
+  Loading,
   Minus,
   Monitor,
   Moon,
@@ -124,6 +127,7 @@ const icons = {
   Check,
   Close,
   Connection,
+  CopyDocument,
   Delete,
   Document,
   Download,
@@ -134,6 +138,7 @@ const icons = {
   InfoFilled,
   Link,
   List,
+  Loading,
   Minus,
   Monitor,
   Moon,
@@ -161,4 +166,5 @@ for (const [key, component] of Object.entries(icons)) {
 app.use(pinia)
 app.use(router)
 app.use(i18n)
+app.use(ElLoading)
 app.mount('#app')

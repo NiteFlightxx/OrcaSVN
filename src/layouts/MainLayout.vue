@@ -24,7 +24,13 @@
           <el-icon><Document /></el-icon>
           <span>{{ $t('menu.log') }}</span>
         </button>
-        <button class="tool-button" @click="refreshStatus" :disabled="workspaceStore.isLoading">
+        <button
+          class="tool-button"
+          :class="{ 'is-refreshing': workspaceStore.isLoading }"
+          :aria-busy="workspaceStore.isLoading"
+          @click="refreshStatus"
+          :disabled="workspaceStore.isLoading"
+        >
           <el-icon><Refresh /></el-icon>
           <span>{{ $t('menu.refresh') }}</span>
         </button>
@@ -274,6 +280,9 @@ onUnmounted(() => {
   color: #0f2740;
   background: transparent;
   cursor: pointer;
+  transition:
+    color var(--app-transition-fast),
+    background-color var(--app-transition-fast);
 }
 
 .brand-button:hover {
@@ -320,6 +329,21 @@ onUnmounted(() => {
   letter-spacing: -.01em;
 }
 
+:global(.theme-dark .fork-toolbar .brand-button),
+:global(.dark .fork-toolbar .brand-button),
+:global(.theme-dark .fork-toolbar .brand-button .brand-name),
+:global(.dark .fork-toolbar .brand-button .brand-name) {
+  color: #e2eaf0 !important;
+}
+
+:global(.theme-dark .fork-toolbar .brand-button:hover),
+:global(.dark .fork-toolbar .brand-button:hover),
+:global(.theme-dark .fork-toolbar .brand-button:focus-visible),
+:global(.dark .fork-toolbar .brand-button:focus-visible) {
+  color: #f5fbff !important;
+  background: #172a36 !important;
+}
+
 .toolbar-divider {
   width: 1px;
   height: 30px;
@@ -341,6 +365,9 @@ onUnmounted(() => {
   background: transparent;
   font-size: 10px;
   cursor: pointer;
+  transition:
+    color var(--app-transition-fast),
+    background-color var(--app-transition-fast);
 }
 
 .tool-button:hover {
@@ -358,6 +385,35 @@ onUnmounted(() => {
   background: transparent;
 }
 
+:global(.theme-dark) .tool-button:disabled,
+:global(.dark) .tool-button:disabled {
+  opacity: .5;
+  color: #8fa0ae;
+}
+
+:global(.theme-dark) .tool-button:disabled:hover,
+:global(.dark) .tool-button:disabled:hover {
+  color: #8fa0ae;
+  background: transparent;
+}
+
+.tool-button.is-refreshing:disabled {
+  opacity: .82;
+  color: #075a82;
+  background: #e2f0f7;
+}
+
+:global(.theme-dark) .tool-button.is-refreshing:disabled,
+:global(.dark) .tool-button.is-refreshing:disabled {
+  opacity: 1;
+  color: #b8e5f5;
+  background: #163f52;
+}
+
+.tool-button.is-refreshing .el-icon {
+  animation: toolbar-refresh-spin .8s linear infinite;
+}
+
 .tool-button.active {
   color: #075a82;
   background: #e2f0f7;
@@ -365,6 +421,12 @@ onUnmounted(() => {
 
 .tool-button .el-icon {
   font-size: 18px;
+}
+
+@keyframes toolbar-refresh-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .repository-title {
@@ -384,11 +446,37 @@ onUnmounted(() => {
   color: #607083;
   font-size: 10px;
   cursor: pointer;
+  transition:
+    border-color var(--app-transition-fast),
+    background-color var(--app-transition-fast),
+    color var(--app-transition-fast);
+}
+
+.repository-title:hover {
+  border-color: #bfd1dd;
+  background: #f8fbfd;
 }
 
 .repository-title strong {
   color: #21354a;
   font-size: 12px;
+}
+
+:global(.theme-dark) .repository-title {
+  color: #8fa0ae;
+}
+
+:global(.theme-dark) .repository-title strong {
+  color: #e2eaf0;
+}
+
+:global(.theme-dark) .repository-title:hover,
+:global(.dark) .repository-title:hover,
+:global(.theme-dark) .repository-title:focus-visible,
+:global(.dark) .repository-title:focus-visible {
+  color: #b9c6d0;
+  border-color: #3d515f;
+  background: #172a36;
 }
 
 .fork-content {

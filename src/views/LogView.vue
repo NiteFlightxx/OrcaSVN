@@ -69,8 +69,21 @@
           </el-button>
         </div>
 
+        <div class="log-query-state">
+          <span v-if="loading" class="query-status">
+            <el-icon class="is-loading"><Loading /></el-icon>
+            {{ $t('log.querying') }}
+          </span>
+          <span v-else>{{ logResultSummary }}</span>
+          <el-tag v-if="hasActiveFilters" size="small" effect="plain" type="info">
+            {{ $t('log.filtered') }}
+          </el-tag>
+        </div>
+
         <el-table
           :data="logs"
+          v-loading="loading"
+          :element-loading-text="$t('log.querying')"
           style="width: 100%"
           @row-click="handleRowClick"
           row-key="revision"
@@ -118,6 +131,16 @@
             </template>
           </el-table-column>
         </el-table>
+        <el-empty
+          v-if="!loading && logs.length === 0"
+          class="empty-log-result"
+          :description="hasActiveFilters ? $t('log.noMatchedLogs') : $t('log.noLogs')"
+        >
+          <el-button v-if="hasActiveFilters" size="small" @click="resetFilters">
+            <el-icon><RefreshLeft /></el-icon>
+            {{ $t('log.clearFilters') }}
+          </el-button>
+        </el-empty>
         <div class="load-more-state">
           <span v-if="loadingMore">{{ $t('log.loadingMore') }}</span>
           <span v-else-if="!hasMore && logs.length > 0">{{ $t('log.allLoaded') }}</span>
@@ -249,6 +272,10 @@ const filters = reactive({
 })
 const hasActiveFilters = computed(() => {
   return Boolean(filters.author.trim() || filters.keyword.trim() || filters.dateFrom || filters.dateTo)
+})
+const logResultSummary = computed(() => {
+  const key = hasActiveFilters.value ? 'log.matchedCount' : 'log.loadedCount'
+  return t(key, { count: logs.value.length })
 })
 
 const dateRange = computed<string[]>({
@@ -667,6 +694,25 @@ onUnmounted(() => {
   color: var(--el-text-color-secondary);
 }
 
+.log-query-state {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 28px;
+  gap: var(--app-spacing-sm);
+  margin: -4px 0 var(--app-spacing-sm);
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+.query-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #075a82;
+  font-weight: 600;
+}
+
 .log-table {
   border-radius: var(--app-radius-md);
   overflow: hidden;
@@ -682,6 +728,10 @@ onUnmounted(() => {
   color: var(--el-text-color-secondary);
   font-size: 11px;
   text-align: center;
+}
+
+.empty-log-result {
+  padding: var(--app-spacing-lg) 0 var(--app-spacing-xl);
 }
 
 .author-cell,

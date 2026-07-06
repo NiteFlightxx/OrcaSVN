@@ -63,6 +63,9 @@ const handleLanguageChange = (command: string) => {
   color: #526173;
   background: transparent;
   font-size: 10px;
+  transition:
+    color var(--app-transition-fast),
+    background-color var(--app-transition-fast);
 }
 
 .language-switcher-button:hover,
@@ -84,5 +87,19 @@ const handleLanguageChange = (command: string) => {
 
 .language-switcher-button :deep(.el-icon--right) {
   margin-left: 0;
+}
+
+:global(.theme-dark) .language-switcher-button,
+:global(.dark) .language-switcher-button {
+  color: #b9c6d0;
+  background: #17212b;
+}
+
+:global(.theme-dark) .language-switcher-button:hover,
+:global(.theme-dark) .language-switcher-button:focus,
+:global(.dark) .language-switcher-button:hover,
+:global(.dark) .language-switcher-button:focus {
+  color: #e2eaf0;
+  background: #202d39;
 }
 </style>

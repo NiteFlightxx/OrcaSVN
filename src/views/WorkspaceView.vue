@@ -118,6 +118,7 @@
             class="file-item"
             :class="{ selected: selectedFile === file.path }"
             @click="selectFile(file)"
+            @contextmenu.prevent.stop="openFileContextMenu($event, file)"
           >
             <span class="file-status" :class="getStatusClass(file.status_code)">
               {{ getStatusLabel(file.status_code) }}
@@ -144,6 +145,22 @@
             <el-icon><CircleCheck /></el-icon>
             <span>{{ $t('workspace.noChanges') }}</span>
           </div>
+        </div>
+        <div
+          v-if="fileContextMenu.visible"
+          class="file-context-menu"
+          :style="{ left: `${fileContextMenu.x}px`, top: `${fileContextMenu.y}px` }"
+          @click.stop
+          @contextmenu.prevent.stop
+        >
+          <button type="button" class="context-menu-item" @click="copySelectedFilePath('relative')">
+            <el-icon><CopyDocument /></el-icon>
+            <span>{{ $t('workspace.copyPath') }}</span>
+          </button>
+          <button type="button" class="context-menu-item" @click="copySelectedFilePath('absolute')">
+            <el-icon><CopyDocument /></el-icon>
+            <span>{{ $t('workspace.copyAbsolutePath') }}</span>
+          </button>
         </div>
       </main>
 
@@ -195,11 +212,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onBeforeUnmount, onMounted, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { deleteUnversioned, svnCleanup, svnRevert, svnDiff } from '@/api/svn'
 import { useI18n } from 'vue-i18n'
+import { ElMessage } from 'element-plus/es/components/message/index'
 import { getStatusClass, getStatusLabelKey } from '@/composables/useSvnStatus'
 import { useWorkspace } from '@/composables/useWorkspace'
 import type { SvnStatus, DiffResult } from '@/types'
@@ -213,6 +231,12 @@ const filter = ref<'all' | 'modified' | 'added' | 'conflicted' | 'missing'>('all
 const selectedFile = ref<string | null>(null)
 const isLoadingDiff = ref(false)
 const diffResult = ref<DiffResult | null>(null)
+const fileContextMenu = reactive({
+  visible: false,
+  x: 0,
+  y: 0,
+  file: null as SvnStatus | null,
+})
 const workspaceName = computed(() => {
   const path = workspaceStore.currentPath || ''
   return path.split(/[\\/]/).filter(Boolean).pop() || path
@@ -270,6 +294,7 @@ const setFilter = (f: typeof filter.value) => {
 }
 
 const selectFile = async (file: SvnStatus) => {
+  hideFileContextMenu()
   selectedFile.value = file.path
   await loadDiff(file.path)
 }
@@ -314,10 +339,90 @@ const doCleanup = async () => {
 }
 
 const viewDiff = (path: string) => {
+  hideFileContextMenu()
   router.push({ name: 'diff', query: { path } })
 }
 
+const hideFileContextMenu = () => {
+  fileContextMenu.visible = false
+  fileContextMenu.file = null
+}
+
+const openFileContextMenu = (event: MouseEvent, file: SvnStatus) => {
+  selectedFile.value = file.path
+  fileContextMenu.file = file
+  fileContextMenu.x = Math.max(8, Math.min(event.clientX, window.innerWidth - 184))
+  fileContextMenu.y = Math.max(8, Math.min(event.clientY, window.innerHeight - 76))
+  fileContextMenu.visible = true
+  void loadDiff(file.path)
+}
+
+const isAbsolutePath = (path: string) => {
+  return /^[A-Za-z]:[\\/]/.test(path) || path.startsWith('\\\\') || path.startsWith('/')
+}
+
+const joinWorkspacePath = (workspacePath: string, filePath: string) => {
+  if (isAbsolutePath(filePath)) return filePath
+  const separator = workspacePath.includes('\\') ? '\\' : '/'
+  const base = workspacePath.replace(/[\\/]+$/, '')
+  const relative = filePath.replace(/^[\\/]+/, '')
+  return `${base}${separator}${relative}`
+}
+
+const writeClipboardText = async (text: string) => {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text)
+    return
+  }
+
+  const textarea = document.createElement('textarea')
+  textarea.value = text
+  textarea.setAttribute('readonly', '')
+  textarea.style.position = 'fixed'
+  textarea.style.opacity = '0'
+  document.body.appendChild(textarea)
+  textarea.select()
+  const copied = document.execCommand('copy')
+  document.body.removeChild(textarea)
+  if (!copied) throw new Error('copy failed')
+}
+
+const copySelectedFilePath = async (mode: 'relative' | 'absolute') => {
+  const file = fileContextMenu.file
+  if (!file || !workspaceStore.currentPath) return
+
+  const path = mode === 'absolute'
+    ? joinWorkspacePath(workspaceStore.currentPath, file.path)
+    : file.path
+
+  try {
+    await writeClipboardText(path)
+    ElMessage.success(t('workspace.pathCopied'))
+  } catch {
+    ElMessage.error(t('workspace.copyFailed'))
+  } finally {
+    hideFileContextMenu()
+  }
+}
+
+const handleDocumentKeydown = (event: KeyboardEvent) => {
+  if (event.key === 'Escape') hideFileContextMenu()
+}
+
+onMounted(() => {
+  document.addEventListener('click', hideFileContextMenu)
+  document.addEventListener('scroll', hideFileContextMenu, true)
+  document.addEventListener('keydown', handleDocumentKeydown)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', hideFileContextMenu)
+  document.removeEventListener('scroll', hideFileContextMenu, true)
+  document.removeEventListener('keydown', handleDocumentKeydown)
+})
+
 const revertFile = async (file: SvnStatus) => {
+  hideFileContextMenu()
   if (!workspaceStore.currentPath) return
   const path = file.path
   try {
@@ -412,6 +517,7 @@ const revertFile = async (file: SvnStatus) => {
   flex: 1;
   min-width: 0;
   background: var(--md-sys-color-surface);
+  position: relative;
 }
 
 .right-panel {
@@ -685,6 +791,41 @@ const revertFile = async (file: SvnStatus) => {
 
 .empty-files .el-icon {
   font-size: 32px;
+}
+
+.file-context-menu {
+  position: fixed;
+  z-index: 3000;
+  min-width: 168px;
+  padding: 4px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--app-radius-sm);
+  background: var(--md-sys-color-surface-container);
+  box-shadow: var(--app-shadow-floating);
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 30px;
+  gap: 8px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--app-radius-xs);
+  background: transparent;
+  color: var(--el-text-color-primary);
+  cursor: pointer;
+  font-size: 13px;
+  text-align: left;
+}
+
+.context-menu-item:hover {
+  background: var(--el-fill-color);
+}
+
+.context-menu-item .el-icon {
+  color: var(--el-text-color-secondary);
 }
 
 /* 差异预览 */

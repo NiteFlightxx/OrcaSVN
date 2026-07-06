@@ -318,9 +318,29 @@ watch(
   overflow: hidden;
 }
 
+:global(.theme-dark) .update-table {
+  --el-table-border-color: rgba(115, 115, 115, .12);
+  border: 1px solid rgba(115, 115, 115, .1);
+}
+
+:global(.theme-dark) .update-table :deep(.el-table__inner-wrapper::before),
+:global(.theme-dark) .update-table :deep(.el-table__inner-wrapper::after) {
+  background-color: rgba(115, 115, 115, .1);
+}
+
+:global(.theme-dark) .update-table :deep(th.el-table__cell),
+:global(.theme-dark) .update-table :deep(td.el-table__cell) {
+  border-color: rgba(115, 115, 115, .1);
+}
+
 .list-divider {
   height: 1px;
-  background: var(--md-sys-color-outline-variant);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(148, 163, 184, .24),
+    transparent
+  );
 }
 
 .empty-line {
