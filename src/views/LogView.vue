@@ -57,6 +57,8 @@
             :end-placeholder="$t('log.dateTo')"
             range-separator="-"
             popper-class="log-date-range-dropdown"
+            placement="bottom-end"
+            :fallback-placements="['top-end', 'bottom-start', 'top-start']"
             class="log-date-range"
             clearable
             unlink-panels
@@ -299,7 +301,15 @@ const sortLogEntries = (entries: SvnLogEntry[]) => {
   })
 }
 
-const normalizeLogEntries = (entries: SvnLogEntry[]) => sortLogEntries(entries.map(cloneLogEntry))
+const normalizeLogEntries = (entries: SvnLogEntry[]) => {
+  const seenRevisions = new Set<number>()
+  const uniqueEntries = entries.filter(entry => {
+    if (seenRevisions.has(entry.revision)) return false
+    seenRevisions.add(entry.revision)
+    return true
+  })
+  return sortLogEntries(uniqueEntries.map(cloneLogEntry))
+}
 
 const getLogCacheKey = (path: string, limit: number | undefined, startRev?: number, endRev?: number, keyword?: string, author?: string, dateFrom?: string, dateTo?: string) => {
   return `${LOG_CACHE_KEY_VERSION}|${path}|${limit}|${startRev ?? ''}|${endRev ?? ''}|${keyword ?? ''}|${author ?? ''}|${dateFrom ?? ''}|${dateTo ?? ''}`
@@ -660,6 +670,11 @@ onUnmounted(() => {
 
 .author-select {
   width: 100%;
+}
+
+.author-select :deep(.el-select__wrapper) {
+  height: 40px;
+  min-height: 40px;
 }
 
 .author-select :deep(.el-select__wrapper.is-focused),

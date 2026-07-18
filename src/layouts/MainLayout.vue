@@ -40,19 +40,27 @@
           :disabled="!workspaceStore.currentPath"
           @command="openCurrentWorkspaceIn"
         >
-          <button class="tool-button" :disabled="!workspaceStore.currentPath">
-            <el-icon><Operation /></el-icon>
-            <span>{{ $t('menu.openIn') }}</span>
+          <button
+            class="open-in-trigger"
+            :disabled="!workspaceStore.currentPath"
+            :aria-label="$t('menu.openIn')"
+            :title="$t('menu.openIn')"
+          >
+            <el-icon class="open-in-app-icon"><component :is="selectedOpenTargetIcon" /></el-icon>
+            <el-icon class="open-in-chevron"><ArrowDown /></el-icon>
           </button>
           <template #dropdown>
             <el-dropdown-menu>
-              <el-dropdown-item command="explorer">
+              <el-dropdown-item command="explorer" :class="{ 'is-current-target': selectedOpenTarget === 'explorer' }">
+                <el-icon><component :is="openTargetIcons.explorer" /></el-icon>
                 {{ $t('openIn.explorer') }}
               </el-dropdown-item>
-              <el-dropdown-item command="vscode">
+              <el-dropdown-item command="vscode" :class="{ 'is-current-target': selectedOpenTarget === 'vscode' }">
+                <el-icon><component :is="openTargetIcons.vscode" /></el-icon>
                 {{ $t('openIn.vscode') }}
               </el-dropdown-item>
-              <el-dropdown-item command="terminal">
+              <el-dropdown-item command="terminal" :class="{ 'is-current-target': selectedOpenTarget === 'terminal' }">
+                <el-icon><component :is="openTargetIcons.terminal" /></el-icon>
                 {{ $t('openIn.terminal') }}
               </el-dropdown-item>
             </el-dropdown-menu>
@@ -184,6 +192,11 @@ import { openWorkspaceTarget, type OpenWorkspaceTarget } from '@/api/svn'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useWorkspace } from '@/composables/useWorkspace'
 import LanguageSwitcher from '@/components/LanguageSwitcher.vue'
+import {
+  Code,
+  FolderOpened as FolderOpenedIcon,
+  Terminal,
+} from '@/components/icons/materialIcons'
 import packageInfo from '../../package.json'
 
 const router = useRouter()
@@ -193,8 +206,15 @@ const workspaceStore = useWorkspaceStore()
 const { refreshStatus, restoreLastWorkspace } = useWorkspace()
 const appVersion = packageInfo.version
 const cachedViews = ref(['WorkspaceView', 'LogView', 'UpdateView'])
-const statusRefreshIntervalMs = 30_000
+const statusRefreshIntervalMs = 60_000
 let statusRefreshTimer: number | undefined
+const selectedOpenTarget = ref<OpenWorkspaceTarget>('explorer')
+const openTargetIcons = {
+  explorer: FolderOpenedIcon,
+  vscode: Code,
+  terminal: Terminal,
+} satisfies Record<OpenWorkspaceTarget, typeof FolderOpenedIcon>
+const selectedOpenTargetIcon = computed(() => openTargetIcons[selectedOpenTarget.value])
 
 const repositoryName = computed(() => {
   const path = workspaceStore.currentPath
@@ -215,6 +235,7 @@ const openCurrentWorkspaceIn = async (target: OpenWorkspaceTarget) => {
 
   try {
     await openWorkspaceTarget(workspaceStore.currentPath, target)
+    selectedOpenTarget.value = target
   } catch (err) {
     ElMessage.error(`${t('common.error')}：${err}`)
   }
@@ -240,11 +261,11 @@ onUnmounted(() => {
 <style scoped>
 .fork-shell {
   display: grid;
-  grid-template-rows: 56px minmax(0, 1fr) 24px;
+  grid-template-rows: 64px minmax(0, 1fr) 28px;
   height: 100vh;
   overflow: hidden;
-  color: #1f2937;
-  background: #f8fafc;
+  color: var(--md-sys-color-on-surface);
+  background: var(--md-sys-color-surface);
 }
 
 .fork-toolbar {
@@ -252,10 +273,10 @@ onUnmounted(() => {
   display: flex;
   align-items: stretch;
   justify-content: space-between;
-  padding: 4px 8px;
-  background: #f7f9fc;
-  border-bottom: 1px solid #cbd5e1;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
+  padding: 6px 12px;
+  background: var(--md-sys-color-surface-container-low);
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  box-shadow: none;
 }
 
 .toolbar-group {
@@ -273,11 +294,11 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 7px;
-  min-width: 104px;
-  padding: 0 9px 0 5px;
+  min-width: 112px;
+  padding: 0 12px 0 4px;
   border: 0;
-  border-radius: 5px;
-  color: #0f2740;
+  border-radius: var(--app-radius-full);
+  color: var(--md-sys-color-on-surface);
   background: transparent;
   cursor: pointer;
   transition:
@@ -286,18 +307,18 @@ onUnmounted(() => {
 }
 
 .brand-button:hover {
-  background: #edf3f9;
+  background: var(--md-sys-state-hover);
 }
 
 .brand-mark {
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  color: #fff;
-  background: linear-gradient(145deg, #126f9b, #074968);
-  box-shadow: 0 1px 2px rgba(7, 73, 104, .28);
+  width: 38px;
+  height: 38px;
+  border-radius: var(--app-radius-md);
+  color: var(--md-sys-color-on-primary);
+  background: var(--md-sys-color-primary);
+  box-shadow: var(--md-sys-elevation-1);
 }
 
 .brand-mark svg {
@@ -306,7 +327,7 @@ onUnmounted(() => {
 }
 
 .brand-mark .brand-cut {
-  fill: #0b5b80;
+  fill: var(--md-sys-color-primary-active);
 }
 
 .brand-mark .brand-branch {
@@ -324,7 +345,7 @@ onUnmounted(() => {
 }
 
 .brand-name {
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 700;
   letter-spacing: -.01em;
 }
@@ -333,23 +354,23 @@ onUnmounted(() => {
 :global(.dark .fork-toolbar .brand-button),
 :global(.theme-dark .fork-toolbar .brand-button .brand-name),
 :global(.dark .fork-toolbar .brand-button .brand-name) {
-  color: #e2eaf0 !important;
+  color: var(--md-sys-color-on-surface) !important;
 }
 
 :global(.theme-dark .fork-toolbar .brand-button:hover),
 :global(.dark .fork-toolbar .brand-button:hover),
 :global(.theme-dark .fork-toolbar .brand-button:focus-visible),
 :global(.dark .fork-toolbar .brand-button:focus-visible) {
-  color: #f5fbff !important;
-  background: #172a36 !important;
+  color: var(--md-sys-color-on-surface) !important;
+  background: var(--md-sys-state-hover) !important;
 }
 
 .toolbar-divider {
   width: 1px;
-  height: 30px;
+  height: 32px;
   align-self: center;
   margin: 0 5px;
-  background: #d5dde6;
+  background: var(--md-sys-color-outline-variant);
 }
 
 .tool-button {
@@ -357,13 +378,13 @@ onUnmounted(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-width: 54px;
-  gap: 1px;
+  min-width: 58px;
+  gap: 2px;
   border: 0;
-  border-radius: 5px;
-  color: #526173;
+  border-radius: var(--app-radius-md);
+  color: var(--md-sys-color-on-surface-variant);
   background: transparent;
-  font-size: 10px;
+  font-size: 12px;
   cursor: pointer;
   transition:
     color var(--app-transition-fast),
@@ -371,8 +392,8 @@ onUnmounted(() => {
 }
 
 .tool-button:hover {
-  background: #edf3f9;
-  color: #123a55;
+  background: var(--md-sys-state-hover);
+  color: var(--md-sys-color-on-surface);
 }
 
 .tool-button:disabled {
@@ -381,33 +402,33 @@ onUnmounted(() => {
 }
 
 .tool-button:disabled:hover {
-  color: #526173;
+  color: var(--md-sys-color-on-surface-variant);
   background: transparent;
 }
 
 :global(.theme-dark) .tool-button:disabled,
 :global(.dark) .tool-button:disabled {
   opacity: .5;
-  color: #8fa0ae;
+  color: var(--md-sys-color-on-surface-variant);
 }
 
 :global(.theme-dark) .tool-button:disabled:hover,
 :global(.dark) .tool-button:disabled:hover {
-  color: #8fa0ae;
+  color: var(--md-sys-color-on-surface-variant);
   background: transparent;
 }
 
 .tool-button.is-refreshing:disabled {
   opacity: .82;
-  color: #075a82;
-  background: #e2f0f7;
+  color: var(--md-sys-color-on-primary-container);
+  background: var(--md-sys-color-primary-container);
 }
 
 :global(.theme-dark) .tool-button.is-refreshing:disabled,
 :global(.dark) .tool-button.is-refreshing:disabled {
   opacity: 1;
-  color: #b8e5f5;
-  background: #163f52;
+  color: var(--md-sys-color-on-primary-container);
+  background: var(--md-sys-color-primary-container);
 }
 
 .tool-button.is-refreshing .el-icon {
@@ -415,12 +436,82 @@ onUnmounted(() => {
 }
 
 .tool-button.active {
-  color: #075a82;
-  background: #e2f0f7;
+  color: var(--md-sys-color-on-primary-container);
+  background: var(--md-sys-color-primary-container);
 }
 
 .tool-button .el-icon {
-  font-size: 18px;
+  font-size: 20px;
+}
+
+.open-in-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  width: 58px;
+  height: 52px;
+  gap: 2px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--app-radius-md);
+  color: var(--md-sys-color-on-surface-variant);
+  background: transparent;
+  cursor: pointer;
+  transition:
+    color var(--app-transition-fast),
+    background-color var(--app-transition-fast),
+    border-color var(--app-transition-fast);
+}
+
+.open-in-trigger:hover,
+.open-in-trigger:focus-visible {
+  color: var(--md-sys-color-on-surface);
+  background: var(--md-sys-state-hover);
+}
+
+.open-in-trigger[aria-expanded="true"] {
+  color: var(--md-sys-color-on-primary-container);
+  background: var(--md-sys-color-primary-container);
+}
+
+.open-in-trigger:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+.open-in-trigger:disabled:hover {
+  color: var(--md-sys-color-on-surface-variant);
+  background: transparent;
+}
+
+.open-in-app-icon {
+  font-size: 20px;
+}
+
+.open-in-chevron {
+  margin-left: -1px;
+  font-size: 15px;
+}
+
+:global(.toolbar-dropdown .el-dropdown-menu__item .el-icon) {
+  margin-right: 10px;
+  color: inherit;
+  font-size: 19px;
+}
+
+:global(.toolbar-dropdown .el-dropdown-menu__item.is-current-target) {
+  color: var(--md-sys-color-on-primary-container);
+  background: var(--md-sys-color-primary-container);
+  font-weight: 600;
+}
+
+:global(.toolbar-dropdown .el-dropdown-menu__item.is-current-target .app-material-icon) {
+  font-variation-settings:
+    "FILL" 1,
+    "wght" 500,
+    "GRAD" 0,
+    "opsz" 24;
 }
 
 @keyframes toolbar-refresh-spin {
@@ -431,20 +522,21 @@ onUnmounted(() => {
 
 .repository-title {
   position: absolute;
-  top: 6px;
+  top: 8px;
   left: 50%;
   display: flex;
   flex-direction: column;
   align-items: center;
-  min-width: 220px;
-  padding: 4px 30px;
+  min-width: 230px;
+  min-height: 48px;
+  padding: 5px 32px;
   transform: translateX(-50%);
   border: 0;
-  border: 1px solid #d6dee7;
-  border-radius: 6px;
-  background: #fff;
-  color: #607083;
-  font-size: 10px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--app-radius-lg);
+  background: var(--md-sys-color-surface-container-lowest);
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 11px;
   cursor: pointer;
   transition:
     border-color var(--app-transition-fast),
@@ -453,67 +545,68 @@ onUnmounted(() => {
 }
 
 .repository-title:hover {
-  border-color: #bfd1dd;
-  background: #f8fbfd;
+  border-color: var(--md-sys-color-outline);
+  background: var(--md-sys-color-surface-container-high);
 }
 
 .repository-title strong {
-  color: #21354a;
-  font-size: 12px;
+  color: var(--md-sys-color-on-surface);
+  font-size: 13px;
 }
 
 :global(.theme-dark) .repository-title {
-  color: #8fa0ae;
+  color: var(--md-sys-color-on-surface-variant);
 }
 
 :global(.theme-dark) .repository-title strong {
-  color: #e2eaf0;
+  color: var(--md-sys-color-on-surface);
 }
 
 :global(.theme-dark) .repository-title:hover,
 :global(.dark) .repository-title:hover,
 :global(.theme-dark) .repository-title:focus-visible,
 :global(.dark) .repository-title:focus-visible {
-  color: #b9c6d0;
-  border-color: #3d515f;
-  background: #172a36;
+  color: var(--md-sys-color-on-surface);
+  border-color: var(--md-sys-color-outline);
+  background: var(--md-sys-color-surface-container-high);
 }
 
 .fork-content {
   display: grid;
-  grid-template-columns: 216px minmax(0, 1fr);
+  grid-template-columns: 232px minmax(0, 1fr);
   min-height: 0;
   overflow: hidden;
-  background: #f8fafc;
+  background: var(--md-sys-color-surface);
 }
 
 .shell-sidebar {
   min-height: 0;
   overflow: auto;
-  background: #f1f5f9;
-  border-right: 1px solid #cbd5e1;
+  padding: 8px;
+  background: var(--md-sys-color-surface-container-low);
+  border-right: 1px solid var(--md-sys-color-outline-variant);
 }
 
 .shell-repository {
   display: flex;
   align-items: center;
-  min-height: 50px;
-  gap: 9px;
-  padding: 7px 10px;
-  border-bottom: 1px solid #d8e0e8;
-  color: #21354a;
-  font-size: 11px;
+  min-height: 64px;
+  gap: 12px;
+  padding: 8px 10px 12px;
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  color: var(--md-sys-color-on-surface);
+  font-size: 13px;
 }
 
 .repository-icon {
   display: grid;
   place-items: center;
-  flex: 0 0 28px;
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  color: #fff;
-  background: #0b668f;
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--app-radius-md);
+  color: var(--md-sys-color-on-primary-container);
+  background: var(--md-sys-color-primary-container);
 }
 
 .repository-copy {
@@ -530,18 +623,18 @@ onUnmounted(() => {
 }
 
 .repository-copy small {
-  color: #718096;
-  font-size: 9px;
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 11px;
 }
 
 .sidebar-section {
-  padding: 9px 7px 2px;
+  padding: 12px 2px 2px;
 }
 
 .sidebar-heading {
-  padding: 3px 7px 5px;
-  color: #7a899b;
-  font-size: 9px;
+  padding: 3px 12px 7px;
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: .06em;
 }
@@ -550,25 +643,26 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   width: 100%;
-  height: 28px;
-  gap: 7px;
-  padding: 0 9px;
+  height: 38px;
+  gap: 10px;
+  padding: 0 12px;
   border: 0;
-  border-radius: 4px;
+  border-radius: var(--app-radius-full);
   background: transparent;
-  color: #425466;
-  font-size: 11px;
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 13px;
   text-align: left;
 }
 
 .sidebar-section button:hover {
-  background: #e6edf4;
+  color: var(--md-sys-color-on-surface);
+  background: var(--md-sys-state-hover);
 }
 
 .sidebar-section button.active {
-  color: #fff;
-  background: #0b668f;
-  box-shadow: 0 1px 2px rgba(11, 102, 143, .2);
+  color: var(--md-sys-color-on-secondary-container);
+  background: var(--md-sys-color-secondary-container);
+  box-shadow: none;
 }
 
 .sidebar-section button span {
@@ -576,25 +670,31 @@ onUnmounted(() => {
 }
 
 .sidebar-section button b {
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .route-workbench {
   display: grid;
-  grid-template-rows: 38px minmax(0, 1fr);
+  grid-template-rows: 48px minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
+  margin: 8px;
+  overflow: hidden;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--app-radius-lg);
+  background: var(--md-sys-color-surface-container-lowest);
+  box-shadow: var(--md-sys-elevation-1);
 }
 
 .route-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 12px;
-  background: #fff;
-  border-bottom: 1px solid #d5dde6;
-  color: #26394d;
-  font-size: 11px;
+  padding: 0 16px;
+  background: var(--md-sys-color-surface-container-lowest);
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  color: var(--md-sys-color-on-surface);
+  font-size: 13px;
 }
 
 .route-title {
@@ -604,22 +704,22 @@ onUnmounted(() => {
 }
 
 .route-accent {
-  width: 3px;
-  height: 15px;
-  border-radius: 2px;
-  background: #0b668f;
+  width: 4px;
+  height: 20px;
+  border-radius: var(--app-radius-full);
+  background: var(--md-sys-color-primary);
 }
 
 .route-repository {
-  color: #8290a1;
-  font-size: 10px;
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 12px;
 }
 
 .route-content {
   min-width: 0;
   min-height: 0;
   overflow: auto;
-  background: #fff;
+  background: var(--md-sys-color-surface-container-lowest);
 }
 
 .route-content :deep(.left-panel),
@@ -674,7 +774,7 @@ onUnmounted(() => {
 .route-content :deep(.settings-view) {
   display: flex;
   min-height: 100%;
-  background: var(--md-sys-color-surface);
+  background: transparent;
 }
 
 .route-content :deep(.checkout-card),
@@ -685,7 +785,7 @@ onUnmounted(() => {
   flex: 1;
   flex-direction: column;
   min-height: 100%;
-  background: var(--md-sys-color-surface);
+  background: var(--md-sys-color-surface-container-lowest);
 }
 
 .route-content :deep(.checkout-card > .el-card__body),
@@ -693,18 +793,18 @@ onUnmounted(() => {
 .route-content :deep(.update-card > .el-card__body),
 .route-content :deep(.settings-card > .el-card__body) {
   flex: 1;
-  background: var(--md-sys-color-surface);
+  background: var(--md-sys-color-surface-container-lowest);
 }
 
 .fork-status {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 9px;
-  border-top: 1px solid #cbd5e1;
-  background: #eef3f7;
-  color: #65768a;
-  font-size: 10px;
+  padding: 0 12px;
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface-container);
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 11px;
 }
 
 .fork-status div {

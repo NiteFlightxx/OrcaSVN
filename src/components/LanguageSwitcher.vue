@@ -55,14 +55,14 @@ const handleLanguageChange = (command: string) => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 48px;
+  height: 52px;
   gap: 5px;
   padding: 0 10px;
   border: 0;
-  border-radius: 5px;
-  color: #526173;
+  border-radius: var(--app-radius-md);
+  color: var(--md-sys-color-on-surface-variant);
   background: transparent;
-  font-size: 10px;
+  font-size: 12px;
   transition:
     color var(--app-transition-fast),
     background-color var(--app-transition-fast);
@@ -70,8 +70,8 @@ const handleLanguageChange = (command: string) => {
 
 .language-switcher-button:hover,
 .language-switcher-button:focus {
-  color: #123a55;
-  background: #edf3f9;
+  color: var(--md-sys-color-on-surface);
+  background: var(--md-sys-state-hover);
 }
 
 .language-icon {
@@ -91,15 +91,15 @@ const handleLanguageChange = (command: string) => {
 
 :global(.theme-dark) .language-switcher-button,
 :global(.dark) .language-switcher-button {
-  color: #b9c6d0;
-  background: #17212b;
+  color: var(--md-sys-color-on-surface-variant);
+  background: transparent;
 }
 
 :global(.theme-dark) .language-switcher-button:hover,
 :global(.theme-dark) .language-switcher-button:focus,
 :global(.dark) .language-switcher-button:hover,
 :global(.dark) .language-switcher-button:focus {
-  color: #e2eaf0;
-  background: #202d39;
+  color: var(--md-sys-color-on-surface);
+  background: var(--md-sys-state-hover);
 }
 </style>

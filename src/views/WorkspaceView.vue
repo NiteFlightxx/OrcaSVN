@@ -1053,7 +1053,9 @@ const revertFile = async (file: SvnStatus) => {
 }
 
 .workspace-layout {
-  background: #fff;
+  gap: 8px;
+  padding: 8px;
+  background: var(--md-sys-color-surface);
 }
 
 .left-panel {
@@ -1181,7 +1183,10 @@ const revertFile = async (file: SvnStatus) => {
 
 .center-panel,
 .right-panel {
-  background: #fff;
+  overflow: hidden;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--app-radius-lg);
+  background: var(--md-sys-color-surface-container-lowest);
 }
 
 .center-panel {
@@ -1194,55 +1199,61 @@ const revertFile = async (file: SvnStatus) => {
   flex: 2 1 66.667%;
   width: 66.667%;
   min-width: 420px;
-  background: #fff;
-  border-left: 1px solid #c8c8c8;
+  background: var(--md-sys-color-surface-container-lowest);
+  border-left: 1px solid var(--md-sys-color-outline-variant);
 }
 
 .panel-header {
-  height: 37px;
-  padding: 0 9px;
-  background: linear-gradient(#f7f7f7, #e9e9e9);
-  border-bottom: 1px solid #c8c8c8;
+  height: 44px;
+  padding: 0 12px;
+  background: var(--md-sys-color-surface-container-low);
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
 }
 
 .panel-title {
-  color: #444;
-  font-size: 11px;
-  font-weight: 600;
+  color: var(--md-sys-color-on-surface);
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .status-summary {
-  gap: 3px;
-  padding: 5px 7px;
-  background: #f4f4f4;
-  border-bottom: 1px solid #d5d5d5;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(82px, 1fr));
+  gap: 6px;
+  padding: 7px 10px;
+  background: var(--md-sys-color-surface-container-lowest);
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
 }
 
 .status-badge {
+  justify-content: center;
+  width: 100%;
+  min-width: 0;
   gap: 5px;
-  padding: 2px 7px;
+  min-height: 28px;
+  padding: 2px 10px;
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: var(--app-radius-full);
   background: transparent;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .status-badge.active {
-  border-color: #b9b9b9;
-  background: #ddd;
-  color: #222;
+  border-color: transparent;
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
 }
 
 .file-item {
-  min-height: 27px;
-  gap: 7px;
-  padding: 3px 8px;
-  border-bottom: 1px solid #ededed;
+  min-height: 36px;
+  gap: 8px;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
 }
 
 .file-item.selected {
-  color: #fff;
-  background: #1473e6;
+  color: var(--md-sys-color-on-secondary-container);
+  background: var(--md-sys-color-secondary-container);
 }
 
 .file-status {
@@ -1253,18 +1264,18 @@ const revertFile = async (file: SvnStatus) => {
 }
 
 .file-path {
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .diff-header {
-  min-height: 31px;
-  padding: 4px 8px;
-  background: #f7f7f7;
+  min-height: 40px;
+  padding: 5px 10px;
+  background: var(--md-sys-color-surface-container-low);
 }
 
 .diff-lines {
-  font-size: 10px;
-  line-height: 1.45;
+  font-size: 12px;
+  line-height: 1.55;
 }
 
 .diff-row {

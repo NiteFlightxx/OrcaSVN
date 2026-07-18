@@ -1,5 +1,6 @@
 use crate::{DiffResult, SvnAuthUser, SvnInfo, SvnLogEntry, SvnStatus};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -268,6 +269,26 @@ fn log_entry_matches(entry: &SvnLogEntry, keyword: Option<&str>, author: Option<
     entry.message.to_lowercase().contains(&keyword)
 }
 
+fn append_unique_log_matches(
+    matches: &mut Vec<SvnLogEntry>,
+    seen_revisions: &mut HashSet<u64>,
+    batch: &[SvnLogEntry],
+    keyword: Option<&str>,
+    author: Option<&str>,
+    limit: Option<u32>,
+) -> bool {
+    for entry in batch {
+        if log_entry_matches(entry, keyword, author) && seen_revisions.insert(entry.revision) {
+            matches.push(entry.clone());
+            if limit.is_some_and(|limit| matches.len() >= limit as usize) {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
 async fn filtered_log(
     path: &str,
     limit: Option<u32>,
@@ -281,6 +302,7 @@ async fn filtered_log(
     let scan_limit = limit.unwrap_or(200).saturating_mul(4).max(200);
     let mut cursor = start_rev;
     let mut matches = Vec::new();
+    let mut seen_revisions = HashSet::new();
 
     loop {
         let batch =
@@ -289,13 +311,15 @@ async fn filtered_log(
             break;
         }
 
-        for entry in &batch {
-            if log_entry_matches(entry, keyword, author) {
-                matches.push(entry.clone());
-                if limit.is_some_and(|limit| matches.len() >= limit as usize) {
-                    return Ok(matches);
-                }
-            }
+        if append_unique_log_matches(
+            &mut matches,
+            &mut seen_revisions,
+            &batch,
+            keyword,
+            author,
+            limit,
+        ) {
+            return Ok(matches);
         }
 
         let oldest_revision = batch.last().map(|entry| entry.revision).unwrap_or(1);
@@ -518,11 +542,12 @@ pub async fn merge(
 #[cfg(test)]
 mod tests {
     use super::{
-        append_targets, build_diff_args, build_unversioned_file_diff, commit, log_entry_matches,
-        normalize_diff_target, normalize_svn_path,
+        append_targets, append_unique_log_matches, build_diff_args, build_unversioned_file_diff,
+        commit, log_entry_matches, normalize_diff_target, normalize_svn_path,
     };
     use crate::svn::executor::SvnError;
     use crate::{SvnLogEntry, SvnLogPath};
+    use std::collections::HashSet;
 
     #[test]
     fn target_arguments_are_separated_from_options() {
@@ -675,5 +700,32 @@ mod tests {
 
         assert!(log_entry_matches(&entry, None, Some("MARK_CHEN")));
         assert!(!log_entry_matches(&entry, None, Some("other")));
+    }
+
+    #[test]
+    fn filtered_log_discards_duplicate_revisions() {
+        let entry = SvnLogEntry {
+            revision: 8,
+            author: "mark_chen".to_string(),
+            date: "2026-06-26T00:00:00Z".to_string(),
+            message: "seed".to_string(),
+            changed_paths: Vec::new(),
+        };
+        let batch = vec![entry.clone(), entry];
+        let mut matches = Vec::new();
+        let mut seen_revisions = HashSet::new();
+
+        let reached_limit = append_unique_log_matches(
+            &mut matches,
+            &mut seen_revisions,
+            &batch,
+            None,
+            Some("mark_chen"),
+            None,
+        );
+
+        assert!(!reached_limit);
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].revision, 8);
     }
 }

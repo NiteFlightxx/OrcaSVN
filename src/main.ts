@@ -32,14 +32,17 @@ import { ElSkeleton } from 'element-plus/es/components/skeleton/index'
 import { ElSwitch } from 'element-plus/es/components/switch/index'
 import { ElTable, ElTableColumn } from 'element-plus/es/components/table/index'
 import { ElTag } from 'element-plus/es/components/tag/index'
+import { ElTooltip } from 'element-plus/es/components/tooltip/index'
 import 'element-plus/dist/index.css'
 import 'element-plus/theme-chalk/dark/css-vars.css'
+import 'material-symbols/rounded.css'
 import {
   ArrowDown,
   Brush,
   Calendar,
   ChatLineSquare,
   Check,
+  CircleCheck,
   Close,
   Connection,
   CopyDocument,
@@ -57,7 +60,6 @@ import {
   Minus,
   Monitor,
   Moon,
-  Operation,
   Plus,
   PriceTag,
   Refresh,
@@ -68,7 +70,7 @@ import {
   Switch,
   Upload,
   User,
-} from '@element-plus/icons-vue'
+} from '@/components/icons/materialIcons'
 import router from './router'
 import i18n from './i18n'
 import App from './App.vue'
@@ -117,6 +119,7 @@ const components = [
   ElTable,
   ElTableColumn,
   ElTag,
+  ElTooltip,
 ]
 
 const icons = {
@@ -125,6 +128,7 @@ const icons = {
   Calendar,
   ChatLineSquare,
   Check,
+  CircleCheck,
   Close,
   Connection,
   CopyDocument,
@@ -142,7 +146,6 @@ const icons = {
   Minus,
   Monitor,
   Moon,
-  Operation,
   Plus,
   PriceTag,
   Refresh,

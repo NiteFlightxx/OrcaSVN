@@ -3,11 +3,8 @@
   font-size: 14px;
   line-height: 1.6;
   font-weight: 400;
-  color: #1b1b1f;
-  background:
-    radial-gradient(circle at 8% 6%, rgba(94, 114, 228, 0.14), transparent 28%),
-    radial-gradient(circle at 88% 14%, rgba(0, 150, 136, 0.12), transparent 26%),
-    linear-gradient(135deg, #f8f7ff 0%, #f5fbf8 46%, #fff9f2 100%);
+  color: #181c20;
+  background: #f7f9ff;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -15,45 +12,56 @@
   -webkit-text-size-adjust: 100%;
   
   /* 主色调 */
-  --md-sys-color-primary: #4f46e5;
+  --md-sys-color-primary: #00658b;
   --md-sys-color-on-primary: #ffffff;
-  --md-sys-color-primary-container: #e4e2ff;
-  --md-sys-color-primary-hover: #6366f1;
-  --md-sys-color-primary-active: #4338ca;
+  --md-sys-color-primary-container: #c5e7ff;
+  --md-sys-color-on-primary-container: #001e2d;
+  --md-sys-color-primary-hover: #13779f;
+  --md-sys-color-primary-active: #004c6a;
   
   /* 辅助色 */
-  --md-sys-color-secondary: #006b5f;
-  --md-sys-color-secondary-container: #d7f5ee;
-  --md-sys-color-tertiary: #9a5b00;
-  --md-sys-color-tertiary-container: #ffddb0;
+  --md-sys-color-secondary: #4f616c;
+  --md-sys-color-on-secondary: #ffffff;
+  --md-sys-color-secondary-container: #d2e5f2;
+  --md-sys-color-on-secondary-container: #0b1e28;
+  --md-sys-color-tertiary: #62597c;
+  --md-sys-color-tertiary-container: #e8ddff;
   
   /* 表面色 */
-  --md-sys-color-surface: #fffdf8;
-  --md-sys-color-surface-dim: #f8f7ff;
-  --md-sys-color-surface-container: #f0f0f7;
-  --md-sys-color-surface-container-high: #e8e9f2;
-  --md-sys-color-surface-container-highest: #e0e1ec;
+  --md-sys-color-surface: #f7f9ff;
+  --md-sys-color-surface-dim: #d8dae0;
+  --md-sys-color-surface-bright: #f7f9ff;
+  --md-sys-color-surface-container-lowest: #ffffff;
+  --md-sys-color-surface-container-low: #f1f4fa;
+  --md-sys-color-surface-container: #eceef4;
+  --md-sys-color-surface-container-high: #e6e8ee;
+  --md-sys-color-surface-container-highest: #e0e3e9;
+  --md-sys-color-on-surface: #181c20;
+  --md-sys-color-on-surface-variant: #40484d;
   
   /* 轮廓色 */
-  --md-sys-color-outline: #c6c6d2;
-  --md-sys-color-outline-variant: #e0e0e8;
+  --md-sys-color-outline: #70787d;
+  --md-sys-color-outline-variant: #c0c8cd;
+  --md-sys-state-hover: rgba(24, 28, 32, 0.08);
+  --md-sys-state-focus: rgba(24, 28, 32, 0.12);
   
   /* 状态色 */
   --md-sys-color-success: #15803d;
   --md-sys-color-warning: #a16207;
-  --md-sys-color-error: #dc2626;
-  --md-sys-color-info: #6366f1;
+  --md-sys-color-error: #ba1a1a;
+  --md-sys-color-info: #00658b;
   
   /* 阴影 */
   --md-sys-elevation-0: none;
-  --md-sys-elevation-1: 0 1px 3px rgba(24, 27, 38, 0.06), 0 4px 12px rgba(66, 71, 112, 0.04);
-  --md-sys-elevation-2: 0 4px 16px rgba(38, 44, 74, 0.08), 0 8px 32px rgba(66, 71, 112, 0.06);
-  --md-sys-elevation-3: 0 8px 24px rgba(38, 44, 74, 0.12), 0 16px 48px rgba(66, 71, 112, 0.08);
+  --md-sys-elevation-1: 0 1px 2px rgba(25, 28, 32, 0.18), 0 1px 3px 1px rgba(25, 28, 32, 0.08);
+  --md-sys-elevation-2: 0 1px 2px rgba(25, 28, 32, 0.2), 0 2px 6px 2px rgba(25, 28, 32, 0.08);
+  --md-sys-elevation-3: 0 4px 8px 3px rgba(25, 28, 32, 0.12), 0 1px 3px rgba(25, 28, 32, 0.22);
+  --app-shadow-floating: var(--md-sys-elevation-3);
   
   /* 圆角 */
   --app-radius-xs: 4px;
-  --app-radius-sm: 6px;
-  --app-radius: 8px;
+  --app-radius-sm: 8px;
+  --app-radius: 10px;
   --app-radius-md: 12px;
   --app-radius-lg: 16px;
   --app-radius-xl: 24px;
@@ -75,9 +83,9 @@
   
   /* Element Plus 变量覆盖 */
   --el-color-primary: var(--md-sys-color-primary);
-  --el-color-primary-light-3: #7c76eb;
-  --el-color-primary-light-5: #a7a3f1;
-  --el-color-primary-light-7: #cbc8f7;
+  --el-color-primary-light-3: #4384a4;
+  --el-color-primary-light-5: #80a6bb;
+  --el-color-primary-light-7: #b3cad6;
   --el-color-primary-light-9: var(--md-sys-color-primary-container);
   --el-color-primary-dark-2: var(--md-sys-color-primary-active);
   --el-border-radius-base: var(--app-radius-sm);
@@ -85,14 +93,14 @@
   --el-border-radius-large: var(--app-radius-md);
   --el-border-color: var(--md-sys-color-outline);
   --el-border-color-light: var(--md-sys-color-outline-variant);
-  --el-text-color-primary: #1b1b1f;
-  --el-text-color-regular: #444653;
-  --el-text-color-secondary: #6b6d7b;
-  --el-text-color-placeholder: #9b9dac;
-  --el-fill-color-light: #f5f5fb;
-  --el-fill-color-lighter: #fafafe;
-  --el-fill-color-blank: rgba(255, 255, 255, 0.82);
-  --el-bg-color: rgba(255, 255, 255, 0.86);
+  --el-text-color-primary: var(--md-sys-color-on-surface);
+  --el-text-color-regular: var(--md-sys-color-on-surface-variant);
+  --el-text-color-secondary: #596168;
+  --el-text-color-placeholder: #798187;
+  --el-fill-color-light: var(--md-sys-color-surface-container-low);
+  --el-fill-color-lighter: var(--md-sys-color-surface-container-lowest);
+  --el-fill-color-blank: var(--md-sys-color-surface-container-lowest);
+  --el-bg-color: var(--md-sys-color-surface-container-lowest);
   --el-mask-color: rgba(255, 255, 255, 0.9);
   --el-box-shadow-light: var(--md-sys-elevation-1);
   --el-box-shadow: var(--md-sys-elevation-2);
@@ -110,6 +118,8 @@ body {
   padding: 0;
   overflow: hidden;
   min-height: 100vh;
+  color: var(--md-sys-color-on-surface);
+  background: var(--md-sys-color-surface);
 }
 
 #app {
@@ -174,14 +184,8 @@ a:hover {
 .el-card {
   border: 1px solid var(--md-sys-color-outline-variant);
   border-radius: var(--app-radius-md);
-  background: rgba(255, 255, 255, 0.82);
-  box-shadow: var(--md-sys-elevation-1);
-  backdrop-filter: blur(20px);
-  transition: box-shadow var(--app-transition-normal), transform var(--app-transition-normal);
-}
-
-.el-card:hover {
-  box-shadow: var(--md-sys-elevation-2);
+  background: var(--md-sys-color-surface-container-lowest);
+  box-shadow: none;
 }
 
 .el-card__header {
@@ -197,7 +201,7 @@ a:hover {
 }
 
 .el-button {
-  min-height: 38px;
+  min-height: 40px;
   border-radius: var(--app-radius-full);
   font-weight: 600;
   letter-spacing: 0.02em;
@@ -213,8 +217,7 @@ a:hover {
 }
 
 .el-button:not(.is-disabled):hover {
-  transform: translateY(-1px);
-  box-shadow: var(--md-sys-elevation-2);
+  box-shadow: none;
 }
 
 .el-button.is-link:hover,
@@ -224,12 +227,14 @@ a:hover {
 }
 
 .el-button--primary {
-  background: linear-gradient(135deg, var(--md-sys-color-primary), var(--md-sys-color-primary-hover));
+  background: var(--md-sys-color-primary);
   border: none;
+  box-shadow: var(--md-sys-elevation-1);
 }
 
 .el-button--primary:hover {
-  background: linear-gradient(135deg, var(--md-sys-color-primary-hover), var(--md-sys-color-primary-active));
+  background: var(--md-sys-color-primary-hover);
+  box-shadow: var(--md-sys-elevation-2);
 }
 
 .el-input__wrapper,
@@ -237,8 +242,10 @@ a:hover {
 .el-select__wrapper,
 .el-input-group__prepend,
 .el-input-group__append {
-  border-radius: var(--app-radius-sm);
-  box-shadow: 0 0 0 1px var(--md-sys-color-outline-variant) inset;
+  min-height: 40px;
+  border-radius: var(--app-radius-md);
+  background: var(--md-sys-color-surface-container-lowest);
+  box-shadow: 0 0 0 1px var(--md-sys-color-outline) inset;
   transition: box-shadow var(--app-transition-fast), border-color var(--app-transition-fast);
 }
 
@@ -257,8 +264,8 @@ a:hover {
 .el-table {
   border-radius: var(--app-radius-md);
   overflow: hidden;
-  --el-table-header-bg-color: #f8f8fc;
-  --el-table-row-hover-bg-color: #f2f6ff;
+  --el-table-header-bg-color: var(--md-sys-color-surface-container-low);
+  --el-table-row-hover-bg-color: var(--md-sys-color-surface-container-low);
   --el-table-border-color: var(--md-sys-color-outline-variant);
   --el-table-header-text-color: #30313d;
 }
@@ -267,6 +274,11 @@ a:hover {
   font-weight: 700;
   color: var(--el-table-header-text-color);
   background: var(--el-table-header-bg-color);
+  height: 44px;
+}
+
+.el-table td.el-table__cell {
+  height: 44px;
 }
 
 .el-table--enable-row-hover .el-table__body tr:hover > td {
@@ -317,6 +329,83 @@ a:hover {
 
 .el-tooltip__popper {
   border-radius: var(--app-radius-sm);
+}
+
+.el-checkbox__inner,
+.el-radio__inner {
+  border-color: var(--md-sys-color-outline);
+}
+
+.el-checkbox__input.is-checked .el-checkbox__inner,
+.el-radio__input.is-checked .el-radio__inner {
+  border-color: var(--md-sys-color-primary);
+  background: var(--md-sys-color-primary);
+}
+
+.el-radio-button__inner {
+  min-height: 40px;
+  padding: 11px 18px;
+  border-color: var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface-container-lowest);
+}
+
+.el-radio-button:first-child .el-radio-button__inner {
+  border-radius: var(--app-radius-full) 0 0 var(--app-radius-full);
+}
+
+.el-radio-button:last-child .el-radio-button__inner {
+  border-radius: 0 var(--app-radius-full) var(--app-radius-full) 0;
+}
+
+.el-dropdown-menu,
+.el-select-dropdown__list {
+  padding: 8px;
+}
+
+.el-dropdown-menu__item,
+.el-select-dropdown__item {
+  min-height: 40px;
+  border-radius: var(--app-radius-sm);
+}
+
+.el-dropdown-menu__item:not(.is-disabled):focus,
+.el-dropdown-menu__item:not(.is-disabled):hover,
+.el-select-dropdown__item.is-hovering {
+  background: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface);
+}
+
+.el-popper.is-light,
+.el-select__popper.el-popper,
+.el-dropdown__popper.el-popper {
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--app-radius-md);
+  background: var(--md-sys-color-surface-container-lowest);
+  box-shadow: var(--md-sys-elevation-2);
+}
+
+.el-empty__description p {
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.el-form-item__label {
+  color: var(--md-sys-color-on-surface-variant);
+  font-weight: 600;
+}
+
+.el-divider {
+  border-color: var(--md-sys-color-outline-variant);
+}
+
+.el-message {
+  border: 0;
+  border-radius: var(--app-radius-sm);
+  background: var(--md-sys-color-on-surface);
+  box-shadow: var(--md-sys-elevation-3);
+}
+
+.el-message .el-message__content {
+  color: var(--md-sys-color-surface-container-lowest);
 }
 
 /* 共享样式类 */
@@ -544,62 +633,69 @@ a:hover {
 
 /* Dark Theme */
 .theme-dark {
-  color: #e2e2e9;
-  background:
-    radial-gradient(circle at 8% 6%, rgba(94, 114, 228, 0.1), transparent 28%),
-    radial-gradient(circle at 88% 14%, rgba(0, 150, 136, 0.08), transparent 26%),
-    linear-gradient(135deg, #1a1a2e 0%, #16213e 46%, #1a1a2e 100%);
+  color: #dfe3e7;
+  background: #0f1417;
     
   /* 暗色主色调 */
-  --md-sys-color-primary: #818cf8;
-  --md-sys-color-on-primary: #1a1a2e;
-  --md-sys-color-primary-container: #3730a3;
-  --md-sys-color-primary-hover: #a5b4fc;
-  --md-sys-color-primary-active: #6366f1;
+  --md-sys-color-primary: #83cff5;
+  --md-sys-color-on-primary: #00344a;
+  --md-sys-color-primary-container: #004c6a;
+  --md-sys-color-on-primary-container: #c5e7ff;
+  --md-sys-color-primary-hover: #a8dcf7;
+  --md-sys-color-primary-active: #5fb3d9;
   
   /* 暗色辅助色 */
-  --md-sys-color-secondary: #5eead4;
-  --md-sys-color-secondary-container: #134e4a;
-  --md-sys-color-tertiary: #fbbf24;
-  --md-sys-color-tertiary-container: #78350f;
+  --md-sys-color-secondary: #b6c9d6;
+  --md-sys-color-on-secondary: #21333d;
+  --md-sys-color-secondary-container: #374955;
+  --md-sys-color-on-secondary-container: #d2e5f2;
+  --md-sys-color-tertiary: #ccc1e9;
+  --md-sys-color-tertiary-container: #4a4163;
   
   /* 暗色表面色 */
-  --md-sys-color-surface: #1e1e2e;
-  --md-sys-color-surface-dim: #13131f;
-  --md-sys-color-surface-container: #2a2a3e;
-  --md-sys-color-surface-container-high: #3a3a4e;
-  --md-sys-color-surface-container-highest: #4a4a5e;
+  --md-sys-color-surface: #0f1417;
+  --md-sys-color-surface-dim: #0f1417;
+  --md-sys-color-surface-bright: #353a3e;
+  --md-sys-color-surface-container-lowest: #0a0f12;
+  --md-sys-color-surface-container-low: #171c20;
+  --md-sys-color-surface-container: #1b2024;
+  --md-sys-color-surface-container-high: #252a2e;
+  --md-sys-color-surface-container-highest: #303539;
+  --md-sys-color-on-surface: #dfe3e7;
+  --md-sys-color-on-surface-variant: #bfc8cd;
   
   /* 暗色轮廓色 */
-  --md-sys-color-outline: #6b6b80;
-  --md-sys-color-outline-variant: #3a3a4e;
+  --md-sys-color-outline: #899297;
+  --md-sys-color-outline-variant: #40484d;
+  --md-sys-state-hover: rgba(223, 227, 231, 0.08);
+  --md-sys-state-focus: rgba(223, 227, 231, 0.12);
   
   /* Element Plus 暗色覆盖 */
   --el-color-primary: var(--md-sys-color-primary);
-  --el-color-primary-light-3: #a5a8f8;
-  --el-color-primary-light-5: #b8baf9;
-  --el-color-primary-light-7: #d4d5fb;
+  --el-color-primary-light-3: #a0d9f7;
+  --el-color-primary-light-5: #b6e1f8;
+  --el-color-primary-light-7: #d2edfb;
   --el-color-primary-light-9: var(--md-sys-color-primary-container);
   --el-color-primary-dark-2: var(--md-sys-color-primary-active);
-  --el-text-color-primary: #e2e2e9;
-  --el-text-color-regular: #b4b4c8;
-  --el-text-color-secondary: #8b8ba0;
-  --el-text-color-placeholder: #6b6b80;
-  --el-fill-color-light: #2a2a3e;
-  --el-fill-color-lighter: #22223a;
-  --el-fill-color-blank: rgba(30, 30, 46, 0.88);
-  --el-bg-color: rgba(30, 30, 46, 0.92);
+  --el-text-color-primary: var(--md-sys-color-on-surface);
+  --el-text-color-regular: var(--md-sys-color-on-surface-variant);
+  --el-text-color-secondary: #a4adb2;
+  --el-text-color-placeholder: #899297;
+  --el-fill-color-light: var(--md-sys-color-surface-container-low);
+  --el-fill-color-lighter: var(--md-sys-color-surface-container);
+  --el-fill-color-blank: var(--md-sys-color-surface-container-lowest);
+  --el-bg-color: var(--md-sys-color-surface-container-lowest);
   --el-mask-color: rgba(20, 20, 35, 0.9);
-  --el-border-color: #4a4a5e;
-  --el-border-color-light: #3a3a4e;
-  --el-table-header-bg-color: #2a2a3e;
-  --el-table-row-hover-bg-color: #32324a;
-  --el-table-border-color: #3a3a4e;
+  --el-border-color: var(--md-sys-color-outline);
+  --el-border-color-light: var(--md-sys-color-outline-variant);
+  --el-table-header-bg-color: var(--md-sys-color-surface-container-low);
+  --el-table-row-hover-bg-color: var(--md-sys-color-surface-container-high);
+  --el-table-border-color: var(--md-sys-color-outline-variant);
 }
 
 .theme-dark .el-card {
   border-color: var(--md-sys-color-outline-variant);
-  background: rgba(30, 30, 46, 0.88);
+  background: var(--md-sys-color-surface-container-lowest);
 }
 
 .theme-dark .el-card__header {
@@ -1667,4 +1763,280 @@ html:not(.theme-dark) .settings-select-dropdown .el-select-dropdown__item.is-sel
 .theme-dark .shell-sidebar .sidebar-section button.active b {
   color: #073347;
   background: #d8f2fb;
+}
+
+/* Canonical Material Design 3 layer. Keep this final so legacy view skins
+   cannot replace shared color, shape, elevation, or interaction tokens. */
+.app-material-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1em;
+  height: 1em;
+  overflow: hidden;
+  font-size: 1em;
+  line-height: 1;
+  font-variation-settings:
+    "FILL" 0,
+    "wght" 400,
+    "GRAD" 0,
+    "opsz" 24;
+  user-select: none;
+}
+
+.tool-button.active .app-material-icon,
+.sidebar-section button.active .app-material-icon,
+.sidebar-row.active .app-material-icon,
+.el-button--primary .app-material-icon {
+  font-variation-settings:
+    "FILL" 1,
+    "wght" 500,
+    "GRAD" 0,
+    "opsz" 24;
+}
+
+html:root {
+  font-size: 14px;
+  line-height: 1.5;
+  --md-sys-color-primary: #00658b;
+  --md-sys-color-on-primary: #ffffff;
+  --md-sys-color-primary-container: #c5e7ff;
+  --md-sys-color-on-primary-container: #001e2d;
+  --md-sys-color-primary-hover: #13779f;
+  --md-sys-color-primary-active: #004c6a;
+  --md-sys-color-secondary: #4f616c;
+  --md-sys-color-on-secondary: #ffffff;
+  --md-sys-color-secondary-container: #d2e5f2;
+  --md-sys-color-on-secondary-container: #0b1e28;
+  --md-sys-color-tertiary: #62597c;
+  --md-sys-color-tertiary-container: #e8ddff;
+  --md-sys-color-surface: #f7f9ff;
+  --md-sys-color-surface-dim: #d8dae0;
+  --md-sys-color-surface-bright: #f7f9ff;
+  --md-sys-color-surface-container-lowest: #ffffff;
+  --md-sys-color-surface-container-low: #f1f4fa;
+  --md-sys-color-surface-container: #eceef4;
+  --md-sys-color-surface-container-high: #e6e8ee;
+  --md-sys-color-surface-container-highest: #e0e3e9;
+  --md-sys-color-on-surface: #181c20;
+  --md-sys-color-on-surface-variant: #40484d;
+  --md-sys-color-outline: #70787d;
+  --md-sys-color-outline-variant: #c0c8cd;
+  --md-sys-state-hover: rgba(24, 28, 32, .08);
+  --md-sys-state-focus: rgba(24, 28, 32, .12);
+  --app-radius-xs: 4px;
+  --app-radius-sm: 8px;
+  --app-radius: 10px;
+  --app-radius-md: 12px;
+  --app-radius-lg: 16px;
+  --app-radius-xl: 28px;
+  --app-radius-full: 9999px;
+  --el-color-primary: var(--md-sys-color-primary);
+  --el-color-primary-light-9: var(--md-sys-color-primary-container);
+  --el-color-primary-dark-2: var(--md-sys-color-primary-active);
+  --el-text-color-primary: var(--md-sys-color-on-surface);
+  --el-text-color-regular: var(--md-sys-color-on-surface-variant);
+  --el-text-color-secondary: #596168;
+  --el-text-color-placeholder: #798187;
+  --el-border-color: var(--md-sys-color-outline);
+  --el-border-color-light: var(--md-sys-color-outline-variant);
+  --el-fill-color-light: var(--md-sys-color-surface-container-low);
+  --el-fill-color-lighter: var(--md-sys-color-surface-container-lowest);
+  --el-fill-color-blank: var(--md-sys-color-surface-container-lowest);
+  --el-bg-color: var(--md-sys-color-surface-container-lowest);
+  --el-bg-color-overlay: var(--md-sys-color-surface-container-lowest);
+}
+
+html:root.theme-dark {
+  --md-sys-color-primary: #83cff5;
+  --md-sys-color-on-primary: #00344a;
+  --md-sys-color-primary-container: #004c6a;
+  --md-sys-color-on-primary-container: #c5e7ff;
+  --md-sys-color-primary-hover: #a8dcf7;
+  --md-sys-color-primary-active: #5fb3d9;
+  --md-sys-color-secondary: #b6c9d6;
+  --md-sys-color-on-secondary: #21333d;
+  --md-sys-color-secondary-container: #374955;
+  --md-sys-color-on-secondary-container: #d2e5f2;
+  --md-sys-color-tertiary: #ccc1e9;
+  --md-sys-color-tertiary-container: #4a4163;
+  --md-sys-color-surface: #0f1417;
+  --md-sys-color-surface-dim: #0f1417;
+  --md-sys-color-surface-bright: #353a3e;
+  --md-sys-color-surface-container-lowest: #0a0f12;
+  --md-sys-color-surface-container-low: #171c20;
+  --md-sys-color-surface-container: #1b2024;
+  --md-sys-color-surface-container-high: #252a2e;
+  --md-sys-color-surface-container-highest: #303539;
+  --md-sys-color-on-surface: #dfe3e7;
+  --md-sys-color-on-surface-variant: #bfc8cd;
+  --md-sys-color-outline: #899297;
+  --md-sys-color-outline-variant: #40484d;
+  --md-sys-state-hover: rgba(223, 227, 231, .08);
+  --md-sys-state-focus: rgba(223, 227, 231, .12);
+  --el-text-color-primary: var(--md-sys-color-on-surface);
+  --el-text-color-regular: var(--md-sys-color-on-surface-variant);
+  --el-text-color-secondary: #a4adb2;
+  --el-text-color-placeholder: #899297;
+  --el-fill-color-light: var(--md-sys-color-surface-container-low);
+  --el-fill-color-lighter: var(--md-sys-color-surface-container);
+  --el-fill-color-blank: var(--md-sys-color-surface-container-lowest);
+  --el-bg-color: var(--md-sys-color-surface-container-lowest);
+  --el-bg-color-overlay: var(--md-sys-color-surface-container);
+}
+
+body,
+.fork-shell,
+.fork-content {
+  color: var(--md-sys-color-on-surface);
+  background: var(--md-sys-color-surface);
+}
+
+.el-button {
+  min-height: 40px;
+  padding: 8px 18px;
+  border-radius: var(--app-radius-full);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: .01em;
+}
+
+.el-button--primary,
+.el-button--primary:hover,
+.el-button--primary:focus {
+  color: var(--md-sys-color-on-primary);
+  border-color: var(--md-sys-color-primary);
+  background: var(--md-sys-color-primary);
+}
+
+.el-input__wrapper,
+.el-select__wrapper,
+.el-textarea__inner {
+  min-height: 40px;
+  border-radius: var(--app-radius-md);
+  background: var(--md-sys-color-surface-container-lowest);
+  box-shadow: 0 0 0 1px var(--md-sys-color-outline) inset;
+}
+
+.el-input__wrapper.is-focus,
+.el-select__wrapper.is-focused,
+.el-textarea__inner:focus {
+  box-shadow: 0 0 0 2px var(--md-sys-color-primary) inset;
+}
+
+.el-card {
+  border-color: var(--md-sys-color-outline-variant);
+  border-radius: var(--app-radius-lg);
+  background: var(--md-sys-color-surface-container-lowest);
+}
+
+.el-card__header {
+  padding: 14px 18px;
+  color: var(--md-sys-color-on-surface);
+  background: var(--md-sys-color-surface-container-low);
+  font-size: 14px;
+}
+
+.el-card__body {
+  padding: 18px;
+}
+
+.el-table {
+  overflow: hidden;
+  border-radius: var(--app-radius-md);
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 13px;
+  --el-table-header-bg-color: var(--md-sys-color-surface-container-low);
+  --el-table-row-hover-bg-color: var(--md-sys-color-surface-container-high);
+  --el-table-border-color: var(--md-sys-color-outline-variant);
+}
+
+.el-table th.el-table__cell,
+.el-table td.el-table__cell {
+  height: 44px;
+  padding: 8px 0;
+}
+
+.el-table th.el-table__cell {
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 12px;
+}
+
+.el-tag,
+.status-badge {
+  min-height: 24px;
+  border-radius: var(--app-radius-full);
+  font-size: 11px;
+  letter-spacing: .01em;
+}
+
+.el-dialog {
+  border-color: var(--md-sys-color-outline-variant);
+  border-radius: var(--app-radius-xl);
+  background: var(--md-sys-color-surface-container-lowest);
+}
+
+.el-dialog__header,
+.el-dialog__footer {
+  background: var(--md-sys-color-surface-container-low);
+}
+
+.theme-dark .fork-toolbar,
+.theme-dark .shell-sidebar,
+.theme-dark .fork-status {
+  color: var(--md-sys-color-on-surface-variant);
+  background: var(--md-sys-color-surface-container-low) !important;
+  border-color: var(--md-sys-color-outline-variant);
+}
+
+.theme-dark .route-workbench,
+.theme-dark .route-header,
+.theme-dark .route-content,
+.theme-dark .empty-state,
+.theme-dark .empty-content,
+.theme-dark .el-card {
+  color: var(--md-sys-color-on-surface) !important;
+  background: var(--md-sys-color-surface-container-lowest) !important;
+  border-color: var(--md-sys-color-outline-variant) !important;
+}
+
+.theme-dark .tool-button.active {
+  color: var(--md-sys-color-on-primary-container);
+  background: var(--md-sys-color-primary-container);
+}
+
+.theme-dark .shell-sidebar .sidebar-section button {
+  overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: var(--app-radius-full);
+  color: var(--md-sys-color-on-surface-variant);
+  background: transparent !important;
+}
+
+.theme-dark .shell-sidebar .sidebar-section button:hover {
+  color: var(--md-sys-color-on-surface) !important;
+  border-color: transparent;
+  background: var(--md-sys-state-hover) !important;
+}
+
+.theme-dark .shell-sidebar .sidebar-section button.active,
+.theme-dark .shell-sidebar .sidebar-section button.active:hover {
+  color: var(--md-sys-color-on-secondary-container) !important;
+  border-color: transparent;
+  background: var(--md-sys-color-secondary-container) !important;
+  box-shadow: none;
+}
+
+.theme-dark .shell-sidebar .sidebar-section button b,
+.theme-dark .shell-sidebar .sidebar-section button.active b {
+  color: inherit;
+  background: transparent;
+}
+
+.theme-dark .el-button--primary,
+.theme-dark .el-button--primary:hover,
+.theme-dark .el-button--primary:focus {
+  color: var(--md-sys-color-on-primary);
+  border-color: var(--md-sys-color-primary);
+  background: var(--md-sys-color-primary);
 }
