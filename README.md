@@ -2,6 +2,8 @@
 
 OrcaSVN 是一个基于 Tauri、Rust 和 Vue 3 的跨平台 SVN 桌面客户端。它借鉴 Git 客户端清晰的工作区体验，同时保留 SVN 的集中式版本控制语义。
 
+![OrcaSVN 软件界面](docs/images/orcasvn-workspace.png)
+
 ## 核心能力
 
 - 以类似 `git status` 的分类查看本地变更、未版本文件、冲突和缺失文件
