@@ -117,6 +117,7 @@ export default {
     copyFailed: '复制失败',
     error: '错误',
     noChanges: '没有更改的文件',
+    noMatchingFiles: '当前筛选条件下没有文件',
     noWorkspace: '未打开工作区',
   },
   log: {

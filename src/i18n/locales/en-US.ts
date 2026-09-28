@@ -117,6 +117,7 @@ export default {
     copyFailed: 'Copy failed',
     error: 'Error',
     noChanges: 'No changed files',
+    noMatchingFiles: 'No files match this filter',
     noWorkspace: 'No workspace opened',
   },
   log: {

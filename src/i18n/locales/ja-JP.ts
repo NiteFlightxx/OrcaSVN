@@ -117,6 +117,7 @@ export default {
     copyFailed: 'コピーに失敗しました',
     error: 'エラー',
     noChanges: '変更されたファイルはありません',
+    noMatchingFiles: 'このフィルターに一致するファイルはありません',
     noWorkspace: 'ワークスペースが開かれていません',
   },
   log: {

@@ -16,11 +16,11 @@
           <span class="brand-name">OrcaSVN</span>
         </button>
         <span class="toolbar-divider"></span>
-        <button class="tool-button" :class="{ active: routeName === 'workspace' }" @click="navigateTo('workspace')">
+        <button class="tool-button toolbar-nav" :class="{ active: routeName === 'workspace' }" @click="navigateTo('workspace')">
           <el-icon><FolderOpened /></el-icon>
           <span>{{ $t('menu.workspace') }}</span>
         </button>
-        <button class="tool-button" :class="{ active: routeName === 'log' }" @click="navigateTo('log')">
+        <button class="tool-button toolbar-nav" :class="{ active: routeName === 'log' }" @click="navigateTo('log')">
           <el-icon><Document /></el-icon>
           <span>{{ $t('menu.log') }}</span>
         </button>
@@ -28,6 +28,8 @@
           class="tool-button"
           :class="{ 'is-refreshing': workspaceStore.isLoading }"
           :aria-busy="workspaceStore.isLoading"
+          :aria-label="$t('menu.refresh')"
+          :title="$t('menu.refresh')"
           @click="refreshStatus"
           :disabled="workspaceStore.isLoading"
         >
@@ -71,8 +73,8 @@
         </el-dropdown>
       </div>
 
-      <el-dropdown trigger="click" popper-class="workspace-switcher-dropdown" @command="handleWorkspaceCommand">
-        <button class="repository-title" :title="$t('workspace.switchWorkspace')">
+      <el-dropdown class="workspace-switcher" trigger="click" popper-class="workspace-switcher-dropdown" @command="handleWorkspaceCommand">
+        <button class="repository-title" :title="$t('workspace.switchWorkspace')" :aria-label="$t('workspace.switchWorkspace')">
           <strong>{{ repositoryName }}</strong>
           <span class="repository-revision">
             <template v-if="workspaceStore.svnInfo">r{{ workspaceStore.svnInfo.revision }}</template>
@@ -119,15 +121,15 @@
           <el-icon><RefreshRight /></el-icon>
           <span>{{ $t('menu.update') }}</span>
         </button>
-        <button class="tool-button" :class="{ active: routeName === 'diff' }" @click="navigateTo('diff')">
+        <button class="tool-button toolbar-nav" :class="{ active: routeName === 'diff' }" @click="navigateTo('diff')">
           <el-icon><Connection /></el-icon>
           <span>{{ $t('menu.diff') }}</span>
         </button>
-        <button class="tool-button" :class="{ active: routeName === 'stash' }" @click="navigateTo('stash')">
+        <button class="tool-button toolbar-nav" :class="{ active: routeName === 'stash' }" @click="navigateTo('stash')">
           <el-icon><Archive /></el-icon>
           <span>{{ $t('menu.stash') }}</span>
         </button>
-        <button class="tool-button" :class="{ active: routeName === 'blame' }" @click="navigateTo('blame')">
+        <button class="tool-button toolbar-nav" :class="{ active: routeName === 'blame' }" @click="navigateTo('blame')">
           <el-icon><Edit /></el-icon>
           <span>{{ $t('menu.blame') }}</span>
         </button>
@@ -597,17 +599,20 @@ onUnmounted(() => {
   }
 }
 
-.repository-title {
+.workspace-switcher {
   position: absolute;
   top: 8px;
   left: 50%;
+  transform: translateX(-50%);
+}
+
+.repository-title {
   display: flex;
   flex-direction: column;
   align-items: center;
   min-width: 230px;
   min-height: 48px;
   padding: 5px 32px;
-  transform: translateX(-50%);
   border: 0;
   border: 1px solid var(--md-sys-color-outline-variant);
   border-radius: var(--app-radius-lg);
@@ -627,6 +632,11 @@ onUnmounted(() => {
 }
 
 .repository-title strong {
+  display: block;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--md-sys-color-on-surface);
   font-size: 13px;
 }
@@ -966,11 +976,22 @@ onUnmounted(() => {
 .fork-status div {
   display: flex;
   gap: 14px;
+  flex-shrink: 0;
+}
+
+.fork-status > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toolbar-nav {
+  display: none;
 }
 
 @media (max-width: 900px) {
-  .repository-title,
-  .tool-button span,
+  .tool-button > span:not(.el-icon),
   .brand-name {
     display: none;
   }
@@ -981,10 +1002,75 @@ onUnmounted(() => {
     min-width: 38px;
   }
   .fork-content {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 44px minmax(0, 1fr);
   }
   .shell-sidebar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 4px 8px;
+    border-right: 0;
+    border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  }
+  .shell-repository,
+  .shell-sidebar .sidebar-heading {
     display: none;
+  }
+  .shell-sidebar .sidebar-section {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 2px;
+    padding: 0 5px 0 0;
+    border-right: 1px solid var(--md-sys-color-outline-variant);
+  }
+  .shell-sidebar .sidebar-section:last-child {
+    border-right: 0;
+  }
+  .shell-sidebar .sidebar-section button {
+    width: auto;
+    height: 34px;
+    padding: 0 10px;
+    white-space: nowrap;
+  }
+  .route-workbench {
+    margin: 6px;
+  }
+}
+
+@media (max-width: 650px) {
+  .fork-shell {
+    grid-template-rows: 96px minmax(0, 1fr) 28px;
+  }
+  .fork-toolbar {
+    align-items: flex-start;
+    padding-bottom: 48px;
+  }
+  .toolbar-group-right .tool-button,
+  .toolbar-group-right .toolbar-divider {
+    display: none;
+  }
+  .workspace-switcher {
+    top: 52px;
+    left: 12px;
+    right: 12px;
+    transform: none;
+  }
+  .repository-title {
+    width: 100%;
+    min-height: 38px;
+    padding: 4px 32px;
+  }
+  .repository-title strong {
+    max-width: calc(100vw - 90px);
+  }
+  .route-repository {
+    max-width: 42%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
 </style>

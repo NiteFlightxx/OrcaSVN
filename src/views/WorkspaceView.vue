@@ -80,7 +80,7 @@
             {{ $t('workspace.fileStatus') }}
           </span>
           <div class="header-actions">
-            <el-button text size="small" @click="refreshStatus" :loading="workspaceStore.isLoading">
+            <el-button text size="small" :aria-label="$t('menu.refresh')" :title="$t('menu.refresh')" @click="refreshStatus" :loading="workspaceStore.isLoading">
               <el-icon><Refresh /></el-icon>
             </el-button>
           </div>
@@ -88,26 +88,26 @@
 
         <!-- 文件状态统计 -->
         <div class="status-summary">
-          <div class="status-badge modified" :class="{ active: filter === 'modified' }" @click="setFilter('modified')">
+          <button type="button" class="status-badge modified" :class="{ active: filter === 'modified' }" :aria-pressed="filter === 'modified'" @click="setFilter('modified')">
             <span class="badge-count">{{ workspaceStore.changedCount }}</span>
             <span class="badge-label">{{ $t('workspace.statusChanged') }}</span>
-          </div>
-          <div class="status-badge added" :class="{ active: filter === 'added' }" @click="setFilter('added')">
+          </button>
+          <button type="button" class="status-badge added" :class="{ active: filter === 'added' }" :aria-pressed="filter === 'added'" @click="setFilter('added')">
             <span class="badge-count">{{ workspaceStore.unversionedCount }}</span>
             <span class="badge-label">{{ $t('workspace.statusUnversioned') }}</span>
-          </div>
-          <div class="status-badge conflicted" :class="{ active: filter === 'conflicted' }" @click="setFilter('conflicted')">
+          </button>
+          <button type="button" class="status-badge conflicted" :class="{ active: filter === 'conflicted' }" :aria-pressed="filter === 'conflicted'" @click="setFilter('conflicted')">
             <span class="badge-count">{{ workspaceStore.conflictedCount }}</span>
             <span class="badge-label">{{ $t('status.conflicted') }}</span>
-          </div>
-          <div class="status-badge missing" :class="{ active: filter === 'missing' }" @click="setFilter('missing')">
+          </button>
+          <button type="button" class="status-badge missing" :class="{ active: filter === 'missing' }" :aria-pressed="filter === 'missing'" @click="setFilter('missing')">
             <span class="badge-count">{{ workspaceStore.missingCount }}</span>
             <span class="badge-label">{{ $t('status.missing') }}</span>
-          </div>
-          <div class="status-badge all" :class="{ active: filter === 'all' }" @click="setFilter('all')">
+          </button>
+          <button type="button" class="status-badge all" :class="{ active: filter === 'all' }" :aria-pressed="filter === 'all'" @click="setFilter('all')">
             <span class="badge-count">{{ workspaceStore.statusList.length }}</span>
             <span class="badge-label">{{ $t('common.all') }}</span>
-          </div>
+          </button>
         </div>
 
         <!-- 文件列表 -->
@@ -127,7 +127,14 @@
             <span class="file-status" :class="getStatusClass(file.status_code)">
               {{ getStatusLabel(file.status_code) }}
             </span>
-            <span class="file-path" :title="file.path">{{ file.path }}</span>
+            <button
+              type="button"
+              class="file-path"
+              :title="file.path"
+              :aria-label="`${file.path}, ${getStatusLabel(file.status_code)}`"
+              :aria-pressed="selectedFile === file.path"
+              @click.stop="selectFile(file)"
+            >{{ file.path }}</button>
             <div class="file-actions">
               <el-tooltip :content="$t('common.diff')" placement="top" :show-after="150">
                 <span class="file-action-trigger" :title="$t('common.diff')" @click.stop>
@@ -147,7 +154,7 @@
           </div>
           <div v-if="!workspaceStore.isLoading && filteredFiles.length === 0" class="empty-files">
             <el-icon><CircleCheck /></el-icon>
-            <span>{{ $t('workspace.noChanges') }}</span>
+            <span>{{ workspaceStore.statusList.length === 0 ? $t('workspace.noChanges') : $t('workspace.noMatchingFiles') }}</span>
           </div>
         </div>
         <div
@@ -672,6 +679,7 @@ const revertFile = async (file: SvnStatus) => {
   padding: 4px 10px;
   border-radius: var(--app-radius-full);
   background: var(--el-fill-color-light);
+  border: 1px solid transparent;
   cursor: pointer;
   transition: all var(--app-transition-fast);
   font-size: 12px;
@@ -739,6 +747,15 @@ const revertFile = async (file: SvnStatus) => {
   background: var(--md-sys-color-primary-container);
 }
 
+.file-item:focus-within {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: -2px;
+}
+
+.file-item:focus-within .file-actions {
+  opacity: 1;
+}
+
 .file-status {
   display: inline-flex;
   align-items: center;
@@ -780,10 +797,16 @@ const revertFile = async (file: SvnStatus) => {
   flex: 1;
   min-width: 0;
   overflow: hidden;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 13px;
   font-family: "Cascadia Mono", Consolas, monospace;
+  cursor: pointer;
 }
 
 .file-actions {

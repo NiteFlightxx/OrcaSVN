@@ -117,6 +117,7 @@ export default {
     copyFailed: '복사 실패',
     error: '오류',
     noChanges: '변경된 파일이 없습니다',
+    noMatchingFiles: '이 필터에 해당하는 파일이 없습니다',
     noWorkspace: '작업 공간이 열려 있지 않습니다',
   },
   log: {
