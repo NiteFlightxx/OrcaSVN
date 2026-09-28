@@ -2040,3 +2040,16 @@ body,
   border-color: var(--md-sys-color-primary);
   background: var(--md-sys-color-primary);
 }
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.theme-dark ::-webkit-scrollbar-thumb {
+  background: #40515c;
+}
+
+.theme-dark ::-webkit-scrollbar-thumb:hover {
+  background: #607584;
+}

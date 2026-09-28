@@ -898,12 +898,15 @@ onUnmounted(() => {
 }
 
 .route-content :deep(.empty-state) {
-  display: block;
+  display: flex;
+  align-items: flex-start;
   height: 100%;
+  min-height: 0;
+  padding: 42px 44px;
 }
 
 .route-content :deep(.empty-content) {
-  margin: 42px 44px;
+  margin: 0;
 }
 
 .route-content :deep(.checkout-view),
@@ -1015,6 +1018,9 @@ onUnmounted(() => {
     border-right: 0;
     border-bottom: 1px solid var(--md-sys-color-outline-variant);
   }
+  .shell-sidebar::-webkit-scrollbar {
+    height: 4px;
+  }
   .shell-repository,
   .shell-sidebar .sidebar-heading {
     display: none;
@@ -1071,6 +1077,12 @@ onUnmounted(() => {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .route-content :deep(.empty-state) {
+    padding: 36px 28px;
+  }
+  .route-content :deep(.empty-actions) {
+    flex-wrap: wrap;
   }
 }
 </style>

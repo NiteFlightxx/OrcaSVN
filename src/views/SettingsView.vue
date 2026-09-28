@@ -229,11 +229,28 @@ onMounted(() => {
 
 .theme-group {
   display: flex;
-  gap: var(--app-spacing);
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .theme-radio {
   margin-right: 0;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--app-radius-sm);
+  background: var(--md-sys-color-surface-container-low);
+  transition: background-color var(--app-transition-fast), border-color var(--app-transition-fast);
+}
+
+.theme-radio:hover {
+  border-color: var(--md-sys-color-outline);
+  background: var(--md-sys-color-surface-container-high);
+}
+
+.theme-radio.is-checked {
+  border-color: var(--md-sys-color-primary);
+  background: var(--md-sys-color-primary-container);
 }
 
 .theme-option {
@@ -326,10 +343,6 @@ onMounted(() => {
   .settings-control,
   .settings-path-input {
     width: 100%;
-  }
-  
-  .theme-group {
-    flex-direction: column;
   }
 }
 </style>
