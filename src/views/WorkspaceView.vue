@@ -17,6 +17,7 @@
       </aside>
       <div class="empty-content">
         <div class="welcome-mark"><el-icon><FolderOpened /></el-icon></div>
+        <span class="welcome-eyebrow">{{ $t('workspace.svnClient') }}</span>
         <h2>{{ $t('workspace.welcomeTitle') }}</h2>
         <p>{{ $t('workspace.emptyDescription') }}</p>
         <div class="empty-actions">
@@ -1088,41 +1089,60 @@ const revertFile = async (file: SvnStatus) => {
   align-self: start;
   max-width: 680px;
   margin: 42px 44px;
+  padding: 48px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--app-radius-xl);
+  background: var(--md-sys-color-surface-container-low);
   text-align: left;
 }
 
 .welcome-mark {
   display: grid;
   place-items: center;
-  width: 54px;
-  height: 54px;
-  margin-bottom: 20px;
-  border-radius: 11px;
-  color: #fff;
-  background: linear-gradient(145deg, #42a5ff, #0569d7);
-  font-size: 28px;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.18);
+  width: 60px;
+  height: 60px;
+  margin-bottom: 28px;
+  border-radius: 18px;
+  color: var(--md-sys-color-on-primary-container);
+  background: var(--md-sys-color-primary-container);
+  font-size: 30px;
+}
+
+.welcome-eyebrow {
+  display: block;
+  margin-bottom: 10px;
+  color: var(--md-sys-color-primary);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .06em;
 }
 
 .empty-content h2 {
-  margin-bottom: 8px;
-  font-size: 24px;
-  font-weight: 500;
+  margin-bottom: 12px;
+  font-size: clamp(24px, 3vw, 30px);
+  font-weight: 700;
+  letter-spacing: -.025em;
 }
 
 .empty-content p {
-  margin-bottom: 20px;
-  color: #777;
+  margin-bottom: 28px;
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 14px;
+  line-height: 1.6;
 }
 
 .empty-actions {
   justify-content: flex-start;
 }
 
+.empty-actions :deep(.el-button + .el-button) {
+  margin-left: 0;
+}
+
 .workspace-layout {
-  gap: 8px;
-  padding: 8px;
-  background: var(--md-sys-color-surface);
+  gap: 0;
+  padding: 0;
+  background: var(--md-sys-color-surface-container-lowest);
 }
 
 .left-panel {
@@ -1251,87 +1271,97 @@ const revertFile = async (file: SvnStatus) => {
 .center-panel,
 .right-panel {
   overflow: hidden;
-  border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: var(--app-radius-lg);
+  border: 0;
+  border-radius: 0;
   background: var(--md-sys-color-surface-container-lowest);
 }
 
 .center-panel {
-  flex: 1 1 33.333%;
-  width: 33.333%;
-  min-width: 260px;
+  flex: 0 0 42%;
+  width: 42%;
+  min-width: 0;
+  border-right: 1px solid var(--md-sys-color-outline-variant);
 }
 
 .right-panel {
-  flex: 2 1 66.667%;
-  width: 66.667%;
-  min-width: 420px;
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
   background: var(--md-sys-color-surface-container-lowest);
-  border-left: 1px solid var(--md-sys-color-outline-variant);
 }
 
 .panel-header {
-  height: 44px;
-  padding: 0 12px;
-  background: var(--md-sys-color-surface-container-low);
+  height: 52px;
+  padding: 0 18px;
+  background: var(--md-sys-color-surface-container-lowest);
   border-bottom: 1px solid var(--md-sys-color-outline-variant);
 }
 
 .panel-title {
   color: var(--md-sys-color-on-surface);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
 }
 
 .status-summary {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(82px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 6px;
-  padding: 7px 10px;
+  padding: 12px 16px;
   background: var(--md-sys-color-surface-container-lowest);
   border-bottom: 1px solid var(--md-sys-color-outline-variant);
 }
 
 .status-badge {
   justify-content: center;
-  width: 100%;
+  width: auto;
   min-width: 0;
-  gap: 5px;
-  min-height: 28px;
-  padding: 2px 10px;
-  border: 1px solid transparent;
-  border-radius: var(--app-radius-full);
-  background: transparent;
-  font-size: 11px;
+  gap: 6px;
+  min-height: 30px;
+  padding: 3px 10px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--app-radius-sm);
+  background: var(--md-sys-color-surface-container-low);
+  font-size: 12px;
 }
 
 .status-badge.active {
-  border-color: transparent;
-  background: var(--md-sys-color-secondary-container);
-  color: var(--md-sys-color-on-secondary-container);
+  border-color: var(--md-sys-color-primary);
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
 }
 
 .file-item {
-  min-height: 36px;
-  gap: 8px;
-  padding: 4px 10px;
+  min-height: 48px;
+  gap: 10px;
+  padding: 6px 16px;
   border-bottom: 1px solid var(--md-sys-color-outline-variant);
 }
 
 .file-item.selected {
-  color: var(--md-sys-color-on-secondary-container);
-  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-primary-container);
+  background: var(--md-sys-color-primary-container);
 }
 
 .file-status {
-  min-width: 18px;
-  height: 17px;
-  padding: 0 3px;
-  font-size: 8px;
+  min-width: 20px;
+  height: 21px;
+  padding: 0 6px;
+  font-size: 9px;
 }
 
 .file-path {
-  font-size: 12px;
+  font-size: 13px;
+}
+
+.file-actions {
+  opacity: .7;
+}
+
+.file-actions :deep(.el-button) {
+  width: 32px;
+  height: 32px;
+  background: transparent;
 }
 
 .diff-header {
@@ -1365,7 +1395,7 @@ const revertFile = async (file: SvnStatus) => {
 :global(.theme-dark) .right-panel,
 :global(.dark) .center-panel,
 :global(.dark) .right-panel {
-  background: var(--md-sys-color-surface) !important;
+  background: var(--md-sys-color-surface-container-lowest) !important;
 }
 
 :global(.theme-dark) .right-panel,
@@ -1388,15 +1418,15 @@ const revertFile = async (file: SvnStatus) => {
 
 :global(.theme-dark) .status-summary,
 :global(.dark) .status-summary {
-  background: var(--md-sys-color-surface-container) !important;
+  background: var(--md-sys-color-surface-container-lowest) !important;
   border-color: rgba(115, 115, 115, .14) !important;
 }
 
 :global(.theme-dark) .status-badge,
 :global(.dark) .status-badge {
-  color: #9cadb9;
-  border-color: transparent;
-  background: transparent !important;
+  color: var(--md-sys-color-on-surface-variant);
+  border-color: var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface-container-low) !important;
 }
 
 :global(.theme-dark) .status-badge:hover,
@@ -1407,9 +1437,9 @@ const revertFile = async (file: SvnStatus) => {
 
 :global(.theme-dark) .status-badge.active,
 :global(.dark) .status-badge.active {
-  color: #e8f7fc !important;
-  border-color: #315567 !important;
-  background: #173f52 !important;
+  color: var(--md-sys-color-on-primary-container) !important;
+  border-color: var(--md-sys-color-primary) !important;
+  background: var(--md-sys-color-primary-container) !important;
 }
 
 :global(.theme-dark) .status-badge.active .badge-label,
@@ -1419,13 +1449,13 @@ const revertFile = async (file: SvnStatus) => {
 
 :global(.theme-dark) .file-list,
 :global(.dark) .file-list {
-  background: var(--md-sys-color-surface);
+  background: var(--md-sys-color-surface-container-lowest);
 }
 
 :global(.theme-dark) .file-item,
 :global(.dark) .file-item {
   color: #c7d3dc !important;
-  background: var(--md-sys-color-surface) !important;
+  background: var(--md-sys-color-surface-container-lowest) !important;
   border-bottom-color: rgba(115, 115, 115, .12) !important;
 }
 
@@ -1437,8 +1467,8 @@ const revertFile = async (file: SvnStatus) => {
 
 :global(.theme-dark) .file-item.selected,
 :global(.dark) .file-item.selected {
-  color: #f5fbff !important;
-  background: #0f6389 !important;
+  color: var(--md-sys-color-on-primary-container) !important;
+  background: var(--md-sys-color-primary-container) !important;
 }
 
 :global(.theme-dark) .file-actions :deep(.el-button),
@@ -1493,6 +1523,17 @@ const revertFile = async (file: SvnStatus) => {
   }
   .welcome-sidebar {
     display: none;
+  }
+  .center-panel {
+    flex: 1 1 auto;
+    width: 100%;
+    border-right: 0;
+  }
+}
+
+@media (max-width: 650px) {
+  .empty-content {
+    padding: 28px;
   }
 }
 </style>

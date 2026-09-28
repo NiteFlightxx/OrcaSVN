@@ -16,14 +16,6 @@
           <span class="brand-name">OrcaSVN</span>
         </button>
         <span class="toolbar-divider"></span>
-        <button class="tool-button toolbar-nav" :class="{ active: routeName === 'workspace' }" @click="navigateTo('workspace')">
-          <el-icon><FolderOpened /></el-icon>
-          <span>{{ $t('menu.workspace') }}</span>
-        </button>
-        <button class="tool-button toolbar-nav" :class="{ active: routeName === 'log' }" @click="navigateTo('log')">
-          <el-icon><Document /></el-icon>
-          <span>{{ $t('menu.log') }}</span>
-        </button>
         <button
           class="tool-button"
           :class="{ 'is-refreshing': workspaceStore.isLoading }"
@@ -120,18 +112,6 @@
         <button class="tool-button" :class="{ active: routeName === 'update' }" @click="navigateTo('update')">
           <el-icon><RefreshRight /></el-icon>
           <span>{{ $t('menu.update') }}</span>
-        </button>
-        <button class="tool-button toolbar-nav" :class="{ active: routeName === 'diff' }" @click="navigateTo('diff')">
-          <el-icon><Connection /></el-icon>
-          <span>{{ $t('menu.diff') }}</span>
-        </button>
-        <button class="tool-button toolbar-nav" :class="{ active: routeName === 'stash' }" @click="navigateTo('stash')">
-          <el-icon><Archive /></el-icon>
-          <span>{{ $t('menu.stash') }}</span>
-        </button>
-        <button class="tool-button toolbar-nav" :class="{ active: routeName === 'blame' }" @click="navigateTo('blame')">
-          <el-icon><Edit /></el-icon>
-          <span>{{ $t('menu.blame') }}</span>
         </button>
         <span class="toolbar-divider"></span>
         <button class="tool-button" :class="{ active: routeName === 'settings' }" @click="navigateTo('settings')">
@@ -337,17 +317,17 @@ onUnmounted(() => {
   display: flex;
   align-items: stretch;
   justify-content: space-between;
-  padding: 6px 12px;
-  background: var(--md-sys-color-surface-container-low);
+  padding: 0 18px;
+  background: var(--md-sys-color-surface-container-lowest);
   border-bottom: 1px solid var(--md-sys-color-outline-variant);
   box-shadow: none;
 }
 
 .toolbar-group {
-  align-items: stretch;
+  align-items: center;
   display: flex;
-  min-width: 330px;
-  gap: 2px;
+  min-width: 260px;
+  gap: 6px;
 }
 
 .toolbar-group-right {
@@ -359,7 +339,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 7px;
   min-width: 112px;
-  padding: 0 12px 0 4px;
+  padding: 0 10px 0 0;
   border: 0;
   border-radius: var(--app-radius-full);
   color: var(--md-sys-color-on-surface);
@@ -377,12 +357,12 @@ onUnmounted(() => {
 .brand-mark {
   display: grid;
   place-items: center;
-  width: 38px;
-  height: 38px;
-  border-radius: var(--app-radius-md);
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
   color: var(--md-sys-color-on-primary);
   background: var(--md-sys-color-primary);
-  box-shadow: var(--md-sys-elevation-1);
+  box-shadow: none;
 }
 
 .brand-mark svg {
@@ -409,7 +389,7 @@ onUnmounted(() => {
 }
 
 .brand-name {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 700;
   letter-spacing: -.01em;
 }
@@ -439,16 +419,18 @@ onUnmounted(() => {
 
 .tool-button {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
   justify-content: center;
-  min-width: 58px;
-  gap: 2px;
+  min-width: 38px;
+  height: 38px;
+  gap: 8px;
+  padding: 0 10px;
   border: 0;
   border-radius: var(--app-radius-md);
   color: var(--md-sys-color-on-surface-variant);
   background: transparent;
-  font-size: 12px;
+  font-size: 13px;
   cursor: pointer;
   transition:
     color var(--app-transition-fast),
@@ -505,7 +487,7 @@ onUnmounted(() => {
 }
 
 .tool-button .el-icon {
-  font-size: 20px;
+  font-size: 18px;
 }
 
 .open-in-trigger {
@@ -513,11 +495,11 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   align-self: center;
-  width: 58px;
-  height: 52px;
-  flex-direction: column;
-  gap: 1px;
-  padding: 0;
+  width: auto;
+  height: 38px;
+  flex-direction: row;
+  gap: 6px;
+  padding: 0 10px;
   border: 0;
   border-radius: var(--app-radius-md);
   color: var(--md-sys-color-on-surface-variant);
@@ -560,9 +542,9 @@ onUnmounted(() => {
 }
 
 .open-in-label {
-  max-width: 56px;
+  max-width: 90px;
   overflow: hidden;
-  font-size: 11px;
+  font-size: 13px;
   line-height: 14px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -601,24 +583,25 @@ onUnmounted(() => {
 
 .workspace-switcher {
   position: absolute;
-  top: 8px;
+  top: 13px;
   left: 50%;
   transform: translateX(-50%);
 }
 
 .repository-title {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  min-width: 230px;
-  min-height: 48px;
-  padding: 5px 32px;
-  border: 0;
+  justify-content: center;
+  min-width: 220px;
+  min-height: 38px;
+  gap: 8px;
+  padding: 0 34px 0 14px;
   border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: var(--app-radius-lg);
-  background: var(--md-sys-color-surface-container-lowest);
+  border-radius: var(--app-radius-sm);
+  background: var(--md-sys-color-surface-container-low);
   color: var(--md-sys-color-on-surface-variant);
-  font-size: 11px;
+  font-size: 12px;
   cursor: pointer;
   transition:
     border-color var(--app-transition-fast),
@@ -633,7 +616,7 @@ onUnmounted(() => {
 
 .repository-title strong {
   display: block;
-  max-width: 180px;
+  max-width: 150px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -642,11 +625,8 @@ onUnmounted(() => {
 }
 
 .repository-revision {
-  position: absolute;
-  bottom: 5px;
-  left: 50%;
-  transform: translateX(-50%);
-  line-height: 1.2;
+  flex: 0 0 auto;
+  line-height: 1;
 }
 
 .repository-chevron {
@@ -739,7 +719,7 @@ onUnmounted(() => {
 
 .fork-content {
   display: grid;
-  grid-template-columns: 232px minmax(0, 1fr);
+  grid-template-columns: 224px minmax(0, 1fr);
   min-height: 0;
   overflow: hidden;
   background: var(--md-sys-color-surface);
@@ -748,15 +728,15 @@ onUnmounted(() => {
 .shell-sidebar {
   min-height: 0;
   overflow: auto;
-  padding: 8px;
-  background: var(--md-sys-color-surface-container-low);
+  padding: 14px 10px;
+  background: var(--md-sys-color-surface-container-lowest);
   border-right: 1px solid var(--md-sys-color-outline-variant);
 }
 
 .shell-repository {
   display: flex;
   align-items: center;
-  min-height: 64px;
+  min-height: 72px;
   gap: 12px;
   padding: 8px 10px 12px;
   border-bottom: 1px solid var(--md-sys-color-outline-variant);
@@ -794,13 +774,13 @@ onUnmounted(() => {
 }
 
 .sidebar-section {
-  padding: 12px 2px 2px;
+  padding: 18px 2px 2px;
 }
 
 .sidebar-heading {
-  padding: 3px 12px 7px;
+  padding: 3px 12px 8px;
   color: var(--md-sys-color-on-surface-variant);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: .06em;
 }
@@ -809,11 +789,11 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   width: 100%;
-  height: 38px;
+  height: 40px;
   gap: 10px;
   padding: 0 12px;
   border: 0;
-  border-radius: var(--app-radius-full);
+  border-radius: var(--app-radius-sm);
   background: transparent;
   color: var(--md-sys-color-on-surface-variant);
   font-size: 13px;
@@ -826,8 +806,8 @@ onUnmounted(() => {
 }
 
 .sidebar-section button.active {
-  color: var(--md-sys-color-on-secondary-container);
-  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-primary-container);
+  background: var(--md-sys-color-primary-container);
   box-shadow: none;
 }
 
@@ -841,39 +821,36 @@ onUnmounted(() => {
 
 .route-workbench {
   display: grid;
-  grid-template-rows: 48px minmax(0, 1fr);
+  grid-template-rows: 62px minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
-  margin: 8px;
+  margin: 18px;
   overflow: hidden;
   border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: var(--app-radius-lg);
+  border-radius: 18px;
   background: var(--md-sys-color-surface-container-lowest);
-  box-shadow: var(--md-sys-elevation-1);
+  box-shadow: 0 8px 28px rgba(24, 42, 61, .06);
 }
 
 .route-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 16px;
+  padding: 0 24px;
   background: var(--md-sys-color-surface-container-lowest);
   border-bottom: 1px solid var(--md-sys-color-outline-variant);
   color: var(--md-sys-color-on-surface);
-  font-size: 13px;
+  font-size: 18px;
 }
 
 .route-title {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .route-accent {
-  width: 4px;
-  height: 20px;
-  border-radius: var(--app-radius-full);
-  background: var(--md-sys-color-primary);
+  display: none;
 }
 
 .route-repository {
@@ -899,14 +876,16 @@ onUnmounted(() => {
 
 .route-content :deep(.empty-state) {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
+  justify-content: center;
   height: 100%;
   min-height: 0;
-  padding: 42px 44px;
+  padding: 40px;
 }
 
 .route-content :deep(.empty-content) {
   margin: 0;
+  width: min(100%, 570px);
 }
 
 .route-content :deep(.checkout-view),
@@ -930,11 +909,12 @@ onUnmounted(() => {
 }
 
 .route-content :deep(.el-card__header) {
-  padding: 8px 12px;
+  padding: 14px 24px;
+  background: var(--md-sys-color-surface-container-lowest);
 }
 
 .route-content :deep(.el-card__body) {
-  padding: 12px;
+  padding: 24px;
 }
 
 .route-content :deep(.checkout-view),
@@ -989,14 +969,15 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 
-.toolbar-nav {
-  display: none;
-}
-
 @media (max-width: 900px) {
   .tool-button > span:not(.el-icon),
+  .open-in-label,
   .brand-name {
     display: none;
+  }
+  .brand-button {
+    min-width: 0;
+    padding-right: 0;
   }
   .toolbar-group {
     min-width: 0;
@@ -1052,6 +1033,8 @@ onUnmounted(() => {
   }
   .fork-toolbar {
     align-items: flex-start;
+    padding-right: 12px;
+    padding-left: 12px;
     padding-bottom: 48px;
   }
   .toolbar-group-right .tool-button,
