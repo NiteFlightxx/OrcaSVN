@@ -93,7 +93,7 @@
             <span class="badge-count">{{ workspaceStore.changedCount }}</span>
             <span class="badge-label">{{ $t('workspace.statusChanged') }}</span>
           </button>
-          <button type="button" class="status-badge added" :class="{ active: filter === 'added' }" :aria-pressed="filter === 'added'" @click="setFilter('added')">
+          <button type="button" class="status-badge unversioned" :class="{ active: filter === 'added' }" :aria-pressed="filter === 'added'" @click="setFilter('added')">
             <span class="badge-count">{{ workspaceStore.unversionedCount }}</span>
             <span class="badge-label">{{ $t('workspace.statusUnversioned') }}</span>
           </button>
@@ -704,20 +704,20 @@ const revertFile = async (file: SvnStatus) => {
 }
 
 .status-badge.modified .badge-count {
-  color: var(--md-sys-color-warning);
+  color: var(--app-color-status-modified-text);
 }
 
-.status-badge.added .badge-count {
-  color: var(--md-sys-color-success);
+.status-badge.unversioned .badge-count {
+  color: var(--app-color-status-unversioned-text);
 }
 
 .status-badge.deleted .badge-count {
-  color: var(--md-sys-color-error);
+  color: var(--app-color-status-error-text);
 }
 
 .status-badge.conflicted .badge-count,
 .status-badge.missing .badge-count {
-  color: var(--md-sys-color-error);
+  color: var(--app-color-status-error-text);
 }
 
 /* 文件列表 */
@@ -772,26 +772,26 @@ const revertFile = async (file: SvnStatus) => {
 
 .file-status.status-modified,
 .file-status.status-replaced {
-  background: #fef9c3;
-  color: #a16207;
+  background: var(--app-color-status-modified-bg);
+  color: var(--app-color-status-modified-text);
 }
 
 .file-status.status-added {
-  background: #dcfce7;
-  color: #15803d;
+  background: var(--app-color-status-added-bg);
+  color: var(--app-color-status-added-text);
 }
 
 .file-status.status-deleted,
 .file-status.status-missing,
 .file-status.status-conflicted,
 .file-status.status-obstructed {
-  background: #fee2e2;
-  color: #dc2626;
+  background: var(--app-color-status-error-bg);
+  color: var(--app-color-status-error-text);
 }
 
 .file-status.status-unversioned {
-  background: #e0e7ff;
-  color: #6366f1;
+  background: var(--app-color-status-unversioned-bg);
+  color: var(--app-color-status-unversioned-text);
 }
 
 .file-path {
@@ -805,8 +805,8 @@ const revertFile = async (file: SvnStatus) => {
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
-  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: var(--app-font-size-label);
+  font-family: var(--app-font-family-mono);
   cursor: pointer;
 }
 
@@ -1112,23 +1112,23 @@ const revertFile = async (file: SvnStatus) => {
   display: block;
   margin-bottom: 10px;
   color: var(--md-sys-color-primary);
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
   font-weight: 700;
   letter-spacing: .06em;
 }
 
 .empty-content h2 {
   margin-bottom: 12px;
-  font-size: clamp(24px, 3vw, 30px);
-  font-weight: 700;
+  font-size: clamp(24px, 3vw, var(--app-font-size-display));
+  font-weight: var(--app-font-weight-bold);
   letter-spacing: -.025em;
 }
 
 .empty-content p {
   margin-bottom: 28px;
   color: var(--md-sys-color-on-surface-variant);
-  font-size: 14px;
-  line-height: 1.6;
+  font-size: var(--app-font-size-body);
+  line-height: var(--app-line-height-relaxed);
 }
 
 .empty-actions {
@@ -1291,7 +1291,7 @@ const revertFile = async (file: SvnStatus) => {
 }
 
 .panel-header {
-  height: 52px;
+  height: var(--app-size-panel-header);
   padding: 0 18px;
   background: var(--md-sys-color-surface-container-lowest);
   border-bottom: 1px solid var(--md-sys-color-outline-variant);
@@ -1299,8 +1299,8 @@ const revertFile = async (file: SvnStatus) => {
 
 .panel-title {
   color: var(--md-sys-color-on-surface);
-  font-size: 14px;
-  font-weight: 700;
+  font-size: var(--app-font-size-body);
+  font-weight: var(--app-font-weight-bold);
 }
 
 .status-summary {
@@ -1317,12 +1317,12 @@ const revertFile = async (file: SvnStatus) => {
   width: auto;
   min-width: 0;
   gap: 6px;
-  min-height: 30px;
+  min-height: var(--app-size-control-sm);
   padding: 3px 10px;
   border: 1px solid var(--md-sys-color-outline-variant);
   border-radius: var(--app-radius-sm);
   background: var(--md-sys-color-surface-container-low);
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
 }
 
 .status-badge.active {
@@ -1332,7 +1332,7 @@ const revertFile = async (file: SvnStatus) => {
 }
 
 .file-item {
-  min-height: 48px;
+  min-height: var(--app-size-list-row);
   gap: 10px;
   padding: 6px 16px;
   border-bottom: 1px solid var(--md-sys-color-outline-variant);
@@ -1347,11 +1347,11 @@ const revertFile = async (file: SvnStatus) => {
   min-width: 20px;
   height: 21px;
   padding: 0 6px;
-  font-size: 9px;
+  font-size: var(--app-font-size-2xs);
 }
 
 .file-path {
-  font-size: 13px;
+  font-size: var(--app-font-size-label);
 }
 
 .file-actions {

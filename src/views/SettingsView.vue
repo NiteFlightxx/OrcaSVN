@@ -189,8 +189,8 @@ onMounted(() => {
   align-items: center;
   gap: var(--app-spacing-sm);
   margin-bottom: var(--app-spacing-lg);
-  font-size: 16px;
-  font-weight: 700;
+  font-size: var(--app-font-size-subtitle);
+  font-weight: var(--app-font-weight-bold);
   color: var(--el-text-color-primary);
 }
 
@@ -201,7 +201,7 @@ onMounted(() => {
 .settings-form :deep(.el-form-item__label) {
   align-items: center;
   justify-content: flex-start;
-  min-height: 40px;
+  min-height: var(--app-size-field);
   padding-right: var(--app-spacing-md);
   line-height: 1.35;
   white-space: nowrap;
@@ -219,7 +219,7 @@ onMounted(() => {
 
 .form-item-hint {
   margin-left: var(--app-spacing-sm);
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
   color: var(--el-text-color-secondary);
 }
 
@@ -230,12 +230,12 @@ onMounted(() => {
 .theme-group {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--app-spacing-sm);
 }
 
 .theme-radio {
   margin-right: 0;
-  min-height: 36px;
+  min-height: var(--app-size-control-compact);
   padding: 0 10px;
   border: 1px solid var(--md-sys-color-outline-variant);
   border-radius: var(--app-radius-sm);
@@ -260,7 +260,7 @@ onMounted(() => {
 }
 
 .theme-option .el-icon {
-  font-size: 16px;
+  font-size: var(--app-size-icon-sm);
 }
 
 .about-section {

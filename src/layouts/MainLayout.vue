@@ -305,7 +305,7 @@ onUnmounted(() => {
 <style scoped>
 .fork-shell {
   display: grid;
-  grid-template-rows: 64px minmax(0, 1fr) 28px;
+  grid-template-rows: var(--app-size-toolbar) minmax(0, 1fr) var(--app-size-statusbar);
   height: 100vh;
   overflow: hidden;
   color: var(--md-sys-color-on-surface);
@@ -357,8 +357,8 @@ onUnmounted(() => {
 .brand-mark {
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
+  width: var(--app-size-control-compact);
+  height: var(--app-size-control-compact);
   border-radius: 11px;
   color: var(--md-sys-color-on-primary);
   background: var(--md-sys-color-primary);
@@ -366,7 +366,7 @@ onUnmounted(() => {
 }
 
 .brand-mark svg {
-  width: 24px;
+  width: var(--app-size-icon-lg);
   fill: currentColor;
 }
 
@@ -422,15 +422,15 @@ onUnmounted(() => {
   flex-direction: row;
   align-items: center;
   justify-content: center;
-  min-width: 38px;
-  height: 38px;
+  min-width: var(--app-size-control);
+  height: var(--app-size-control);
   gap: 8px;
   padding: 0 10px;
   border: 0;
   border-radius: var(--app-radius-md);
   color: var(--md-sys-color-on-surface-variant);
   background: transparent;
-  font-size: 13px;
+  font-size: var(--app-font-size-label);
   cursor: pointer;
   transition:
     color var(--app-transition-fast),
@@ -487,7 +487,7 @@ onUnmounted(() => {
 }
 
 .tool-button .el-icon {
-  font-size: 18px;
+  font-size: var(--app-font-size-title);
 }
 
 .open-in-trigger {
@@ -496,7 +496,7 @@ onUnmounted(() => {
   justify-content: center;
   align-self: center;
   width: auto;
-  height: 38px;
+  height: var(--app-size-control);
   flex-direction: row;
   gap: 6px;
   padding: 0 10px;
@@ -544,7 +544,7 @@ onUnmounted(() => {
 .open-in-label {
   max-width: 90px;
   overflow: hidden;
-  font-size: 13px;
+  font-size: var(--app-font-size-label);
   line-height: 14px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -594,14 +594,14 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   min-width: 220px;
-  min-height: 38px;
+  min-height: var(--app-size-control);
   gap: 8px;
   padding: 0 34px 0 14px;
   border: 1px solid var(--md-sys-color-outline-variant);
   border-radius: var(--app-radius-sm);
   background: var(--md-sys-color-surface-container-low);
   color: var(--md-sys-color-on-surface-variant);
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
   cursor: pointer;
   transition:
     border-color var(--app-transition-fast),
@@ -621,7 +621,7 @@ onUnmounted(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--md-sys-color-on-surface);
-  font-size: 13px;
+  font-size: var(--app-font-size-label);
 }
 
 .repository-revision {
@@ -719,7 +719,7 @@ onUnmounted(() => {
 
 .fork-content {
   display: grid;
-  grid-template-columns: 224px minmax(0, 1fr);
+  grid-template-columns: var(--app-size-sidebar) minmax(0, 1fr);
   min-height: 0;
   overflow: hidden;
   background: var(--md-sys-color-surface);
@@ -780,7 +780,7 @@ onUnmounted(() => {
 .sidebar-heading {
   padding: 3px 12px 8px;
   color: var(--md-sys-color-on-surface-variant);
-  font-size: 10px;
+  font-size: var(--app-font-size-2xs);
   font-weight: 700;
   letter-spacing: .06em;
 }
@@ -789,14 +789,14 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   width: 100%;
-  height: 40px;
+  height: var(--app-size-field);
   gap: 10px;
   padding: 0 12px;
   border: 0;
   border-radius: var(--app-radius-sm);
   background: transparent;
   color: var(--md-sys-color-on-surface-variant);
-  font-size: 13px;
+  font-size: var(--app-font-size-label);
   text-align: left;
 }
 
@@ -821,15 +821,15 @@ onUnmounted(() => {
 
 .route-workbench {
   display: grid;
-  grid-template-rows: 62px minmax(0, 1fr);
+  grid-template-rows: var(--app-size-page-header) minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
   margin: 18px;
   overflow: hidden;
   border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: 18px;
+  border-radius: var(--app-radius-lg);
   background: var(--md-sys-color-surface-container-lowest);
-  box-shadow: 0 8px 28px rgba(24, 42, 61, .06);
+  box-shadow: var(--md-sys-elevation-2);
 }
 
 .route-header {
@@ -840,7 +840,7 @@ onUnmounted(() => {
   background: var(--md-sys-color-surface-container-lowest);
   border-bottom: 1px solid var(--md-sys-color-outline-variant);
   color: var(--md-sys-color-on-surface);
-  font-size: 18px;
+  font-size: var(--app-font-size-title);
 }
 
 .route-title {
@@ -880,7 +880,7 @@ onUnmounted(() => {
   justify-content: center;
   height: 100%;
   min-height: 0;
-  padding: 40px;
+  padding: var(--app-spacing-2xl);
 }
 
 .route-content :deep(.empty-content) {
@@ -1029,7 +1029,7 @@ onUnmounted(() => {
 
 @media (max-width: 650px) {
   .fork-shell {
-    grid-template-rows: 96px minmax(0, 1fr) 28px;
+    grid-template-rows: var(--app-size-toolbar-stacked) minmax(0, 1fr) var(--app-size-statusbar);
   }
   .fork-toolbar {
     align-items: flex-start;
@@ -1062,7 +1062,7 @@ onUnmounted(() => {
     white-space: nowrap;
   }
   .route-content :deep(.empty-state) {
-    padding: 36px 28px;
+    padding: var(--app-spacing-xl) var(--app-spacing-lg);
   }
   .route-content :deep(.empty-actions) {
     flex-wrap: wrap;
