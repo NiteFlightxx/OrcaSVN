@@ -82,6 +82,9 @@ import { configureSvnExecutable } from './api/svn'
 import { useSettings } from './composables/useSettings'
 import { initializeTheme } from './composables/useTheme'
 import './style.css'
+import { blockDevtoolsShortcut } from './utils/devtoolsShortcuts'
+
+window.addEventListener('keydown', blockDevtoolsShortcut, true)
 
 initializeTheme()
 

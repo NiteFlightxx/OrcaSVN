@@ -5,6 +5,7 @@
   "windows": ["*"],
   "permissions": [
     "core:default",
+    "core:webview:deny-internal-toggle-devtools",
     "shell:allow-execute",
     "shell:default",
     "dialog:default",

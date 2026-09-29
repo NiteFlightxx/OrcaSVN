@@ -71,31 +71,31 @@ jobs:
           # __VERSION__ is replaced by tauri-action with the app version.
           # Update the highlights below before tagging a new release.
           releaseBody: |-
-            ## What's new since v0.6.0
+            ## What's new since v0.6.1
 
             ### Improvements
-            - Reuse recent commit messages from the commit page
-            - Reveal a selected workspace file in the system file manager
-            - Truncate long file paths in the diff sidebar and file header while keeping the full path in a tooltip
+            - Unify light/dark colors, typography, controls, file status badges, and scrollbars
+            - Simplify the toolbar and improve responsive navigation, welcome screens, and theme selection
+            - Support keyboard operation and accessible labels for workspace filters and file selection
+            - Reduce page margins to 6px and panel corner radii to 8px
 
             ### Fixes
-            - Keep workspace status and metadata tied to the active workspace during overlapping requests
-            - Decode XML entities in SVN file paths, including names containing `&`
-            - Preserve source indentation and blank lines in Blame
-            - Show log results in newest-first order and include the full selected end date
+            - Prevent repository names and revisions from being vertically clipped; truncate long values and show full text on hover
+            - Distinguish an empty workspace from a filter with no matching files
+            - Disable developer tools, deny Tauri's internal toggle command, and block inspection shortcuts while preserving editing shortcuts
 
-            ## 自 v0.6.0 以来的更新
+            ## 自 v0.6.1 以来的更新
 
             ### 功能改进
-            - 提交页面可复用最近的提交说明
-            - 可在系统文件管理器中定位工作区选中的文件
-            - 差异页面的长路径在文件列表和文件标题中截断显示，悬停可查看完整路径
+            - 统一浅色/深色主题、字体、控件、文件状态徽标与滚动条样式
+            - 精简顶部工具栏，优化响应式导航、欢迎页面和主题选择
+            - 工作区筛选与文件选择支持键盘操作，补充无障碍标签
+            - 页面外边距缩小至 6px，面板圆角缩小至 8px
 
             ### 问题修复
-            - 并发请求期间只更新当前工作区的状态和元数据
-            - 正确解析包含 `&` 等 XML 特殊字符的 SVN 文件路径
-            - Blame 保留源码缩进和空行
-            - 日志按新到旧显示，并包含所选结束日期的全部记录
+            - 修复顶部仓库名和版本文字下沿裁切；超长内容省略显示，悬停可查看完整内容
+            - 区分工作区没有改动与筛选结果为空的提示
+            - 禁用开发者工具及 Tauri 内部切换命令，拦截调试快捷键并保留常用编辑快捷键
 
             <div align=center>
 

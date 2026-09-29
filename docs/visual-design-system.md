@@ -56,14 +56,14 @@
 | 状态徽标 | `--app-radius-xs` | 4px |
 | 按钮、输入框、导航项 | `--app-radius-sm` | 8px |
 | 普通容器 | `--app-radius-md` | 12px |
-| 工作台 | `--app-radius-lg` | 18px |
+| 工作台 | `--app-radius-sm` | 8px |
 | 欢迎卡片、对话框 | `--app-radius-xl` | 24px |
 | 控件 / 输入框 | `--app-size-control` / `--app-size-field` | 38 / 40px |
 | 表格行 / 文件行 | `--app-size-table-row` / `--app-size-list-row` | 44 / 48px |
 | 面板 / 页面标题栏 | `--app-size-panel-header` / `--app-size-page-header` | 52 / 62px |
 | 工具栏 / 状态栏 / 侧边栏 | `--app-size-toolbar` / `--app-size-statusbar` / `--app-size-sidebar` | 64 / 28 / 224px |
 
-交互控件的默认圆角为 8px；仅计数徽标等胶囊元素使用 `--app-radius-full`。工作台只保留一层外边框，内部面板以细分隔线区分，避免重复套卡片。
+交互控件的默认圆角为 8px；仅计数徽标等胶囊元素使用 `--app-radius-full`。工作台使用 6px 紧凑外边距，只保留一层外边框，内部面板以细分隔线区分，避免重复套卡片。
 
 ## 状态与响应式
 

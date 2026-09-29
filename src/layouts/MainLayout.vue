@@ -66,11 +66,10 @@
       </div>
 
       <el-dropdown class="workspace-switcher" trigger="click" popper-class="workspace-switcher-dropdown" @command="handleWorkspaceCommand">
-        <button class="repository-title" :title="$t('workspace.switchWorkspace')" :aria-label="$t('workspace.switchWorkspace')">
+        <button class="repository-title" :title="`${repositoryName} · ${repositoryRevision}\n${$t('workspace.switchWorkspace')}`" :aria-label="`${$t('workspace.switchWorkspace')}: ${repositoryName} · ${repositoryRevision}`">
           <strong>{{ repositoryName }}</strong>
           <span class="repository-revision">
-            <template v-if="workspaceStore.svnInfo">r{{ workspaceStore.svnInfo.revision }}</template>
-            <template v-else>OrcaSVN</template>
+            {{ repositoryRevision }}
           </span>
           <el-icon class="repository-chevron"><ArrowDown /></el-icon>
         </button>
@@ -254,6 +253,8 @@ const repositoryName = computed(() => {
 })
 
 const workspaceNameFromPath = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() || path
+
+const repositoryRevision = computed(() => workspaceStore.svnInfo ? `r${workspaceStore.svnInfo.revision}` : 'OrcaSVN')
 
 const routeName = computed(() => String(route.name || 'workspace'))
 const currentRouteTitle = computed(() => {
@@ -589,19 +590,22 @@ onUnmounted(() => {
 }
 
 .repository-title {
+  position: relative;
   display: flex;
   flex-direction: row;
   align-items: center;
   justify-content: center;
-  min-width: 220px;
+  width: 220px;
+  min-width: 0;
   min-height: var(--app-size-control);
   gap: 8px;
-  padding: 0 34px 0 14px;
+  padding: 5px 42px 5px 14px;
   border: 1px solid var(--md-sys-color-outline-variant);
   border-radius: var(--app-radius-sm);
   background: var(--md-sys-color-surface-container-low);
   color: var(--md-sys-color-on-surface-variant);
   font-size: var(--app-font-size-sm);
+  line-height: 1.5;
   cursor: pointer;
   transition:
     border-color var(--app-transition-fast),
@@ -616,17 +620,26 @@ onUnmounted(() => {
 
 .repository-title strong {
   display: block;
+  min-width: 0;
   max-width: 150px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--md-sys-color-on-surface);
   font-size: var(--app-font-size-label);
+  line-height: 1.5;
+  padding-block: 2px;
 }
 
 .repository-revision {
-  flex: 0 0 auto;
-  line-height: 1;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.5;
+  padding-block: 2px;
 }
 
 .repository-chevron {
@@ -824,10 +837,10 @@ onUnmounted(() => {
   grid-template-rows: var(--app-size-page-header) minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
-  margin: 18px;
+  margin: 6px;
   overflow: hidden;
   border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: var(--app-radius-lg);
+  border-radius: var(--app-radius-sm);
   background: var(--md-sys-color-surface-container-lowest);
   box-shadow: var(--md-sys-elevation-2);
 }
@@ -1021,9 +1034,6 @@ onUnmounted(() => {
     height: 34px;
     padding: 0 10px;
     white-space: nowrap;
-  }
-  .route-workbench {
-    margin: 6px;
   }
 }
 
