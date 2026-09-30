@@ -106,12 +106,29 @@ pub async fn cached_status(
     } else {
         None
     };
+    let rescan_due = force
+        || (workspace.entries.is_some()
+            && workspace
+                .last_full_check
+                .is_none_or(|time| time.elapsed() >= FULL_CHECK_INTERVAL));
+    let previous_inventory = if rescan_due {
+        None
+    } else {
+        workspace.inventory.clone()
+    };
     // Run directory I/O away from the async command thread; enumerate once per
     // refresh, including while the app is open, with no watcher registration.
     let (current, restored) = tokio::task::spawn_blocking(move || {
         let restored =
             restore_dir.and_then(|directory| status_snapshot::read(&directory, &scan_root));
-        let current = status_snapshot::capture(&scan_root).map(Arc::new);
+        let baseline = previous_inventory.as_deref().or_else(|| restored.as_ref().map(|snapshot| &snapshot.inventory));
+        let current = status_snapshot::capture_incremental(&scan_root, baseline)
+            .or_else(|error| {
+                if baseline.is_some() {
+                    tracing::debug!(%error, "directory cache changed during scan; retrying full enumeration");
+                    status_snapshot::capture(&scan_root)
+                } else { Err(error) }
+            }).map(Arc::new);
         (current, restored)
     })
     .await
@@ -148,6 +165,7 @@ pub async fn cached_status(
         {
             workspace.last_query = Some(QueryMode::Reuse);
         }
+        workspace.inventory = current;
         return Ok(workspace.entries.clone().unwrap_or_default());
     }
     let mut used_full_scan = full;
@@ -609,6 +627,8 @@ mod tests {
         }
         fixture.svn(&["add", fixture.wc.to_str().unwrap(), "--force"]);
         fixture.svn(&["commit", fixture.wc.to_str().unwrap(), "-m", "baseline"]);
+        // Model reopening an existing workspace after directory stamps settle.
+        std::thread::sleep(Duration::from_millis(1100));
         runtime().block_on(async {
             let wc = fixture.wc.to_str().unwrap();
             let directory = fixture.root.join("cache");
@@ -645,8 +665,15 @@ mod tests {
             flush_snapshot(&fixture.wc).await;
             assert_eq!(statuses(&reopened), statuses(&full));
             let start = Instant::now();
-            status_snapshot::capture(&fixture.wc).unwrap();
+            let inventory = status_snapshot::capture(&fixture.wc).unwrap();
             let inventory_ms = start.elapsed().as_secs_f64() * 1000.;
+            let start = Instant::now();
+            let (incremental, stats) = status_snapshot::capture_measured(&fixture.wc, Some(&inventory)).unwrap();
+            let incremental_ms = start.elapsed().as_secs_f64() * 1000.;
+            assert_eq!(inventory, incremental);
+            #[cfg(unix)]
+            assert!(stats.reused_directories >= 200);
+            eprintln!("Incremental inventory: {incremental_ms:.1} ms, enumerated dirs {}, reused dirs {}, checked files {}", stats.enumerated_directories, stats.reused_directories, stats.checked_files);
             eprintln!("Filesystem inventory only: {inventory_ms:.1} ms");
             eprintln!("Disk snapshot reopen: 40 offline changes {reopen_changed_ms:.1} ms, unchanged {reopen_unchanged_ms:.1} ms (includes inventory and JSON loading)");
             eprintln!("20,000 files / 40 changes: initial + snapshot {initial_ms:.1} ms, filesystem-scoped {scoped_ms:.1} ms, full SVN {full_ms:.1} ms, unchanged {unchanged_ms:.1} ms");

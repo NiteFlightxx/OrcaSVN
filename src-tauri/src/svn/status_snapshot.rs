@@ -10,7 +10,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 static NEXT_TEMP_FILE: AtomicU64 = AtomicU64::new(0);
 
-const VERSION: u32 = 2;
+const VERSION: u32 = 3;
 const MAX_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_FILES: usize = 500_000;
 
@@ -27,9 +27,22 @@ pub(super) struct Stamp {
     #[serde(rename = "l", skip_serializing_if = "Option::is_none", default)]
     link: Option<PathBuf>,
 }
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct DirectoryStamp {
+    modified: u128,
+    changed: i128,
+    device: u64,
+    inode: u64,
+}
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct Directory {
+    stamp: DirectoryStamp,
+    children: Vec<usize>,
+}
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub(super) struct Inventory {
     files: Vec<(String, Stamp)>,
+    directories: BTreeMap<String, Directory>,
     configuration: BTreeMap<String, u64>,
 }
 impl Inventory {
@@ -76,94 +89,263 @@ fn configuration() -> io::Result<BTreeMap<String, u64>> {
     Ok(result)
 }
 
+#[derive(Default)]
+pub(super) struct CaptureStats {
+    pub enumerated_directories: usize,
+    pub reused_directories: usize,
+    pub checked_files: usize,
+}
+
+fn directory_stamp(metadata: &fs::Metadata) -> io::Result<DirectoryStamp> {
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+        return Err(io::Error::other("directory was replaced"));
+    }
+    #[cfg(unix)]
+    let (changed, device, inode) = {
+        use std::os::unix::fs::MetadataExt;
+        (
+            i128::from(metadata.ctime()) * 1_000_000_000 + i128::from(metadata.ctime_nsec()),
+            metadata.dev(),
+            metadata.ino(),
+        )
+    };
+    #[cfg(not(unix))]
+    let (changed, device, inode) = (0, 0, 0);
+    Ok(DirectoryStamp {
+        modified: metadata
+            .modified()?
+            .duration_since(UNIX_EPOCH)
+            .map_err(io::Error::other)?
+            .as_nanos(),
+        changed,
+        device,
+        inode,
+    })
+}
+
+fn can_reuse(previous: &DirectoryStamp, current: &DirectoryStamp) -> bool {
+    // Windows enumeration already supplies file metadata; individually stating
+    // cached paths there would add expensive calls. Coarse Unix ctimes also
+    // request enumeration rather than trusting an ambiguous directory stamp.
+    let stable_age = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .and_then(|now| {
+            now.as_nanos()
+                .checked_sub(u128::try_from(current.changed).ok()?)
+        })
+        .is_some_and(|age| age >= 1_000_000_000);
+    cfg!(unix) && previous == current && current.changed % 1_000_000_000 != 0 && stable_age
+}
+
+fn directory_entry() -> Stamp {
+    Stamp {
+        kind: 0,
+        size: 0,
+        modified: 0,
+        changed: 0,
+        link: None,
+    }
+}
+
+fn file_stamp(metadata: &fs::Metadata, path: &Path) -> io::Result<Stamp> {
+    let kind = if metadata.is_file() {
+        1
+    } else if metadata.file_type().is_symlink() {
+        2
+    } else {
+        return Err(io::Error::other("file type changed or is unsupported"));
+    };
+    #[cfg(unix)]
+    let changed = {
+        use std::os::unix::fs::MetadataExt;
+        i128::from(metadata.ctime()) * 1_000_000_000 + i128::from(metadata.ctime_nsec())
+    };
+    #[cfg(not(unix))]
+    let changed = 0;
+    Ok(Stamp {
+        kind,
+        size: metadata.len(),
+        modified: metadata
+            .modified()?
+            .duration_since(UNIX_EPOCH)
+            .map_err(io::Error::other)?
+            .as_nanos(),
+        changed,
+        link: if kind == 2 {
+            Some(fs::read_link(path)?)
+        } else {
+            None
+        },
+    })
+}
+
 pub(super) fn capture(root: &Path) -> io::Result<Inventory> {
+    capture_incremental(root, None)
+}
+
+pub(super) fn capture_incremental(
+    root: &Path,
+    previous: Option<&Inventory>,
+) -> io::Result<Inventory> {
+    let (inventory, stats) = capture_measured(root, previous)?;
+    tracing::debug!(
+        enumerated_directories = stats.enumerated_directories,
+        reused_directories = stats.reused_directories,
+        checked_files = stats.checked_files,
+        "filesystem inventory captured"
+    );
+    Ok(inventory)
+}
+
+pub(super) fn capture_measured(
+    root: &Path,
+    previous: Option<&Inventory>,
+) -> io::Result<(Inventory, CaptureStats)> {
     let configuration = configuration()?;
-    let mut result = Vec::new();
-    let mut pending = vec![(PathBuf::new(), false)];
-    while let Some((relative_directory, administrative)) = pending.pop() {
-        for entry in fs::read_dir(root.join(&relative_directory))? {
-            let entry = entry?;
-            let name = entry.file_name();
-            // Carry the administrative flag per directory instead of parsing
-            // every file's full path and allocating component lists.
-            if administrative && (name == "pristine" || name == "tmp") {
-                continue;
-            }
-            let relative = relative_directory.join(&name);
-            let text = relative
-                .to_str()
-                .ok_or_else(|| io::Error::other("non-UTF8 path"))?;
-            #[cfg(unix)]
-            if text.contains('\\') {
-                return Err(io::Error::other("ambiguous SVN path"));
-            }
-            let key = text.replace('\\', "/");
-            let file_type = entry.file_type()?;
-            if file_type.is_dir() {
-                // read_dir already returns the type; directories need no stat.
-                result.push((
-                    key,
-                    Stamp {
-                        kind: 0,
-                        size: 0,
-                        modified: 0,
-                        changed: 0,
-                        link: None,
-                    },
-                ));
-                pending.push((relative, administrative || name == ".svn" || name == "_svn"));
-            } else {
-                let kind = if file_type.is_file() {
-                    1
-                } else if file_type.is_symlink() {
-                    2
-                } else {
-                    return Err(io::Error::other("unsupported filesystem entry"));
-                };
-                if kind == 2 && (name == ".svn" || name == "_svn") {
-                    return Err(io::Error::other("linked SVN administration directory"));
-                }
-                // DirEntry::metadata does not follow symlinks and reuses the
-                // directory enumeration's metadata on Windows.
-                let metadata = entry.metadata()?;
-                #[cfg(unix)]
-                let changed = {
-                    use std::os::unix::fs::MetadataExt;
-                    i128::from(metadata.ctime()) * 1_000_000_000 + i128::from(metadata.ctime_nsec())
-                };
-                #[cfg(not(unix))]
-                let changed = 0;
-                result.push((
-                    key,
-                    Stamp {
-                        kind,
-                        size: metadata.len(),
-                        modified: metadata
-                            .modified()?
-                            .duration_since(UNIX_EPOCH)
-                            .map_err(io::Error::other)?
-                            .as_nanos(),
-                        changed,
-                        link: if kind == 2 {
-                            Some(fs::read_link(entry.path())?)
-                        } else {
-                            None
-                        },
-                    },
-                ));
-            }
-            if result.len() > MAX_FILES {
-                return Err(io::Error::other("filesystem inventory too large"));
-            }
+    if let Some(previous) = previous {
+        if let Some(result) = capture_unchanged_directories(root, previous, &configuration) {
+            return Ok(result);
         }
     }
-    // A compact sorted vector avoids per-node allocation and tree insertion;
-    // deserialization and successive comparisons also remain linear.
-    result.sort_unstable_by(|a, b| a.0.cmp(&b.0));
-    Ok(Inventory {
-        files: result,
-        configuration,
-    })
+    let mut files = Vec::new();
+    let mut directories = BTreeMap::new();
+    let mut stats = CaptureStats::default();
+    let mut pending = vec![(String::new(), false)];
+    while let Some((relative, administrative)) = pending.pop() {
+        let directory = root.join(&relative);
+        let stamp = directory_stamp(&fs::symlink_metadata(&directory)?)?;
+        let cached = previous
+            .and_then(|before| before.directories.get(&relative))
+            .filter(|before| can_reuse(&before.stamp, &stamp));
+        directories.insert(
+            relative.clone(),
+            Directory {
+                stamp,
+                children: Vec::new(),
+            },
+        );
+        if let Some(cached) = cached {
+            stats.reused_directories += 1;
+            for &index in &cached.children {
+                let (path, before) = &previous.unwrap().files[index];
+                if before.kind == 0 {
+                    let name = path.rsplit('/').next().unwrap();
+                    pending.push((
+                        path.clone(),
+                        administrative || name == ".svn" || name == "_svn",
+                    ));
+                    files.push((path.clone(), directory_entry()));
+                } else {
+                    stats.checked_files += 1;
+                    let absolute = root.join(path);
+                    files.push((
+                        path.clone(),
+                        file_stamp(&fs::symlink_metadata(&absolute)?, &absolute)?,
+                    ));
+                }
+            }
+        } else {
+            stats.enumerated_directories += 1;
+            for entry in fs::read_dir(&directory)? {
+                let entry = entry?;
+                let name = entry.file_name();
+                if administrative && (name == "pristine" || name == "tmp") {
+                    continue;
+                }
+                let name = name
+                    .to_str()
+                    .ok_or_else(|| io::Error::other("non-UTF8 path"))?;
+                #[cfg(unix)]
+                if name.contains('\\') {
+                    return Err(io::Error::other("ambiguous SVN path"));
+                }
+                let path = if relative.is_empty() {
+                    name.to_owned()
+                } else {
+                    format!("{relative}/{name}")
+                };
+                let file_type = entry.file_type()?;
+                if file_type.is_dir() {
+                    pending.push((
+                        path.clone(),
+                        administrative || name == ".svn" || name == "_svn",
+                    ));
+                    files.push((path, directory_entry()));
+                } else {
+                    if file_type.is_symlink() && (name == ".svn" || name == "_svn") {
+                        return Err(io::Error::other("linked SVN administration directory"));
+                    }
+                    stats.checked_files += 1;
+                    files.push((path, file_stamp(&entry.metadata()?, &entry.path())?));
+                }
+            }
+        }
+        if files.len() > MAX_FILES {
+            return Err(io::Error::other("filesystem inventory too large"));
+        }
+    }
+    files.sort_unstable_by(|a, b| a.0.cmp(&b.0));
+    for (index, (path, _)) in files.iter().enumerate() {
+        let parent = path.rsplit_once('/').map_or("", |(parent, _)| parent);
+        directories
+            .get_mut(parent)
+            .ok_or_else(|| io::Error::other("incomplete directory inventory"))?
+            .children
+            .push(index);
+    }
+    Ok((
+        Inventory {
+            files,
+            directories,
+            configuration,
+        },
+        stats,
+    ))
+}
+
+fn capture_unchanged_directories(
+    root: &Path,
+    previous: &Inventory,
+    configuration: &BTreeMap<String, u64>,
+) -> Option<(Inventory, CaptureStats)> {
+    if previous.configuration != *configuration || previous.directories.is_empty() {
+        return None;
+    }
+    for (path, directory) in &previous.directories {
+        let current = directory_stamp(&fs::symlink_metadata(root.join(path)).ok()?).ok()?;
+        if !can_reuse(&directory.stamp, &current) {
+            return None;
+        }
+    }
+    // Sorted paths and directory child indices can be retained exactly when
+    // all directories are unchanged. File contents are still checked via stat.
+    let mut files = Vec::with_capacity(previous.files.len());
+    let mut stats = CaptureStats {
+        reused_directories: previous.directories.len(),
+        ..CaptureStats::default()
+    };
+    for (path, before) in &previous.files {
+        let stamp = if before.kind == 0 {
+            directory_entry()
+        } else {
+            stats.checked_files += 1;
+            let absolute = root.join(path);
+            file_stamp(&fs::symlink_metadata(&absolute).ok()?, &absolute).ok()?
+        };
+        if stamp.kind != before.kind {
+            return None;
+        }
+        files.push((path.clone(), stamp));
+    }
+    Some((
+        Inventory {
+            files,
+            directories: previous.directories.clone(),
+            configuration: configuration.clone(),
+        },
+        stats,
+    ))
 }
 
 /// None requests a full scan (SVN metadata or directory structure changed).
@@ -237,6 +419,50 @@ fn now() -> u64 {
         .unwrap_or_default()
         .as_secs()
 }
+fn valid_directory_index(inventory: &Inventory) -> bool {
+    if !inventory.directories.contains_key("") || inventory.directories.len() > MAX_FILES + 1 {
+        return false;
+    }
+    let mut seen = vec![false; inventory.files.len()];
+    for (path, stamp) in &inventory.files {
+        if path.is_empty()
+            || stamp.kind > 2
+            || Path::new(path)
+                .components()
+                .any(|part| !matches!(part, std::path::Component::Normal(_)))
+        {
+            return false;
+        }
+        if stamp.kind == 0 && !inventory.directories.contains_key(path) {
+            return false;
+        }
+    }
+    for (parent, directory) in &inventory.directories {
+        if !parent.is_empty()
+            && !inventory
+                .files
+                .binary_search_by(|(path, _)| path.cmp(parent))
+                .ok()
+                .is_some_and(|index| inventory.files[index].1.kind == 0)
+        {
+            return false;
+        }
+        if directory.children.windows(2).any(|pair| pair[0] >= pair[1]) {
+            return false;
+        }
+        for &index in &directory.children {
+            let Some((path, _)) = inventory.files.get(index) else {
+                return false;
+            };
+            if seen[index] || path.rsplit_once('/').map_or("", |(parent, _)| parent) != parent {
+                return false;
+            }
+            seen[index] = true;
+        }
+    }
+    seen.into_iter().all(|item| item)
+}
+
 pub(super) fn read(directory: &Path, root: &Path) -> Option<Snapshot> {
     let path = location(directory, root);
     if fs::metadata(&path).ok()?.len() > MAX_BYTES {
@@ -246,6 +472,7 @@ pub(super) fn read(directory: &Path, root: &Path) -> Option<Snapshot> {
     (snapshot.version == VERSION
         && snapshot.root == root
         && snapshot.inventory.files.len() <= MAX_FILES
+        && valid_directory_index(&snapshot.inventory)
         && snapshot
             .inventory
             .files
@@ -322,9 +549,114 @@ mod tests {
                     )
                 })
                 .collect(),
+            directories: BTreeMap::from([(
+                String::new(),
+                Directory {
+                    stamp: DirectoryStamp {
+                        modified: 1,
+                        changed: 1,
+                        device: 0,
+                        inode: 0,
+                    },
+                    children: (0..count).collect(),
+                },
+            )]),
             configuration: BTreeMap::new(),
         }
     }
+    #[test]
+    fn directory_reuse_detects_edits_deletions_moves_and_nested_structure() {
+        let root = std::env::temp_dir().join(format!(
+            "orcasvn-directory-reuse-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(root.join("a")).unwrap();
+        fs::create_dir_all(root.join("b")).unwrap();
+        fs::write(root.join("a/edit"), "base").unwrap();
+        fs::write(root.join("a/delete"), "delete").unwrap();
+        fs::write(root.join("b/move"), "move").unwrap();
+        // Let directory timestamps leave the conservative one-second window.
+        #[cfg(unix)]
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        let initial = capture(&root).unwrap();
+        let (unchanged, stats) = capture_measured(&root, Some(&initial)).unwrap();
+        assert_eq!(initial, unchanged);
+        #[cfg(unix)]
+        assert_eq!(stats.enumerated_directories, 0);
+        assert_eq!(stats.checked_files, 3);
+        fs::write(root.join("a/edit"), "edit").unwrap();
+        let (edited, stats) = capture_measured(&root, Some(&unchanged)).unwrap();
+        assert_eq!(edited, capture(&root).unwrap());
+        assert_eq!(
+            differences(&unchanged, &edited),
+            Some(vec!["a/edit".into()])
+        );
+        #[cfg(unix)]
+        assert_eq!(stats.enumerated_directories, 0);
+        #[cfg(unix)]
+        let modified = fs::metadata(root.join("a")).unwrap().modified().unwrap();
+        fs::remove_file(root.join("a/delete")).unwrap();
+        #[cfg(unix)]
+        fs::File::open(root.join("a"))
+            .unwrap()
+            .set_times(fs::FileTimes::new().set_modified(modified))
+            .unwrap();
+        let (deleted, stats) = capture_measured(&root, Some(&edited)).unwrap();
+        assert_eq!(deleted, capture(&root).unwrap());
+        assert_eq!(
+            differences(&edited, &deleted),
+            Some(vec!["a/delete".into()])
+        );
+        #[cfg(unix)]
+        assert_eq!(stats.enumerated_directories, 1);
+        fs::rename(root.join("b/move"), root.join("a/moved")).unwrap();
+        let (moved, stats) = capture_measured(&root, Some(&deleted)).unwrap();
+        assert_eq!(moved, capture(&root).unwrap());
+        assert_eq!(
+            differences(&deleted, &moved),
+            Some(vec!["a/moved".into(), "b/move".into()])
+        );
+        #[cfg(unix)]
+        assert_eq!(stats.enumerated_directories, 2);
+        fs::create_dir(root.join("b/new-dir")).unwrap();
+        fs::write(root.join("b/new-dir/new"), "new").unwrap();
+        let nested = capture_incremental(&root, Some(&moved)).unwrap();
+        assert_eq!(nested, capture(&root).unwrap());
+        assert!(differences(&moved, &nested).is_none());
+        fs::remove_dir_all(root.join("a")).unwrap();
+        let removed = capture_incremental(&root, Some(&nested)).unwrap();
+        assert_eq!(removed, capture(&root).unwrap());
+        assert!(differences(&nested, &removed).is_none());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn corrupt_directory_indices_and_coarse_or_replaced_directories_are_rejected() {
+        let mut cached = inventory(1);
+        assert!(valid_directory_index(&cached));
+        cached.directories.get_mut("").unwrap().children[0] = 100;
+        assert!(!valid_directory_index(&cached));
+        let stamp = DirectoryStamp {
+            modified: 1,
+            changed: 0,
+            device: 1,
+            inode: 1,
+        };
+        assert!(!can_reuse(&stamp, &stamp));
+        let high_resolution = DirectoryStamp {
+            changed: 1,
+            ..stamp
+        };
+        let replaced = DirectoryStamp {
+            inode: 2,
+            ..high_resolution.clone()
+        };
+        assert!(!can_reuse(&high_resolution, &replaced));
+    }
+
     #[test]
     fn concurrent_snapshot_writers_keep_inventory_and_status_paired() {
         let root = std::env::temp_dir().join(format!(
