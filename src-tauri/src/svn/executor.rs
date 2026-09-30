@@ -52,7 +52,7 @@ fn svn_executable_lock() -> &'static RwLock<PathBuf> {
     SVN_EXECUTABLE.get_or_init(|| RwLock::new(PathBuf::from("svn")))
 }
 
-fn current_svn_executable() -> Result<PathBuf, SvnError> {
+pub(super) fn current_svn_executable() -> Result<PathBuf, SvnError> {
     svn_executable_lock()
         .read()
         .map(|path| path.clone())

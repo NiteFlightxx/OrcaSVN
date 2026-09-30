@@ -8,6 +8,7 @@ use std::env;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
+use tauri::Manager;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CommandResult {
@@ -552,10 +553,21 @@ async fn svn_commit(
 }
 
 #[tauri::command]
-async fn svn_status(path: String, force: Option<bool>) -> Result<Vec<SvnStatus>, String> {
-    svn::cached_status(&path, force.unwrap_or(false))
-        .await
-        .map_err(|e| e.to_string())
+async fn svn_status(
+    app: tauri::AppHandle,
+    path: String,
+    force: Option<bool>,
+) -> Result<Vec<SvnStatus>, String> {
+    svn::cached_status(
+        &path,
+        force.unwrap_or(false),
+        app.path()
+            .app_cache_dir()
+            .ok()
+            .map(|path| path.join("workspace-status")),
+    )
+    .await
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

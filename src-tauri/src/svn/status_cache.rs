@@ -1,5 +1,6 @@
 use super::executor::SvnError;
 use super::operations::{status, status_for_paths};
+use super::status_snapshot::{self, Inventory};
 use crate::SvnStatus;
 use notify::event::{CreateKind, ModifyKind, RemoveKind};
 use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
@@ -117,6 +118,7 @@ struct WorkspaceStatus {
     changes: Arc<Mutex<Changes>>,
     entries: Option<Vec<SvnStatus>>,
     last_full_check: Option<Instant>,
+    pending_save: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl WorkspaceStatus {
@@ -127,6 +129,7 @@ impl WorkspaceStatus {
             changes: Arc::new(Mutex::new(Changes::default())),
             entries: None,
             last_full_check: None,
+            pending_save: None,
         }
     }
 }
@@ -198,9 +201,12 @@ fn merge_status(previous: &[SvnStatus], fresh: Vec<SvnStatus>, paths: &[String])
     entries
 }
 
-/// Filesystem notifications narrow subsequent status scans. No persisted cache
-/// is trusted across process restarts, when filesystem events were not observed.
-pub async fn cached_status(path: &str, force: bool) -> Result<Vec<SvnStatus>, SvnError> {
+/// Reopening validates a disk snapshot against the filesystem before scoping SVN.
+pub async fn cached_status(
+    path: &str,
+    force: bool,
+    cache_dir: Option<PathBuf>,
+) -> Result<Vec<SvnStatus>, SvnError> {
     let owned_path = path.to_string();
     let root = tokio::task::spawn_blocking(move || std::fs::canonicalize(owned_path))
         .await
@@ -216,6 +222,30 @@ pub async fn cached_status(path: &str, force: bool) -> Result<Vec<SvnStatus>, Sv
             tokio::task::spawn_blocking(move || start_watching(watch_root, changes))
                 .await
                 .map_err(|error| SvnError::CommandFailed(error.to_string()))?;
+    }
+    let mut reopening_inventory = None;
+    if workspace.entries.is_none() && !force {
+        if let Some(directory) = cache_dir.clone() {
+            let inventory_root = root.clone();
+            let restored = tokio::task::spawn_blocking(move || {
+                let snapshot = status_snapshot::read(&directory, &inventory_root)?;
+                let current = status_snapshot::capture(&inventory_root).ok()?;
+                let paths = status_snapshot::differences(&snapshot.inventory, &current)?;
+                Some((snapshot.entries, current, paths))
+            })
+            .await
+            .map_err(|error| SvnError::CommandFailed(error.to_string()))?;
+            if let Some((entries, current, paths)) = restored {
+                workspace.entries = Some(entries);
+                workspace.last_full_check = Some(Instant::now());
+                let mut changes = workspace
+                    .changes
+                    .lock()
+                    .map_err(|_| SvnError::CommandFailed("文件变化队列锁已损坏".into()))?;
+                changes.paths.extend(paths);
+                reopening_inventory = Some(current);
+            }
+        }
     }
     if workspace.entries.is_some()
         && !force
@@ -247,18 +277,37 @@ pub async fn cached_status(path: &str, force: bool) -> Result<Vec<SvnStatus>, Sv
         || workspace.entries.is_none()
         || workspace.watcher.is_none()
         || changes.full_scan
+        || changes.paths.len() > MAX_DIRTY_PATHS
         || workspace
             .last_full_check
             .is_none_or(|time| time.elapsed() >= FULL_CHECK_INTERVAL);
     let paths: Vec<_> = changes.paths.into_iter().collect();
     let cwd = root.to_string_lossy();
     let mut used_full_scan = full;
+    if !full && paths.is_empty() {
+        tracing::debug!(workspace = %cwd, "filesystem unchanged; reusing SVN status");
+        return Ok(workspace.entries.clone().unwrap_or_default());
+    }
+    // Live scoped updates can retain the older disk baseline: next reopen will
+    // compare against that baseline and verify all changes since it was saved.
+    let persist = full || reopening_inventory.is_some();
+    // Capture before SVN, then persist only when a second inventory agrees.
+    // A concurrent edit must never be saved with an older SVN result.
+    let before: Option<Inventory> = if cache_dir.is_some() && persist {
+        if reopening_inventory.is_some() {
+            reopening_inventory
+        } else {
+            let capture_root = root.clone();
+            tokio::task::spawn_blocking(move || status_snapshot::capture(&capture_root).ok())
+                .await
+                .unwrap_or(None)
+        }
+    } else {
+        None
+    };
     let result = if full {
         tracing::debug!(workspace = %cwd, "complete SVN status scan");
         status(&cwd).await
-    } else if paths.is_empty() {
-        tracing::debug!(workspace = %cwd, "filesystem unchanged; reusing SVN status");
-        return Ok(workspace.entries.clone().unwrap_or_default());
     } else {
         tracing::debug!(workspace = %cwd, ?paths, "filesystem changes scoped SVN status");
         match status_for_paths(&cwd, &paths).await {
@@ -282,6 +331,33 @@ pub async fn cached_status(path: &str, force: bool) -> Result<Vec<SvnStatus>, Sv
             if used_full_scan {
                 workspace.last_full_check = Some(Instant::now());
             }
+            if let (Some(directory), Some(before)) = (cache_dir, before) {
+                let save_root = root.clone();
+                let saved_entries = entries.clone();
+                if let Some(previous) = workspace.pending_save.take() {
+                    let _ = previous.await;
+                }
+                let changes = workspace.changes.clone();
+                // Verification is complete. Persist in the background so the
+                // second walk and JSON write do not delay displaying results.
+                workspace.pending_save = Some(tokio::task::spawn_blocking(move || {
+                    let after = status_snapshot::capture(&save_root).ok();
+                    if after.as_ref() != Some(&before) {
+                        if let Ok(mut changes) = changes.lock() {
+                            changes.full();
+                        }
+                        return;
+                    }
+                    if let Err(error) = status_snapshot::write(
+                        &directory,
+                        &save_root,
+                        after.unwrap(),
+                        saved_entries,
+                    ) {
+                        tracing::warn!(%error, "could not persist workspace status");
+                    }
+                }));
+            }
             Ok(entries)
         }
         Err(error) => {
@@ -300,6 +376,10 @@ mod tests {
     use std::fs;
     use std::process::Command;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    async fn cached_status(path: &str, force: bool) -> Result<Vec<SvnStatus>, SvnError> {
+        super::cached_status(path, force, None).await
+    }
 
     fn entry(path: &str, code: &str) -> SvnStatus {
         SvnStatus {
@@ -426,6 +506,137 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["src/sub", "src2/a"]
         );
+    }
+
+    async fn flush_snapshot(root: &Path) {
+        let workspace = get_workspace(&fs::canonicalize(root).unwrap()).unwrap();
+        let mut workspace = workspace.lock().await;
+        if let Some(save) = workspace.pending_save.take() {
+            save.await.unwrap();
+        }
+    }
+
+    fn forget_workspace(root: &Path) {
+        let root = fs::canonicalize(root).unwrap();
+        WORKSPACES
+            .get()
+            .unwrap()
+            .lock()
+            .unwrap()
+            .retain(|(path, _)| path != &root);
+    }
+
+    #[test]
+    fn disk_snapshot_reopens_and_checks_offline_changes() {
+        let Some(fixture) = Fixture::new() else {
+            return;
+        };
+        fixture.init();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        runtime.block_on(async {
+            let path = fixture.wc.to_str().unwrap();
+            let directory = fixture.root.join("cache");
+            let query = || super::cached_status(path, false, Some(directory.clone()));
+            assert!(query().await.unwrap().is_empty());
+            flush_snapshot(&fixture.wc).await;
+            let saved =
+                status_snapshot::read(&directory, &fs::canonicalize(&fixture.wc).unwrap()).unwrap();
+            forget_workspace(&fixture.wc);
+            fs::write(fixture.wc.join("src/file@name.txt"), "edit\n").unwrap();
+            fs::rename(
+                fixture.wc.join("src/sub/other.txt"),
+                fixture.wc.join("src/sub/renamed.txt"),
+            )
+            .unwrap();
+            fs::write(fixture.wc.join("ignored.tmp"), "ignored").unwrap();
+            let current = status_snapshot::capture(&fixture.wc).unwrap();
+            assert_eq!(
+                status_snapshot::differences(&saved.inventory, &current)
+                    .unwrap()
+                    .len(),
+                4
+            );
+            assert_eq!(
+                statuses(&query().await.unwrap()),
+                statuses(&status(path).await.unwrap())
+            );
+            flush_snapshot(&fixture.wc).await;
+            forget_workspace(&fixture.wc);
+            // Revert one previous modification while closed, retaining unrelated ones.
+            fs::write(fixture.wc.join("src/file@name.txt"), "base\n").unwrap();
+            assert_eq!(
+                statuses(&query().await.unwrap()),
+                statuses(&status(path).await.unwrap())
+            );
+            flush_snapshot(&fixture.wc).await;
+            forget_workspace(&fixture.wc);
+            fs::create_dir(fixture.wc.join("new-dir")).unwrap();
+            fs::write(fixture.wc.join("new-dir/file"), "new").unwrap();
+            assert_eq!(
+                statuses(&query().await.unwrap()),
+                statuses(&status(path).await.unwrap())
+            );
+            flush_snapshot(&fixture.wc).await;
+            forget_workspace(&fixture.wc);
+            fixture.svn(&["propset", "test:property", "value", path]);
+            assert_eq!(
+                statuses(&query().await.unwrap()),
+                statuses(&status(path).await.unwrap())
+            );
+            flush_snapshot(&fixture.wc).await;
+            forget_workspace(&fixture.wc);
+            // Corrupt disk cache cannot hide changes.
+            for item in fs::read_dir(&directory).unwrap() {
+                fs::write(item.unwrap().path(), "broken json").unwrap();
+            }
+            fs::remove_file(fixture.wc.join("src/file@name.txt")).unwrap();
+            assert_eq!(
+                statuses(&query().await.unwrap()),
+                statuses(&status(path).await.unwrap())
+            );
+            flush_snapshot(&fixture.wc).await;
+        });
+    }
+
+    #[test]
+    fn inventory_detects_same_size_edits_and_does_not_follow_symlinks() {
+        let root = std::env::temp_dir().join(format!(
+            "orcasvn-inventory-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir(&root).unwrap();
+        fs::write(root.join("file"), "aaaa").unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink("/", root.join("outside")).unwrap();
+        let before = status_snapshot::capture(&root).unwrap();
+        #[cfg(unix)]
+        let original_time = fs::metadata(root.join("file")).unwrap().modified().unwrap();
+        fs::write(root.join("file"), "bbbb").unwrap();
+        #[cfg(unix)]
+        fs::File::options()
+            .write(true)
+            .open(root.join("file"))
+            .unwrap()
+            .set_times(fs::FileTimes::new().set_modified(original_time))
+            .unwrap();
+        let after = status_snapshot::capture(&root).unwrap();
+        assert_eq!(
+            status_snapshot::differences(&before, &after),
+            Some(vec!["file".into()])
+        );
+        assert_eq!(before.len(), if cfg!(unix) { 2 } else { 1 });
+        fs::create_dir(root.join("new-dir")).unwrap();
+        assert!(
+            status_snapshot::differences(&after, &status_snapshot::capture(&root).unwrap())
+                .is_none()
+        );
+        fs::remove_dir_all(root).unwrap();
     }
 
     struct Fixture {
@@ -623,8 +834,10 @@ mod tests {
         fixture.svn(&["commit", fixture.wc.to_str().unwrap(), "-m", "baseline"]);
         runtime().block_on(async {
             let wc = fixture.wc.to_str().unwrap();
+            let directory = fixture.root.join("cache");
             let initial = Instant::now();
-            cached_status(wc, false).await.unwrap();
+            super::cached_status(wc, false, Some(directory.clone())).await.unwrap();
+            flush_snapshot(&fixture.wc).await;
             let initial_ms = initial.elapsed().as_secs_f64() * 1000.;
             for file in 0..40 { fs::write(fixture.wc.join(format!("group-000/file-{file:03}.txt")), "modified\n").unwrap(); }
             wait_for_event(&fixture.wc).await;
@@ -639,6 +852,20 @@ mod tests {
             let start = Instant::now();
             cached_status(wc, false).await.unwrap();
             let unchanged_ms = start.elapsed().as_secs_f64() * 1000.;
+            flush_snapshot(&fixture.wc).await;
+            forget_workspace(&fixture.wc);
+            let start = Instant::now();
+            let reopened = super::cached_status(wc, false, Some(directory.clone())).await.unwrap();
+            let reopen_changed_ms = start.elapsed().as_secs_f64() * 1000.;
+            assert_eq!(statuses(&reopened), statuses(&full));
+            flush_snapshot(&fixture.wc).await;
+            forget_workspace(&fixture.wc);
+            let start = Instant::now();
+            let reopened = super::cached_status(wc, false, Some(directory)).await.unwrap();
+            let reopen_unchanged_ms = start.elapsed().as_secs_f64() * 1000.;
+            flush_snapshot(&fixture.wc).await;
+            assert_eq!(statuses(&reopened), statuses(&full));
+            eprintln!("Disk snapshot reopen: 40 offline changes {reopen_changed_ms:.1} ms, unchanged {reopen_unchanged_ms:.1} ms (includes watcher, inventory and JSON loading)");
             eprintln!("20,000 files / 40 changes: initial + watcher {initial_ms:.1} ms, filesystem-scoped {scoped_ms:.1} ms (includes 25 ms event coalescing), full SVN {full_ms:.1} ms, unchanged {unchanged_ms:.1} ms");
         });
     }
