@@ -79,3 +79,15 @@
 - 如果 v0.6.1 仍复现，记录相关元素的实际宽度与计算样式，再确定根因和后续修复。
 
 相关位置：`src/views/DiffView.vue`、`src/views/LogView.vue`；[Issue #6](https://github.com/wustites/OrcaSVN/issues/6)。
+
+## P2 - 提交树虚拟化与按需展开
+
+状态：暂缓，按用户要求放入待办；本轮仅处理工作区和 Diff 虚拟滚动。
+
+- 将 CommitView 的 el-tree 迁移为 ElTreeV2，取消 default-expand-all，默认仅展开根节点。
+- 将展开状态和勾选状态保存在数据层，保证折叠或未渲染的后代仍计入提交范围。
+- 搜索时展开匹配节点的祖先，清空搜索后恢复原展开状态。
+- 优化目录选中和半选统计，避免渲染时反复遍历全部后代。
+- 验证大目录联动勾选、搜索隐藏项统计、刷新后状态保留，以及删除或替换目录完整选择约束。
+
+相关文件：src/views/CommitView.vue、src/utils/changeTree.ts。

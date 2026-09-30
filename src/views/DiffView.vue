@@ -64,21 +64,26 @@
             <span class="sidebar-title">{{ $t('diff.fileList') }}</span>
             <span class="sidebar-count">{{ fileList.length }}</span>
           </div>
-          <div class="sidebar-files">
-            <div
-              v-for="(file, idx) in fileList"
-              :key="file"
-              class="sidebar-file"
-              :class="{ active: idx === currentFileIndex }"
-              @click="switchToFile(idx)"
-            >
-              <span
-                class="file-status-dot"
-                :class="'dot-' + (fileStatusMap.get(file)?.status_code || 'modified')"
-              ></span>
-              <span class="file-name" :title="file">{{ fileDisplayNames[idx] || file }}</span>
-            </div>
-          </div>
+          <VirtualViewport ref="sidebarViewport" class="sidebar-files" :item-count="fileList.length" :row-height="36"
+            :reset-key="workspaceStore.currentPath || ''" role="list" :aria-label="$t('diff.fileList')">
+            <template #default="{ start, end }">
+              <button
+                v-for="(file, idx) in fileList.slice(start, end)"
+                :key="file"
+                type="button"
+                class="sidebar-file"
+                :aria-pressed="start + idx === currentFileIndex"
+                :class="{ active: start + idx === currentFileIndex }"
+                @click="switchToFile(start + idx)"
+              >
+                <span
+                  class="file-status-dot"
+                  :class="'dot-' + (fileStatusMap.get(file)?.status_code || 'modified')"
+                ></span>
+                <span class="file-name" :title="file">{{ fileDisplayNames[start + idx] || file }}</span>
+              </button>
+            </template>
+          </VirtualViewport>
         </div>
 
         <div class="diff-main">
@@ -145,19 +150,7 @@
               </div>
             </div>
 
-            <div class="diff-lines" role="table" :aria-label="$t('diff.title')">
-              <div
-                v-for="line in diffLines"
-                :key="line.index"
-                class="diff-row"
-                :class="line.className"
-                role="row"
-              >
-                <span class="diff-line-number" role="cell">{{ line.index }}</span>
-                <span class="diff-marker" role="cell">{{ line.marker }}</span>
-                <code class="diff-code" role="cell">{{ line.text }}</code>
-              </div>
-            </div>
+            <DiffViewer :text="diffResult?.diff || ''" @stats="diffStats = $event" />
           </div>
         </div>
       </div>
@@ -166,7 +159,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, nextTick, watch, onMounted } from 'vue'
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import { open } from '@tauri-apps/plugin-dialog'
 import { ElMessage } from 'element-plus/es/components/message/index'
@@ -174,6 +167,8 @@ import { svnDiff } from '@/api/svn'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useI18n } from 'vue-i18n'
 import { toWorkspaceRelativePath } from '@/utils/workspacePath'
+import DiffViewer from '@/components/DiffViewer.vue'
+import VirtualViewport from '@/components/VirtualViewport.vue'
 import type { DiffResult, SvnStatus } from '@/types'
 
 const { t } = useI18n()
@@ -181,15 +176,8 @@ const route = useRoute()
 const router = useRouter()
 const workspaceStore = useWorkspaceStore()
 
-type DiffLineType = 'added' | 'removed' | 'context' | 'meta'
-
-interface DiffLineRow {
-  index: number
-  marker: string
-  text: string
-  className: string
-  type: DiffLineType
-}
+const diffStats = ref({ added: 0, removed: 0 })
+const sidebarViewport = ref<InstanceType<typeof VirtualViewport> | null>(null)
 
 const currentPath = ref('')
 const diffType = ref<'working' | 'revision' | 'change'>('working')
@@ -213,52 +201,10 @@ const fileStatusMap = computed(() => {
   return map
 })
 
-const diffLines = computed<DiffLineRow[]>(() => {
-  if (!diffResult.value?.diff) return []
-
-  const lines = diffResult.value.diff.split('\n')
-  return lines.map((line, index) => {
-    if (line.startsWith('+') && !line.startsWith('+++')) {
-      return {
-        index: index + 1,
-        marker: '+',
-        text: line.slice(1),
-        className: 'diff-added',
-        type: 'added',
-      }
-    }
-
-    if (line.startsWith('-') && !line.startsWith('---')) {
-      return {
-        index: index + 1,
-        marker: '-',
-        text: line.slice(1),
-        className: 'diff-removed',
-        type: 'removed',
-      }
-    }
-
-    const isMeta = line.startsWith('@@') || line.startsWith('+++') || line.startsWith('---')
-    return {
-      index: index + 1,
-      marker: isMeta ? '@' : '',
-      text: line,
-      className: isMeta ? 'diff-meta' : 'diff-context',
-      type: isMeta ? 'meta' : 'context',
-    }
-  })
-})
-
-const diffStats = computed(() => {
-  return diffLines.value.reduce(
-    (stats, line) => {
-      if (line.type === 'added') stats.added += 1
-      if (line.type === 'removed') stats.removed += 1
-      return stats
-    },
-    { added: 0, removed: 0 }
-  )
-})
+watch([currentFileIndex, () => fileList.value.length], async () => {
+  await nextTick()
+  sidebarViewport.value?.scrollToIndex(currentFileIndex.value)
+}, { flush: 'post' })
 
 const resolveCurrentFilePath = (): string | null => {
   const file = currentPath.value || route.query.path as string
@@ -568,133 +514,6 @@ watch(
   font-weight: 600;
 }
 
-.diff-lines {
-  flex: 1;
-  min-height: 320px;
-  background: #fbfbff;
-  border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: var(--app-radius-md);
-  overflow: auto;
-  font-family: "Cascadia Mono", Consolas, Monaco, monospace;
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-.diff-row {
-  display: grid;
-  grid-template-columns: 64px 34px minmax(max-content, 1fr);
-  min-width: max-content;
-  border-bottom: 1px solid rgba(226, 228, 238, 0.18);
-  transition: background-color var(--app-transition-fast);
-}
-
-.diff-row:hover {
-  filter: brightness(0.98);
-}
-
-.diff-line-number,
-.diff-marker {
-  user-select: none;
-  color: #747789;
-  background: rgba(241, 242, 251, 0.9);
-  text-align: right;
-}
-
-.diff-line-number {
-  padding: 3px 12px;
-}
-
-.diff-marker {
-  padding: 3px 10px;
-  text-align: center;
-  font-weight: 800;
-}
-
-.diff-code {
-  padding: 3px 12px;
-  color: #20212a;
-  white-space: pre;
-}
-
-.diff-added {
-  background-color: #ecfdf3;
-}
-
-.diff-added .diff-marker,
-.diff-added .diff-line-number {
-  background: #dcfce7;
-  color: #15803d;
-}
-
-.diff-removed {
-  background-color: #fff1f2;
-}
-
-.diff-removed .diff-marker,
-.diff-removed .diff-line-number {
-  background: #fee2e2;
-  color: #dc2626;
-}
-
-.diff-meta {
-  background: #eef2ff;
-}
-
-.diff-meta .diff-code,
-.diff-meta .diff-marker {
-  color: #4338ca;
-  font-weight: 800;
-}
-
-/* 暗色主题 */
-.theme-dark .diff-lines {
-  background: #1a1a2e;
-  border-color: var(--md-sys-color-outline-variant);
-}
-
-.theme-dark .diff-row {
-  border-bottom-color: rgba(143, 160, 174, 0.12);
-}
-
-.theme-dark .diff-line-number,
-.theme-dark .diff-marker {
-  background: #2a2a3e;
-  color: #8b8ba0;
-}
-
-.theme-dark .diff-code {
-  color: #c4c4d8;
-}
-
-.theme-dark .diff-added {
-  background-color: #052e16;
-}
-
-.theme-dark .diff-added .diff-marker,
-.theme-dark .diff-added .diff-line-number {
-  background: #052e16;
-  color: #4ade80;
-}
-
-.theme-dark .diff-removed {
-  background-color: #450a0a;
-}
-
-.theme-dark .diff-removed .diff-marker,
-.theme-dark .diff-removed .diff-line-number {
-  background: #450a0a;
-  color: #f87171;
-}
-
-.theme-dark .diff-meta {
-  background: #1e1b4b;
-}
-
-.theme-dark .diff-meta .diff-code,
-.theme-dark .diff-meta .diff-marker {
-  color: #a5b4fc;
-}
-
 .diff-body {
   display: flex;
   flex: 1;
@@ -731,11 +550,15 @@ watch(
 .sidebar-files {
   flex: 1;
   min-width: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: auto;
 }
 
 .sidebar-file {
+  width: 100%;
+  height: 36px;
+  border: 0;
+  background: transparent;
+  text-align: left;
   display: flex;
   align-items: center;
   min-width: 0;

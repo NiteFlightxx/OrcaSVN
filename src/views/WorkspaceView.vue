@@ -116,43 +116,57 @@
           <div v-if="workspaceStore.isLoading && workspaceStore.statusList.length === 0" class="loading-files">
             <el-skeleton :rows="6" animated />
           </div>
-          <div
-            v-else-if="workspaceStore.statusList.length > 0"
-            v-for="file in filteredFiles"
-            :key="file.path"
-            class="file-item"
-            :class="{ selected: selectedFile === file.path }"
-            @click="selectFile(file)"
-            @contextmenu.prevent.stop="openFileContextMenu($event, file)"
-          >
-            <span class="file-status" :class="getStatusClass(file.status_code)">
-              {{ getStatusLabel(file.status_code) }}
-            </span>
-            <button
-              type="button"
-              class="file-path"
-              :title="file.path"
-              :aria-label="`${file.path}, ${getStatusLabel(file.status_code)}`"
-              :aria-pressed="selectedFile === file.path"
-              @click.stop="selectFile(file)"
-            >{{ file.path }}</button>
-            <div class="file-actions">
-              <el-tooltip :content="$t('common.diff')" placement="top" :show-after="150">
-                <span class="file-action-trigger" :title="$t('common.diff')" @click.stop>
-                  <el-button text size="small" :aria-label="$t('common.diff')" @click="viewDiff(file.path)">
-                    <el-icon><Connection /></el-icon>
-                  </el-button>
+          <VirtualViewport v-else-if="filteredFiles.length" ref="fileViewport" class="workspace-files"
+            :item-count="filteredFiles.length" :row-height="fileRowHeight"
+            :reset-key="`${workspaceStore.currentPath}|${filter}`" role="list" :aria-label="$t('diff.fileList')">
+            <template #default="{ start, end }">
+              <div
+                v-for="(file, index) in filteredFiles.slice(start, end)"
+                :key="file.path"
+                class="file-item"
+                :data-index="start + index"
+                role="listitem"
+                :aria-posinset="start + index + 1"
+                :aria-setsize="filteredFiles.length"
+                :style="{ height: `${fileRowHeight}px` }"
+                :class="{ selected: selectedFile === file.path }"
+                @click="selectFile(file)"
+                @contextmenu.prevent.stop="openFileContextMenu($event, file)"
+              >
+                <span class="file-status" :class="getStatusClass(file.status_code)">
+                  {{ getStatusLabel(file.status_code) }}
                 </span>
-              </el-tooltip>
-              <el-tooltip :content="$t('common.revert')" placement="top" :show-after="150">
-                <span class="file-action-trigger" :title="$t('common.revert')" @click.stop>
-                  <el-button text size="small" type="danger" :aria-label="$t('common.revert')" @click="revertFile(file)">
-                    <el-icon><RefreshLeft /></el-icon>
-                  </el-button>
-                </span>
-              </el-tooltip>
-            </div>
-          </div>
+                <button
+                  type="button"
+                  class="file-path"
+                  :title="file.path"
+                  :aria-label="`${file.path}, ${getStatusLabel(file.status_code)}`"
+                  :aria-pressed="selectedFile === file.path"
+                  @click.stop="selectFile(file)"
+                  @keydown.down.prevent="focusFile(start + index + 1)"
+                  @keydown.up.prevent="focusFile(start + index - 1)"
+                  @keydown.home.prevent="focusFile(0)"
+                  @keydown.end.prevent="focusFile(filteredFiles.length - 1)"
+                >{{ file.path }}</button>
+                <div class="file-actions">
+                  <el-tooltip :content="$t('common.diff')" placement="top" :show-after="150">
+                    <span class="file-action-trigger" :title="$t('common.diff')" @click.stop>
+                      <el-button text size="small" :aria-label="$t('common.diff')" @click="viewDiff(file.path)">
+                        <el-icon><Connection /></el-icon>
+                      </el-button>
+                    </span>
+                  </el-tooltip>
+                  <el-tooltip :content="$t('common.revert')" placement="top" :show-after="150">
+                    <span class="file-action-trigger" :title="$t('common.revert')" @click.stop>
+                      <el-button text size="small" type="danger" :aria-label="$t('common.revert')" @click="revertFile(file)">
+                        <el-icon><RefreshLeft /></el-icon>
+                      </el-button>
+                    </span>
+                  </el-tooltip>
+                </div>
+              </div>
+            </template>
+          </VirtualViewport>
           <div v-if="!workspaceStore.isLoading && filteredFiles.length === 0" class="empty-files">
             <el-icon><CircleCheck /></el-icon>
             <span>{{ workspaceStore.statusList.length === 0 ? $t('workspace.noChanges') : $t('workspace.noMatchingFiles') }}</span>
@@ -204,18 +218,7 @@
                 <el-tag type="danger" size="small">-{{ diffStats.removed }}</el-tag>
               </div>
             </div>
-            <div class="diff-lines">
-              <div
-                v-for="line in diffLines"
-                :key="line.index"
-                class="diff-row"
-                :class="line.className"
-              >
-                <span class="diff-line-number">{{ line.index }}</span>
-                <span class="diff-marker">{{ line.marker }}</span>
-                <code class="diff-code">{{ line.text }}</code>
-              </div>
-            </div>
+            <DiffViewer :text="diffResult.diff" compact @stats="diffStats = $event" />
           </div>
           <div v-else class="empty-diff">
             <el-icon><Document /></el-icon>
@@ -228,7 +231,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onBeforeUnmount, onMounted, reactive, watch } from 'vue'
+import { ref, computed, nextTick, onBeforeUnmount, onMounted, reactive, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { deleteUnversioned, revealWorkspaceFile, svnCleanup, svnRevert, svnDiff } from '@/api/svn'
@@ -236,6 +239,9 @@ import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus/es/components/message/index'
 import { getStatusClass, getStatusLabelKey } from '@/composables/useSvnStatus'
 import { useWorkspace } from '@/composables/useWorkspace'
+import VirtualViewport from '@/components/VirtualViewport.vue'
+import DiffViewer from '@/components/DiffViewer.vue'
+import { writeClipboardText } from '@/utils/clipboard'
 import type { SvnStatus, DiffResult } from '@/types'
 
 const { t } = useI18n()
@@ -259,15 +265,9 @@ const workspaceName = computed(() => {
   return path.split(/[\\/]/).filter(Boolean).pop() || path
 })
 
-type DiffLineType = 'added' | 'removed' | 'context' | 'meta'
-
-interface DiffLineRow {
-  index: number
-  marker: string
-  text: string
-  className: string
-  type: DiffLineType
-}
+const fileViewport = ref<InstanceType<typeof VirtualViewport> | null>(null)
+const fileRowHeight = 48
+const diffStats = ref({ added: 0, removed: 0 })
 
 const filteredFiles = computed(() => {
   if (filter.value === 'all') return workspaceStore.statusList
@@ -280,31 +280,14 @@ const filteredFiles = computed(() => {
   })
 })
 
-const diffLines = computed<DiffLineRow[]>(() => {
-  if (!diffResult.value?.diff) return []
-  const lines = diffResult.value.diff.split('\n')
-  return lines.map((line, index) => {
-    if (line.startsWith('+') && !line.startsWith('+++')) {
-      return { index: index + 1, marker: '+', text: line.slice(1), className: 'diff-added', type: 'added' }
-    }
-    if (line.startsWith('-') && !line.startsWith('---')) {
-      return { index: index + 1, marker: '-', text: line.slice(1), className: 'diff-removed', type: 'removed' }
-    }
-    const isMeta = line.startsWith('@@') || line.startsWith('+++') || line.startsWith('---')
-    return { index: index + 1, marker: isMeta ? '@' : '', text: line, className: isMeta ? 'diff-meta' : 'diff-context', type: isMeta ? 'meta' : 'context' }
-  })
-})
-
-const diffStats = computed(() => {
-  return diffLines.value.reduce(
-    (stats, line) => {
-      if (line.type === 'added') stats.added += 1
-      if (line.type === 'removed') stats.removed += 1
-      return stats
-    },
-    { added: 0, removed: 0 }
-  )
-})
+const focusFile = async (index: number) => {
+  const file = filteredFiles.value[index]
+  if (!file) return
+  void selectFile(file)
+  fileViewport.value?.scrollToIndex(index)
+  await nextTick()
+  fileViewport.value?.element?.querySelector<HTMLButtonElement>(`.file-item[data-index="${index}"] .file-path`)?.focus()
+}
 
 const setFilter = (f: typeof filter.value) => {
   filter.value = f
@@ -392,24 +375,6 @@ const joinWorkspacePath = (workspacePath: string, filePath: string) => {
   const base = workspacePath.replace(/[\\/]+$/, '')
   const relative = filePath.replace(/^[\\/]+/, '')
   return `${base}${separator}${relative}`
-}
-
-const writeClipboardText = async (text: string) => {
-  if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(text)
-    return
-  }
-
-  const textarea = document.createElement('textarea')
-  textarea.value = text
-  textarea.setAttribute('readonly', '')
-  textarea.style.position = 'fixed'
-  textarea.style.opacity = '0'
-  document.body.appendChild(textarea)
-  textarea.select()
-  const copied = document.execCommand('copy')
-  document.body.removeChild(textarea)
-  if (!copied) throw new Error('copy failed')
 }
 
 const copySelectedFilePath = async (mode: 'relative' | 'absolute') => {
@@ -601,7 +566,8 @@ const revertFile = async (file: SvnStatus) => {
 
 .panel-content {
   flex: 1;
-  overflow: auto;
+  min-height: 0;
+  overflow: hidden;
   padding: 12px;
 }
 
@@ -722,8 +688,11 @@ const revertFile = async (file: SvnStatus) => {
 
 /* 文件列表 */
 .file-list {
+  display: flex;
+  flex-direction: column;
   flex: 1;
-  overflow: auto;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .loading-files {
@@ -913,6 +882,7 @@ const revertFile = async (file: SvnStatus) => {
 }
 
 .diff-content {
+  min-height: 0;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -930,122 +900,6 @@ const revertFile = async (file: SvnStatus) => {
 .diff-stats {
   display: flex;
   gap: 6px;
-}
-
-.diff-lines {
-  flex: 1;
-  overflow: auto;
-  font-family: "Cascadia Mono", Consolas, monospace;
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.diff-row {
-  display: grid;
-  grid-template-columns: 48px 24px 1fr;
-  border-bottom: 1px solid rgba(226, 228, 238, 0.16);
-}
-
-.diff-line-number,
-.diff-marker {
-  user-select: none;
-  color: var(--el-text-color-secondary);
-  background: var(--el-fill-color-lighter);
-  text-align: right;
-}
-
-.diff-line-number {
-  padding: 2px 8px;
-}
-
-.diff-marker {
-  padding: 2px 6px;
-  text-align: center;
-  font-weight: 700;
-}
-
-.diff-code {
-  padding: 2px 12px;
-  color: var(--el-text-color-primary);
-  white-space: pre;
-}
-
-.diff-added {
-  background: #ecfdf3;
-}
-
-.diff-added .diff-marker,
-.diff-added .diff-line-number {
-  background: #dcfce7;
-  color: #15803d;
-}
-
-.diff-removed {
-  background: #fff1f2;
-}
-
-.diff-removed .diff-marker,
-.diff-removed .diff-line-number {
-  background: #fee2e2;
-  color: #dc2626;
-}
-
-.diff-meta {
-  background: #eef2ff;
-}
-
-.diff-meta .diff-code,
-.diff-meta .diff-marker {
-  color: #4338ca;
-  font-weight: 700;
-}
-
-/* 暗色主题 */
-.theme-dark .diff-lines {
-  background: #1a1a2e;
-}
-
-.theme-dark .diff-row {
-  border-bottom-color: rgba(143, 160, 174, 0.1);
-}
-
-.theme-dark .diff-line-number,
-.theme-dark .diff-marker {
-  background: #2a2a3e;
-  color: #8b8ba0;
-}
-
-.theme-dark .diff-code {
-  color: #c4c4d8;
-}
-
-.theme-dark .diff-added {
-  background: #052e16;
-}
-
-.theme-dark .diff-added .diff-marker,
-.theme-dark .diff-added .diff-line-number {
-  background: #052e16;
-  color: #4ade80;
-}
-
-.theme-dark .diff-removed {
-  background: #450a0a;
-}
-
-.theme-dark .diff-removed .diff-marker,
-.theme-dark .diff-removed .diff-line-number {
-  background: #450a0a;
-  color: #f87171;
-}
-
-.theme-dark .diff-meta {
-  background: #1e1b4b;
-}
-
-.theme-dark .diff-meta .diff-code,
-.theme-dark .diff-meta .diff-marker {
-  color: #a5b4fc;
 }
 
 /* 响应式 */
@@ -1368,22 +1222,6 @@ const revertFile = async (file: SvnStatus) => {
   min-height: 40px;
   padding: 5px 10px;
   background: var(--md-sys-color-surface-container-low);
-}
-
-.diff-lines {
-  font-size: 12px;
-  line-height: 1.55;
-}
-
-.diff-row {
-  grid-template-columns: 38px 18px 1fr;
-}
-
-.diff-line-number,
-.diff-marker,
-.diff-code {
-  padding-top: 1px;
-  padding-bottom: 1px;
 }
 
 :global(.theme-dark) .workspace-layout,
