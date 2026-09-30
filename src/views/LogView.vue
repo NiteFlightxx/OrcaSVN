@@ -22,7 +22,7 @@
         </el-empty>
       </div>
 
-      <div v-else ref="logScroller" class="log-content" @scroll="handleScroll">
+      <div v-else ref="logScroller" class="log-content">
         <div class="log-filters">
           <el-select
             v-model="filters.author"
@@ -147,10 +147,14 @@
             {{ $t('log.clearFilters') }}
           </el-button>
         </el-empty>
-        <div class="load-more-state">
-          <span v-if="loadingMore">{{ $t('log.loadingMore') }}</span>
-          <span v-else-if="!hasMore && logs.length > 0">{{ $t('log.allLoaded') }}</span>
-          <span v-else-if="!loading && hasMore">{{ $t('log.scrollForMore') }}</span>
+        <div class="log-pagination">
+          <el-button size="small" :disabled="loading || pageIndex === 0" @click="changePage(pageIndex - 1)">
+            {{ $t('log.previousPage') }}
+          </el-button>
+          <span>{{ $t('log.pageNumber', { page: pageIndex + 1 }) }}</span>
+          <el-button size="small" :disabled="loading || !hasMore" @click="changePage(pageIndex + 1)">
+            {{ $t('log.nextPage') }}
+          </el-button>
         </div>
       </div>
 
@@ -245,12 +249,12 @@ const { openWorkspace: openWorkspaceDialog } = useWorkspace()
 
 const logs = ref<SvnLogEntry[]>([])
 const loading = ref(false)
-const loadingMore = ref(false)
 const hasMore = ref(true)
 const logScroller = ref<HTMLElement | null>(null)
 let requestGeneration = 0
 let authorRequestGeneration = 0
-const LOAD_MORE_THRESHOLD_PX = 160
+const pageIndex = ref(0)
+const pageCursors = ref<(number | undefined)[]>([undefined])
 const FILTER_RELOAD_DELAY_MS = 250
 let filterReloadTimer: number | undefined
 const dialogVisible = ref(false)
@@ -432,81 +436,50 @@ const openWorkspace = async () => {
   }
 }
 
-const fetchLogPage = async (generation: number, startRev?: number, refreshCache = false) => {
-  if (!workspaceStore.currentPath || loading.value || loadingMore.value || !hasMore.value) return
-
+const fetchLogPage = async (index: number, refreshCache = false) => {
   const requestedPath = workspaceStore.currentPath
-  const filtered = hasActiveFilters.value
-  const limit = filtered ? undefined : DEFAULT_LOG_PAGE_SIZE
+  if (!requestedPath) return
+  const generation = ++requestGeneration
+  const startRev = pageCursors.value[index]
   const endRev = startRev === undefined ? undefined : 1
-  const initialLoad = startRev === undefined
-
-  // 读取当前激活的过滤条件，传递给后端实现服务器端过滤
+  // One extra match determines whether there is another page, including filters.
+  const limit = DEFAULT_LOG_PAGE_SIZE + 1
   const kw = filters.keyword.trim() || undefined
   const author = filters.author.trim() || undefined
   const df = filters.dateFrom || undefined
   const dt = filters.dateTo || undefined
-
-  if (initialLoad) loading.value = true
-  else loadingMore.value = true
+  loading.value = true
   try {
-    const cachedBatch = refreshCache ? null : getCachedLogPage(requestedPath, limit, startRev, endRev, kw, author, df, dt)
-    const batch = cachedBatch || normalizeLogEntries(await svnLog(requestedPath, limit, startRev, endRev, kw, author, df, dt))
-    if (!cachedBatch) setCachedLogPage(requestedPath, limit, batch, startRev, endRev, kw, author, df, dt)
+    const cached = refreshCache ? null : getCachedLogPage(requestedPath, limit, startRev, endRev, kw, author, df, dt)
+    const batch = cached || normalizeLogEntries(await svnLog(requestedPath, limit, startRev, endRev, kw, author, df, dt))
     if (generation !== requestGeneration || requestedPath !== workspaceStore.currentPath) return
-    const knownRevisions = new Set(logs.value.map(entry => entry.revision))
-    const newEntries = batch.filter(entry => !knownRevisions.has(entry.revision))
-    logs.value = initialLoad ? batch : sortLogEntries([...logs.value, ...newEntries])
-    hasMore.value = !filtered && batch.length >= DEFAULT_LOG_PAGE_SIZE && batch[batch.length - 1]?.revision !== 1
+    if (!cached) setCachedLogPage(requestedPath, limit, batch, startRev, endRev, kw, author, df, dt)
+    logs.value = batch.slice(0, DEFAULT_LOG_PAGE_SIZE)
+    hasMore.value = batch.length > DEFAULT_LOG_PAGE_SIZE
+    pageIndex.value = index
+    if (hasMore.value) pageCursors.value[index + 1] = logs.value[logs.value.length - 1].revision - 1
+    await nextTick()
+    if (logScroller.value) logScroller.value.scrollTop = 0
   } catch (err) {
     if (generation === requestGeneration) workspaceStore.setError(String(err))
   } finally {
-    if (generation === requestGeneration) {
-      loading.value = false
-      loadingMore.value = false
-    }
+    if (generation === requestGeneration) loading.value = false
   }
 }
 
 const reloadLogs = async (refreshCache = false, restart = false) => {
-  if (!restart && !refreshCache && (loading.value || loadingMore.value)) return
+  if (!restart && !refreshCache && loading.value) return
   if (refreshCache && workspaceStore.currentPath) clearLogCacheForPath(workspaceStore.currentPath)
-
-  const generation = ++requestGeneration
+  pageIndex.value = 0
+  pageCursors.value = [undefined]
   logs.value = []
-  hasMore.value = true
-  loading.value = false
-  loadingMore.value = false
-  await fetchLogPage(generation, undefined, refreshCache)
-  await nextTick()
-  if (logScroller.value) logScroller.value.scrollTop = 0
-  await loadMoreIfNeeded(generation)
+  hasMore.value = false
+  await fetchLogPage(0, refreshCache)
 }
 
-const loadMore = async () => {
-  const oldestRevision = logs.value[logs.value.length - 1]?.revision
-  if (!oldestRevision || oldestRevision <= 1) {
-    hasMore.value = false
-    return
-  }
-  await fetchLogPage(requestGeneration, oldestRevision - 1)
-  await nextTick()
-  await loadMoreIfNeeded(requestGeneration)
-}
-
-const shouldLoadMore = () => {
-  const scroller = logScroller.value
-  if (!scroller || !hasMore.value || loading.value || loadingMore.value) return false
-  return scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < LOAD_MORE_THRESHOLD_PX
-}
-
-const loadMoreIfNeeded = async (generation = requestGeneration) => {
-  if (generation !== requestGeneration || !shouldLoadMore()) return
-  await loadMore()
-}
-
-const handleScroll = () => {
-  loadMoreIfNeeded()
+const changePage = (index: number) => {
+  if (loading.value || filterReloadTimer !== undefined || index < 0 || index >= pageCursors.value.length) return
+  void fetchLogPage(index)
 }
 
 const scheduleFilterReload = () => {
@@ -516,7 +489,7 @@ const scheduleFilterReload = () => {
   }
   filterReloadTimer = window.setTimeout(() => {
     filterReloadTimer = undefined
-    reloadLogs(true, true)
+    void reloadLogs(true, true)
   }, FILTER_RELOAD_DELAY_MS)
 }
 
@@ -627,7 +600,8 @@ watch(
       currentAuthor.value = ''
       hasMore.value = true
       loading.value = false
-      loadingMore.value = false
+      pageIndex.value = 0
+      pageCursors.value = [undefined]
     }
   },
   { immediate: true }
@@ -800,7 +774,11 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 
-.load-more-state {
+.log-pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
   padding: 12px;
   color: var(--el-text-color-secondary);
   font-size: 11px;

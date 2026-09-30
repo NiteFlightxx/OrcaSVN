@@ -745,6 +745,7 @@ mod tests {
     #[test]
     fn commit_rejects_an_explicit_empty_file_list() {
         let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
             .build()
             .expect("failed to build tokio runtime");
         let result = runtime.block_on(commit(".", "message", Some(&[])));
@@ -809,6 +810,7 @@ mod tests {
         }
         run(&["propset", "test:property", "changed", "A"]);
         let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
             .build()
             .unwrap();
         runtime

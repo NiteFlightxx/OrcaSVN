@@ -232,7 +232,7 @@ const route = useRoute()
 const { t } = useI18n()
 const workspaceStore = useWorkspaceStore()
 const stashStore = useStashStore()
-const { loadWorkspace, openWorkspace, refreshStatus, restoreLastWorkspace } = useWorkspace()
+const { loadWorkspace, openWorkspace, refreshStatus, refreshStatusIfStale, restoreLastWorkspace } = useWorkspace()
 const appVersion = packageInfo.version
 const cachedViews = ref(['WorkspaceView', 'LogView', 'UpdateView'])
 const statusRefreshIntervalMs = 60_000
@@ -288,7 +288,7 @@ const openCurrentWorkspaceIn = async (target: OpenWorkspaceTarget) => {
 
 const refreshStatusSilently = async () => {
   if (!workspaceStore.currentPath || workspaceStore.isLoading) return
-  await refreshStatus()
+  await refreshStatusIfStale(statusRefreshIntervalMs)
 }
 
 onMounted(async () => {

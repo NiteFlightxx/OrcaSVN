@@ -131,7 +131,7 @@ import packageInfo from '../../package.json'
 const { t } = useI18n()
 const { setLocale } = useLocale()
 const { settings } = useSettings()
-const { refreshStatus } = useWorkspace()
+const { refreshStatusAfterMutation } = useWorkspace()
 const appVersion = packageInfo.version
 
 const languages = computed(() => [
@@ -148,7 +148,7 @@ const currentLanguage = computed({
 })
 
 const handleGitignoreChange = () => {
-  void refreshStatus()
+  void refreshStatusAfterMutation()
 }
 
 const handleSvnPathChange = async (value: string) => {

@@ -186,7 +186,7 @@ import { Archive, CopyDocument, Delete, Document, Download, List, MoreFilled, Pl
 const { t, locale } = useI18n()
 const workspaceStore = useWorkspaceStore()
 const stashStore = useStashStore()
-const { refreshStatus } = useWorkspace()
+const { refreshStatus, refreshStatusAfterMutation } = useWorkspace()
 
 const createDialogVisible = ref(false)
 const loadingDiffs = ref(false)
@@ -332,12 +332,12 @@ const createStash = async () => {
     if (patch) await svnApplyPatch(workspacePath, patch, true)
     if (selectedUnversioned.value.length) await deleteUnversioned(workspacePath, selectedUnversioned.value)
     createDialogVisible.value = false
-    await refreshStatus()
+    await refreshStatusAfterMutation()
     ElMessage.success(t('stash.created'))
   } catch (err) {
     // The patch is already stored, so retain it and keep the source changes.
     createDialogVisible.value = false
-    await refreshStatus()
+    await refreshStatusAfterMutation()
     ElMessage.warning(`${t('stash.savedButNotHidden')}：${err}`)
   } finally {
     creating.value = false
@@ -354,7 +354,7 @@ const applyEntry = async (entry: StashEntry, removeAfterApply: boolean) => {
     if (entry.patch) await svnApplyPatch(workspacePath, entry.patch)
     if (entry.unversionedFiles?.length) await restoreUnversionedFiles(workspacePath, entry.unversionedFiles)
     if (removeAfterApply) stashStore.removeEntry(entry.id)
-    await refreshStatus()
+    await refreshStatusAfterMutation()
     ElMessage.success(removeAfterApply ? t('stash.popped') : t('stash.applied'))
   } catch (err) {
     ElMessage.error(`${t('stash.applyFailed')}：${err}`)

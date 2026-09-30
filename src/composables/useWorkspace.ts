@@ -2,11 +2,29 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { svnStatus, svnInfo, svnLocalRevision, readGitignore } from '@/api/svn'
 import { open } from '@tauri-apps/plugin-dialog'
 import { useSettings } from '@/composables/useSettings'
-import { parseGitignore, filterByGitignore } from '@/utils/gitignore'
+import { parseGitignore } from '@/utils/gitignore'
+import { filterByGitignoreAsync } from '@/utils/gitignoreWorker'
 import { cacheSvnInfoMetadata, getCachedSvnInfoMetadata, type SvnInfoMetadata } from '@/utils/svnInfoCache'
 import type { SvnInfo } from '@/types'
 
 let workspaceRequestGeneration = 0
+let pendingRequest: { path: string; generation: number; promise: Promise<boolean> } | null = null
+let lastRefresh: { path: string; generation: number; timestamp: number } | null = null
+
+function trackRequest(path: string, operation: () => Promise<boolean>): Promise<boolean> {
+  const promise = operation()
+  const request = { path, generation: workspaceRequestGeneration, promise }
+  pendingRequest = request
+  request.promise = promise.then(success => {
+    if (success && request.generation === workspaceRequestGeneration) {
+      lastRefresh = { path, generation: request.generation, timestamp: Date.now() }
+    }
+    return success
+  }).finally(() => {
+    if (pendingRequest === request) pendingRequest = null
+  })
+  return request.promise
+}
 
 async function loadGitignoreIfNeeded(
   path: string,
@@ -86,7 +104,7 @@ function requestWorkspaceInfo(path: string, isCurrent: () => boolean): Promise<I
 export function useWorkspace() {
   const workspaceStore = useWorkspaceStore()
 
-  async function loadWorkspace(path: string): Promise<boolean> {
+  async function performLoadWorkspace(path: string): Promise<boolean> {
     const generation = ++workspaceRequestGeneration
     const previousPath = workspaceStore.currentPath
     const previousStatusList = workspaceStore.statusList
@@ -120,7 +138,9 @@ export function useWorkspace() {
       if (!infoResult.ok) throw infoResult.error
       const info = infoResult.info
       if (!isCurrent() || !info) return false
-      workspaceStore.setStatusList(filterByGitignore(status, workspaceStore.gitignorePatterns))
+      const filteredStatus = await filterByGitignoreAsync(status, workspaceStore.gitignorePatterns)
+      if (!isCurrent()) return false
+      workspaceStore.setStatusList(filteredStatus)
       workspaceStore.setSvnInfo(info)
       workspaceStore.rememberWorkspace(path)
       return true
@@ -157,7 +177,7 @@ export function useWorkspace() {
     return loadWorkspace(path)
   }
 
-  async function refreshStatus(): Promise<boolean> {
+  async function performRefreshStatus(): Promise<boolean> {
     if (!workspaceStore.currentPath) return false
 
     const generation = ++workspaceRequestGeneration
@@ -179,7 +199,9 @@ export function useWorkspace() {
       if (!infoResult.ok) throw infoResult.error
       const info = infoResult.info
       if (!isCurrent() || !info) return false
-      workspaceStore.setStatusList(filterByGitignore(status, workspaceStore.gitignorePatterns))
+      const filteredStatus = await filterByGitignoreAsync(status, workspaceStore.gitignorePatterns)
+      if (!isCurrent()) return false
+      workspaceStore.setStatusList(filteredStatus)
       workspaceStore.setSvnInfo(info)
       return true
     } catch (err) {
@@ -191,5 +213,33 @@ export function useWorkspace() {
     }
   }
 
-  return { loadWorkspace, openWorkspace, restoreLastWorkspace, refreshStatus }
+  function loadWorkspace(path: string): Promise<boolean> {
+    if (pendingRequest?.path === path && pendingRequest.generation === workspaceRequestGeneration) return pendingRequest.promise
+    return trackRequest(path, () => performLoadWorkspace(path))
+  }
+
+  function refreshStatus(): Promise<boolean> {
+    const path = workspaceStore.currentPath
+    if (!path) return Promise.resolve(false)
+    if (pendingRequest?.path === path && pendingRequest.generation === workspaceRequestGeneration) return pendingRequest.promise
+    return trackRequest(path, performRefreshStatus)
+  }
+
+  // A mutation or setting change requires a scan started after that change;
+  // an older background scan must not satisfy this request.
+  function refreshStatusAfterMutation(): Promise<boolean> {
+    const path = workspaceStore.currentPath
+    return path ? trackRequest(path, performRefreshStatus) : Promise.resolve(false)
+  }
+
+  function refreshStatusIfStale(maxAgeMs: number): Promise<boolean> {
+    const path = workspaceStore.currentPath
+    if (!path) return Promise.resolve(false)
+    if (pendingRequest?.path === path && pendingRequest.generation === workspaceRequestGeneration) return pendingRequest.promise
+    if (lastRefresh?.path === path && lastRefresh.generation === workspaceRequestGeneration
+      && Date.now() - lastRefresh.timestamp < maxAgeMs) return Promise.resolve(true)
+    return refreshStatus()
+  }
+
+  return { loadWorkspace, openWorkspace, restoreLastWorkspace, refreshStatus, refreshStatusAfterMutation, refreshStatusIfStale }
 }

@@ -222,7 +222,7 @@ const { t } = useI18n()
 const router = useRouter()
 const route = useRoute()
 const workspaceStore = useWorkspaceStore()
-const { openWorkspace: openWorkspaceDialog, refreshStatus } = useWorkspace()
+const { openWorkspace: openWorkspaceDialog, refreshStatusAfterMutation } = useWorkspace()
 
 const RECENT_COMMIT_MESSAGES_KEY = 'orcasvn-recent-commit-messages'
 interface RecentCommitMessage {
@@ -370,7 +370,7 @@ const doCommit = async () => {
 
     if (unversionedFiles.length > 0) {
       await svnAdd(workspaceStore.currentPath, unversionedFiles)
-      await refreshStatus()
+      await refreshStatusAfterMutation()
       selectedFiles.value = allChangedFiles.value
         .filter(file => targetFileSet.has(file.path) || unversionedFiles.some(parent => isWithinDirectory(file.path, parent)))
         .map(file => file.path)
@@ -381,7 +381,7 @@ const doCommit = async () => {
     const result = await svnCommit(workspaceStore.currentPath, commitMessage.value, files)
     if (result.success) recordRecentMessage(workspaceStore.currentPath, commitMessage.value)
     output.value = result.output
-    await refreshStatus()
+    await refreshStatusAfterMutation()
 
     setTimeout(() => {
       router.push({ name: 'workspace' })

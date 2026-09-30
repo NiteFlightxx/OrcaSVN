@@ -241,7 +241,7 @@ import type { SvnStatus, DiffResult } from '@/types'
 const { t } = useI18n()
 const router = useRouter()
 const workspaceStore = useWorkspaceStore()
-const { openWorkspace: openWorkspaceDialog, refreshStatus } = useWorkspace()
+const { openWorkspace: openWorkspaceDialog, refreshStatus, refreshStatusAfterMutation } = useWorkspace()
 
 const filter = ref<'all' | 'modified' | 'added' | 'conflicted' | 'missing'>('all')
 const selectedFile = ref<string | null>(null)
@@ -357,7 +357,7 @@ const doCleanup = async () => {
   if (!workspaceStore.currentPath) return
   try {
     await svnCleanup(workspaceStore.currentPath)
-    await refreshStatus()
+    await refreshStatusAfterMutation()
   } catch (err) {
     workspaceStore.setError(String(err))
   }
@@ -479,7 +479,7 @@ const revertFile = async (file: SvnStatus) => {
     } else {
       await svnRevert(workspaceStore.currentPath, [path])
     }
-    await refreshStatus()
+    await refreshStatusAfterMutation()
     if (selectedFile.value === path) {
       selectedFile.value = null
       diffResult.value = null

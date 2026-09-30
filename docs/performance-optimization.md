@@ -1,139 +1,37 @@
 # OrcaSVN 性能优化记录
 
-## 1. 日志查询（LogView）—— 过滤优化
+## 日志分页
 
-### 优化：客户端短路求值 + 服务端过滤下推
+日志页使用修订号游标分页，每页显示 50 条，只通过“上一页 / 下一页”切换；滚动和容器高度不再触发请求。普通查询、作者、关键词和日期筛选都请求最多 51 条匹配记录，其中额外一条用于判断是否还有下一页。下一页从当前页最后一条修订号减一开始，避免跳过额外查询的记录。
 
-#### 修改文件
-- `src/views/LogView.vue`
-- `src/api/svn.ts`
-- `src-tauri/src/svn/operations.rs`
-- `src-tauri/src/main.rs`
+翻页替换当前列表，不再累计历史记录。已访问页面使用最多 50 项、有效期 5 分钟的缓存；变更筛选条件、工作区或手动查询时回到第一页。请求代次防止旧查询覆盖新页面。
 
-#### 客户端：`filteredLogs` 短路求值
+关键词和作者仍在 Rust 端按批次过滤，而非直接使用 `svn log --search`，以保持既有匹配语义。每页返回数量有上限，但稀疏匹配或无匹配时仍可能扫描较多历史；分页不意味着扫描耗时有固定上限。
 
-**之前**：每次 `filteredLogs` 重新计算时，无论是否有过滤条件，都遍历全部 `logs.value`，每条执行 `new Date()` + `toLowerCase()` + 字符串拼接。
+## 忽略规则计算
 
-**之后**：
-```
-无过滤条件 → 直接返回 logs.value，零遍历开销
-有过滤条件 → 按 作者→关键字→日期 顺序早返回，每个条件只在需要时计算
-```
+工作区在 Web Worker 中匹配忽略规则，避免大量正则测试占用界面主线程。匹配从最后一条规则向前查找，找到匹配即返回，保留“最后匹配的规则生效”和取反规则的语义。
 
-具体优化点：
+Worker 保存最多 10,000 条路径的匹配结果，并在规则内容变化时重建缓存。异步结果写回前检查工作区和请求代次，防止旧 Worker 回复覆盖新状态。未启用忽略规则时直接返回状态列表。
 
-| 场景 | 优化前 | 优化后 |
-|------|--------|--------|
-| 无过滤条件 | 仍遍历全部 `logs.value` | `if (!author && !keyword && !from && !to) return logs.value` |
-| 有关键字 | 每条都构造 searchable 字符串 | `if (keyword) { /* 按需构造 */ }` |
-| 有日期范围 | 每条都 `new Date(entry.date)` | `if (from \|\| to) { /* 按需解析 */ }` |
-| 作者不匹配 | 进入 return 判断 | 提前 `return false` 跳过后续计算 |
+## SVN 进程执行
 
-#### 服务端：过滤条件下推到 SVN
+执行器使用 `tokio::process::Command` 异步等待进程结束，移除原先每 100 毫秒一次的结束状态轮询及每个命令的两个管道读取线程。标准输出和错误输出由 Tokio 同时读取。
 
-将前端过滤条件（关键字、日期范围）传递给 `svn log` 命令参数，让 SVN 服务器端进行过滤，减少网络传输和解析量。
+保留 120 秒超时、非交互参数、工作目录和 Windows 隐藏命令窗口。超时丢弃等待任务时，通过 `kill_on_drop` 终止子进程。非零退出状态保留标准输出和错误输出用于诊断。
 
-| 场景 | 优化前 | 优化后 |
-|------|--------|--------|
-| 有关键字过滤 | 拉取全部日志 → 前端逐条匹配 | `svn log --search "keyword"` |
-| 有日期范围 | 拉取全部日志 → 前端 Date 比较 | `svn log -r {2024-01-01}:{2024-03-01}` |
-| 两者都有 | 同上 | `--search "bug" -r {from}:{to}` 双重过滤 |
+## 工作区刷新
 
-**后端逻辑**（`operations.rs` `log()` 函数）：
-- 当 `date_from` 存在时，优先构建 `-r {date_from}:{date_to}` 日期范围参数
-- 当 `keyword` 非空时，添加 `--search keyword` 参数
-- load-more 场景兼容：日期范围 + 修订号上界 `-r {date_from}:{oldest_rev - 1}`
+同一工作区的进行中加载或刷新请求由多个调用者共享。后台轮询复用刚完成的状态：全局刷新周期为 60 秒，更新页为 30 秒。失败请求不会标记为新鲜。
 
-**缓存适配**：缓存 Key 加入 `keyword`/`dateFrom`/`dateTo`，不同过滤条件的查询结果独立缓存。
+提交、加入版本控制、还原、暂存、更新及忽略设置改变后的刷新必须启动新的扫描，不能复用变更前的请求。请求代次阻止被取代的扫描写回。
 
----
+更新页通过激活和停用生命周期管理轮询。离开缓存的更新页时清除计时器，恢复页面时重新查询远端状态。
 
-## 2. SVG 日期选择器不显示（Bug 修复）
+## 验证
 
-### 问题
-`<el-date-picker>` 组件从未被注册，导致整个日期选择器元素不渲染。
+运行 `npm run check` 验证前端构建、单元测试、Rust 格式和测试。
 
-### 修改文件
-- `src/main.ts`
+回归测试覆盖分页游标、前后翻页、筛选分页、空页和边界页、过期响应、忽略规则顺序及缓存、刷新请求共享、失败重试、工作区切换、变更后的新扫描，以及大输出读取和超时子进程终止。
 
-### 修改内容
-添加 `ElDatePicker` 的导入和注册：
-```ts
-import { ElDatePicker } from 'element-plus/es/components/date-picker/index'
-
-const components = [
-  // ...
-  ElDatePicker,
-  // ...
-]
-```
-
----
-
-## 3. 日志缓存优化
-
-### 修改文件
-- `src/views/LogView.vue`
-
-### 3.1 缓存 Key 免 JSON 解析
-
-**之前**：缓存 Key 使用 `JSON.stringify({ path, limit, startRev, endRev })`，`getCachedAuthorsForPath` 和 `clearLogCacheForPath` 需要逐条 `JSON.parse` 解析。
-
-**之后**：缓存 Key 改为纯字符串拼接：
-```
-${path}|${limit}|${startRev ?? ''}|${endRev ?? ''}|${keyword ?? ''}|${dateFrom ?? ''}|${dateTo ?? ''}
-```
-遍历检查改为 `key.startsWith(prefix)`，消除 O(n) 的 JSON 解析开销。
-
-### 3.2 缓存大小限制
-
-新增 `MAX_CACHE_SIZE = 50` 上限，`setCachedLogPage` 超出时自动淘汰最旧条目，防止内存泄漏。
-
----
-
-## 4. 初始化性能优化
-
-### 修改文件
-- `src/views/LogView.vue`
-- `src/composables/useWorkspace.ts`
-- `src/layouts/MainLayout.vue`
-
-### 4.1 消除 `svn log` 重复调用（LogView）
-
-**之前**：`onMounted` + `watch(currentPath)` 两处都可能触发 `reloadLogs()`，初始化时可能发出 2 次 `svn log`。
-
-**之后**：移除 `onMounted`/`onActivated` 的 `reloadLogs()` 调用，`watch(currentPath)` 改为 `{ immediate: true }` 单点触发。
-
-### 4.2 三路并行（useWorkspace）
-
-**之前**：`setCurrentPath(path)` 在 `svnStatus` + `svnInfo` 异步完成后才执行，LogView 的 `svn log` 被迫串行等待。
-```
-status ──→ info ──→ setPath ──→ log
-```
-
-**之后**：`setCurrentPath(path)` 提前到异步操作开始前执行，LogView 的 `immediate` watch 立即触发 `svn log`，实现三路并行：
-```
-status ──┐
-info ────┤  (同时进行)
-log ─────┘
-```
-
-### 4.3 轮询间隔延长
-
-**之前**：`svn status --xml` 每 10 秒轮询一次。
-
-**之后**：间隔改为 30 秒，减少 2/3 的磁盘 I/O。定位在 `src/layouts/MainLayout.vue:182`。
-
----
-
-## 修改文件汇总
-
-| 文件 | 改动类型 | 说明 |
-|------|---------|------|
-| `src/views/LogView.vue` | 性能优化 + Bug 修复 | filteredLogs 短路求值、缓存 Key/大小优化、初始化去重、服务端过滤参数传递 |
-| `src/api/svn.ts` | 接口扩展 | `svnLog()` 新增 keyword/dateFrom/dateTo 参数 |
-| `src/main.ts` | Bug 修复 | 注册缺失的 `ElDatePicker` 组件 |
-| `src/composables/useWorkspace.ts` | 性能优化 | `setCurrentPath` 提前，实现三路并行 |
-| `src/layouts/MainLayout.vue` | 性能优化 | 状态轮询间隔 10s → 30s |
-| `src-tauri/src/main.rs` | 接口扩展 | `svn_log` Tauri 命令新增 keyword/date_from/date_to |
-| `src-tauri/src/svn/operations.rs` | 功能增强 | `log()` 支持 `--search` 和日期范围 `-r {date}:{date}` |
+浏览器交互验证使用模拟 Tauri IPC，检查真实 Worker 过滤、每页行数、滚动不请求、上一页缓存、筛选翻页和更新页轮询生命周期。真实仓库和远端网络耗时应另外在桌面应用中测量。

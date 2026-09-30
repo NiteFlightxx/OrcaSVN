@@ -85,22 +85,39 @@ function gitignorePatternToRegex(pattern: string, anchored: boolean): RegExp {
   return new RegExp(`^${regexStr}$`)
 }
 
-export function isIgnored(filePath: string, patterns: GitignorePattern[]): boolean {
-  let ignored = false
+function matchesPath(filePath: string, patterns: GitignorePattern[]): boolean {
   const normalPath = filePath.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '')
-  const pathCandidates = [normalPath]
+  const candidates = [normalPath]
   let separator = normalPath.lastIndexOf('/')
   while (separator >= 0) {
-    pathCandidates.push(normalPath.slice(0, separator))
+    candidates.push(normalPath.slice(0, separator))
     separator = normalPath.lastIndexOf('/', separator - 1)
   }
-
-  for (const p of patterns) {
-    if (pathCandidates.some(candidate => p.regex.test(candidate))) {
-      ignored = !p.negation
-    }
+  // The last matching rule wins. Traverse backwards to avoid testing earlier
+  // rules once the answer is known, preserving negation and ancestor matching.
+  for (let index = patterns.length - 1; index >= 0; index--) {
+    const pattern = patterns[index]
+    if (candidates.some(candidate => pattern.regex.test(candidate))) return !pattern.negation
   }
-  return ignored
+  return false
+}
+
+export function isIgnored(filePath: string, patterns: GitignorePattern[]): boolean {
+  return matchesPath(filePath, patterns)
+}
+
+export function createGitignoreMatcher(patterns: GitignorePattern[], maxEntries = 10_000) {
+  const cache = new Map<string, boolean>()
+  return (filePath: string): boolean => {
+    const cached = cache.get(filePath)
+    if (cached !== undefined) return cached
+    const ignored = matchesPath(filePath, patterns)
+    if (maxEntries > 0) {
+      if (cache.size >= maxEntries) cache.delete(cache.keys().next().value!)
+      cache.set(filePath, ignored)
+    }
+    return ignored
+  }
 }
 
 export function filterByGitignore(

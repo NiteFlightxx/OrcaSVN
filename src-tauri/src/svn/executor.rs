@@ -1,10 +1,10 @@
-use std::io::Read;
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::sync::{OnceLock, RwLock};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use thiserror::Error;
-use tokio::task::spawn_blocking;
+use tokio::process::Command;
+use tokio::time::timeout;
 
 pub const SVN_TIMEOUT: Duration = Duration::from_secs(120);
 static SVN_EXECUTABLE: OnceLock<RwLock<PathBuf>> = OnceLock::new();
@@ -71,88 +71,44 @@ async fn execute_svn_inner(
     path: Option<&str>,
 ) -> Result<String, SvnError> {
     let args_vec: Vec<String> = args.iter().map(|s| s.to_string()).collect();
-    let path_str = path.map(|s| s.to_string());
+    let mut cmd = Command::new(&executable);
+    cmd.args(build_command_args(&args_vec));
+    cmd.stdout(Stdio::piped());
+    cmd.stderr(Stdio::piped());
+    // Dropping the output future on timeout kills the child rather than leaving
+    // an SVN process running. Tokio drains stdout and stderr concurrently.
+    cmd.kill_on_drop(true);
+    if let Some(path) = path {
+        cmd.current_dir(path);
+    }
 
-    spawn_blocking(move || {
-        let mut cmd = Command::new(&executable);
-        // Global options must precede a possible `--` target separator.
-        cmd.args(build_command_args(&args_vec));
-        cmd.stdout(Stdio::piped());
-        cmd.stderr(Stdio::piped());
+    #[cfg(windows)]
+    {
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
 
-        if let Some(p) = path_str.as_ref() {
-            cmd.current_dir(p);
-        }
+    collect_command_output(&mut cmd, SVN_TIMEOUT).await
+}
 
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            const CREATE_NO_WINDOW: u32 = 0x08000000;
-            cmd.creation_flags(CREATE_NO_WINDOW);
-        }
-
-        let mut child = cmd.spawn().map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
+async fn collect_command_output(cmd: &mut Command, deadline: Duration) -> Result<String, SvnError> {
+    let output = timeout(deadline, cmd.output())
+        .await
+        .map_err(|_| SvnError::Timeout)?
+        .map_err(|error| {
+            if error.kind() == std::io::ErrorKind::NotFound {
                 SvnError::SvnNotFound
             } else {
-                SvnError::CommandFailed(e.to_string())
+                SvnError::CommandFailed(error.to_string())
             }
         })?;
-
-        // Drain both pipes while SVN is running. Large XML responses such as
-        // verbose logs can otherwise fill an OS pipe and block the child.
-        let mut stdout = child
-            .stdout
-            .take()
-            .ok_or_else(|| SvnError::CommandFailed("无法读取 SVN 标准输出".to_string()))?;
-        let mut stderr = child
-            .stderr
-            .take()
-            .ok_or_else(|| SvnError::CommandFailed("无法读取 SVN 错误输出".to_string()))?;
-        let stdout_reader = std::thread::spawn(move || {
-            let mut bytes = Vec::new();
-            stdout.read_to_end(&mut bytes).map(|_| bytes)
-        });
-        let stderr_reader = std::thread::spawn(move || {
-            let mut bytes = Vec::new();
-            stderr.read_to_end(&mut bytes).map(|_| bytes)
-        });
-
-        let started = Instant::now();
-        let status = loop {
-            match child.try_wait() {
-                Ok(Some(status)) => break status,
-                Ok(None) if started.elapsed() >= SVN_TIMEOUT => {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    let _ = stdout_reader.join();
-                    let _ = stderr_reader.join();
-                    return Err(SvnError::Timeout);
-                }
-                Ok(None) => std::thread::sleep(Duration::from_millis(100)),
-                Err(e) => return Err(SvnError::CommandFailed(e.to_string())),
-            }
-        };
-
-        let stdout = stdout_reader
-            .join()
-            .map_err(|_| SvnError::CommandFailed("读取 SVN 标准输出失败".to_string()))?
-            .map_err(|e| SvnError::CommandFailed(e.to_string()))?;
-        let stderr = stderr_reader
-            .join()
-            .map_err(|_| SvnError::CommandFailed("读取 SVN 错误输出失败".to_string()))?
-            .map_err(|e| SvnError::CommandFailed(e.to_string()))?;
-        let stdout = String::from_utf8_lossy(&stdout).to_string();
-        let stderr = String::from_utf8_lossy(&stderr).to_string();
-
-        if status.success() {
-            Ok(stdout)
-        } else {
-            Err(SvnError::CommandFailed(format!("{}\n{}", stdout, stderr)))
-        }
-    })
-    .await
-    .map_err(|e| SvnError::CommandFailed(format!("SVN 进程异常退出：{}", e)))?
+    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+    if output.status.success() {
+        Ok(stdout)
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(SvnError::CommandFailed(format!("{}\n{}", stdout, stderr)))
+    }
 }
 
 #[cfg(test)]
@@ -163,7 +119,7 @@ mod tests {
     #[test]
     fn captures_svn_stdout() {
         let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_time()
+            .enable_all()
             .build()
             .expect("failed to build tokio runtime");
 
@@ -174,6 +130,62 @@ mod tests {
             Err(SvnError::SvnNotFound) => {}
             Err(err) => panic!("unexpected svn executor error: {err}"),
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn drains_large_stdout_and_stderr_without_blocking() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let mut command = Command::new("sh");
+        command.args([
+            "-c",
+            "i=0; while [ $i -lt 10000 ]; do echo output; echo error >&2; i=$((i+1)); done",
+        ]);
+        command.kill_on_drop(true);
+        let output = runtime
+            .block_on(collect_command_output(
+                &mut command,
+                Duration::from_secs(10),
+            ))
+            .unwrap();
+        assert_eq!(output.lines().count(), 10000);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn timeout_kills_the_child() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let mut command = Command::new("sh");
+        command.args(["-c", "echo $$; exec sleep 10"]);
+        command.kill_on_drop(true);
+        // Spawn explicitly so the test can check that the timed-out PID exits.
+        command.stdout(Stdio::piped());
+        runtime.block_on(async {
+            let child = command.spawn().unwrap();
+            let pid = child.id().unwrap();
+            assert!(timeout(Duration::from_millis(30), child.wait_with_output())
+                .await
+                .is_err());
+            for _ in 0..100 {
+                let alive = std::process::Command::new("kill")
+                    .args(["-0", &pid.to_string()])
+                    .output()
+                    .unwrap()
+                    .status
+                    .success();
+                if !alive {
+                    return;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            panic!("timed-out child is still alive");
+        });
     }
 
     #[test]

@@ -107,7 +107,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onActivated, onDeactivated, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus/es/components/message/index'
@@ -128,13 +128,14 @@ const updateStateCache = new Map<string, UpdateStateCache>()
 const router = useRouter()
 const { t, locale } = useI18n()
 const workspaceStore = useWorkspaceStore()
-const { refreshStatus } = useWorkspace()
+const { refreshStatusAfterMutation, refreshStatusIfStale } = useWorkspace()
 const { settings } = useSettings()
 
 const loading = ref(false)
 const updating = ref(false)
 const incomingLogs = ref<SvnLogEntry[]>([])
 const remoteRevision = ref(0)
+let isActive = false
 let updateStateTimer: number | undefined
 let updateRequestGeneration = 0
 const updateStateIntervalMs = 30_000
@@ -157,14 +158,14 @@ const applyCachedState = (path: string) => {
 }
 
 const loadUpdateState = async (force = false) => {
-  if (!workspaceStore.currentPath || (!force && (loading.value || updating.value))) return
+  if (!isActive || !workspaceStore.currentPath || (!force && (loading.value || updating.value))) return
   const requestedPath = workspaceStore.currentPath
   const generation = ++updateRequestGeneration
   const isCurrent = () => generation === updateRequestGeneration
     && workspaceStore.currentPath === requestedPath
   loading.value = true
   try {
-    const refreshed = await refreshStatus()
+    const refreshed = await (force ? refreshStatusAfterMutation() : refreshStatusIfStale(updateStateIntervalMs))
     if (!isCurrent() || !refreshed) return
     const info = await svnRemoteInfo(requestedPath)
     if (!isCurrent()) return
@@ -216,18 +217,27 @@ const viewDiff = (path: string) => {
   router.push({ name: 'diff', query: { path } })
 }
 
-onMounted(() => {
-  if (workspaceStore.currentPath && !applyCachedState(workspaceStore.currentPath)) {
-    loadUpdateState()
-  }
-  updateStateTimer = window.setInterval(loadUpdateState, updateStateIntervalMs)
-})
-
-onUnmounted(() => {
+const stopUpdatePolling = () => {
+  isActive = false
   if (updateStateTimer !== undefined) {
     window.clearInterval(updateStateTimer)
+    updateStateTimer = undefined
   }
+  updateRequestGeneration += 1
+  loading.value = false
+}
+
+onActivated(() => {
+  isActive = true
+  if (workspaceStore.currentPath) {
+    applyCachedState(workspaceStore.currentPath)
+    void loadUpdateState()
+  }
+  updateStateTimer = window.setInterval(() => { void loadUpdateState() }, updateStateIntervalMs)
 })
+
+onDeactivated(stopUpdatePolling)
+onUnmounted(stopUpdatePolling)
 
 watch(
   () => workspaceStore.currentPath,
@@ -236,7 +246,7 @@ watch(
     loading.value = false
     incomingLogs.value = []
     remoteRevision.value = 0
-    if (path && !applyCachedState(path)) {
+    if (isActive && path && !applyCachedState(path)) {
       loadUpdateState()
     }
   }

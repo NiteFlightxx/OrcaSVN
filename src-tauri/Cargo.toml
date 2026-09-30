@@ -16,7 +16,7 @@ tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
 serde = { version = "1.0", features = ["derive"] }
-tokio = { version = "1", features = ["rt", "time"] }
+tokio = { version = "1", features = ["rt", "time", "process"] }
 thiserror = "2"
 quick-xml = "0.37"
 tracing = "0.1"
