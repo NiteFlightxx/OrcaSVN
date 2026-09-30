@@ -5,9 +5,12 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-const VERSION: u32 = 1;
+static NEXT_TEMP_FILE: AtomicU64 = AtomicU64::new(0);
+
+const VERSION: u32 = 2;
 const MAX_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_FILES: usize = 500_000;
 
@@ -26,7 +29,7 @@ pub(super) struct Stamp {
 }
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub(super) struct Inventory {
-    files: BTreeMap<String, Stamp>,
+    files: Vec<(String, Stamp)>,
     configuration: BTreeMap<String, u64>,
 }
 impl Inventory {
@@ -75,75 +78,88 @@ fn configuration() -> io::Result<BTreeMap<String, u64>> {
 
 pub(super) fn capture(root: &Path) -> io::Result<Inventory> {
     let configuration = configuration()?;
-    let mut result = BTreeMap::new();
-    let mut pending = vec![root.to_path_buf()];
-    while let Some(directory) = pending.pop() {
-        for entry in fs::read_dir(directory)? {
-            let path = entry?.path();
-            let relative = path.strip_prefix(root).map_err(io::Error::other)?;
-            let parts: Vec<_> = relative.components().collect();
-            if let Some(index) = parts
-                .iter()
-                .position(|p| p.as_os_str() == ".svn" || p.as_os_str() == "_svn")
-            {
-                if parts
-                    .get(index + 1)
-                    .is_some_and(|p| p.as_os_str() == "pristine" || p.as_os_str() == "tmp")
-                {
-                    continue;
-                }
+    let mut result = Vec::new();
+    let mut pending = vec![(PathBuf::new(), false)];
+    while let Some((relative_directory, administrative)) = pending.pop() {
+        for entry in fs::read_dir(root.join(&relative_directory))? {
+            let entry = entry?;
+            let name = entry.file_name();
+            // Carry the administrative flag per directory instead of parsing
+            // every file's full path and allocating component lists.
+            if administrative && (name == "pristine" || name == "tmp") {
+                continue;
             }
-            let metadata = fs::symlink_metadata(&path)?;
-            let directory = metadata.is_dir();
-            let kind = if directory {
-                0
-            } else if metadata.is_file() {
-                1
-            } else if metadata.is_symlink() {
-                2
-            } else {
-                return Err(io::Error::other("unsupported filesystem entry"));
-            };
-            // Directory mtimes change with children; compare their paths/types instead.
-            #[cfg(unix)]
-            let changed = {
-                use std::os::unix::fs::MetadataExt;
-                i128::from(metadata.ctime()) * 1_000_000_000 + i128::from(metadata.ctime_nsec())
-            };
-            #[cfg(not(unix))]
-            let changed = 0;
-            let stamp = Stamp {
-                kind,
-                size: if directory { 0 } else { metadata.len() },
-                modified: if directory {
-                    0
-                } else {
-                    metadata
-                        .modified()?
-                        .duration_since(UNIX_EPOCH)
-                        .map_err(io::Error::other)?
-                        .as_nanos()
-                },
-                changed: if directory { 0 } else { changed },
-                link: if kind == 2 {
-                    Some(fs::read_link(&path)?)
-                } else {
-                    None
-                },
-            };
-            let key = relative
+            let relative = relative_directory.join(&name);
+            let text = relative
                 .to_str()
-                .ok_or_else(|| io::Error::other("non-UTF8 path"))?
-                .replace('\\', "/");
-            result.insert(key, stamp);
+                .ok_or_else(|| io::Error::other("non-UTF8 path"))?;
+            #[cfg(unix)]
+            if text.contains('\\') {
+                return Err(io::Error::other("ambiguous SVN path"));
+            }
+            let key = text.replace('\\', "/");
+            let file_type = entry.file_type()?;
+            if file_type.is_dir() {
+                // read_dir already returns the type; directories need no stat.
+                result.push((
+                    key,
+                    Stamp {
+                        kind: 0,
+                        size: 0,
+                        modified: 0,
+                        changed: 0,
+                        link: None,
+                    },
+                ));
+                pending.push((relative, administrative || name == ".svn" || name == "_svn"));
+            } else {
+                let kind = if file_type.is_file() {
+                    1
+                } else if file_type.is_symlink() {
+                    2
+                } else {
+                    return Err(io::Error::other("unsupported filesystem entry"));
+                };
+                if kind == 2 && (name == ".svn" || name == "_svn") {
+                    return Err(io::Error::other("linked SVN administration directory"));
+                }
+                // DirEntry::metadata does not follow symlinks and reuses the
+                // directory enumeration's metadata on Windows.
+                let metadata = entry.metadata()?;
+                #[cfg(unix)]
+                let changed = {
+                    use std::os::unix::fs::MetadataExt;
+                    i128::from(metadata.ctime()) * 1_000_000_000 + i128::from(metadata.ctime_nsec())
+                };
+                #[cfg(not(unix))]
+                let changed = 0;
+                result.push((
+                    key,
+                    Stamp {
+                        kind,
+                        size: metadata.len(),
+                        modified: metadata
+                            .modified()?
+                            .duration_since(UNIX_EPOCH)
+                            .map_err(io::Error::other)?
+                            .as_nanos(),
+                        changed,
+                        link: if kind == 2 {
+                            Some(fs::read_link(entry.path())?)
+                        } else {
+                            None
+                        },
+                    },
+                ));
+            }
             if result.len() > MAX_FILES {
                 return Err(io::Error::other("filesystem inventory too large"));
             }
-            if directory {
-                pending.push(path);
-            }
         }
     }
+    // A compact sorted vector avoids per-node allocation and tree insertion;
+    // deserialization and successive comparisons also remain linear.
+    result.sort_unstable_by(|a, b| a.0.cmp(&b.0));
     Ok(Inventory {
         files: result,
         configuration,
@@ -229,6 +245,12 @@ pub(super) fn read(directory: &Path, root: &Path) -> Option<Snapshot> {
     let snapshot: Snapshot = serde_json::from_slice(&fs::read(path).ok()?).ok()?;
     (snapshot.version == VERSION
         && snapshot.root == root
+        && snapshot.inventory.files.len() <= MAX_FILES
+        && snapshot
+            .inventory
+            .files
+            .windows(2)
+            .all(|pair| pair[0].0 < pair[1].0)
         && now().checked_sub(snapshot.saved)? < 24 * 60 * 60)
         .then_some(snapshot)
 }
@@ -251,15 +273,18 @@ pub(super) fn write(
         return Err(io::Error::other("status snapshot too large"));
     }
     let path = location(directory, root);
-    let temp = path.with_extension("tmp");
-    fs::write(&temp, bytes)?;
-    // On Windows rename cannot replace an existing file. Removing the old cache
-    // is safe: interruption only causes a complete scan next time.
-    #[cfg(windows)]
-    if path.exists() {
-        fs::remove_file(&path)?;
+    let temp = path.with_extension(format!(
+        "tmp-{}-{}",
+        std::process::id(),
+        NEXT_TEMP_FILE.fetch_add(1, Ordering::Relaxed)
+    ));
+    // Standard rename replaces an existing file on Unix and Windows. Each
+    // writer uses its own temporary file, including after cache eviction.
+    let saved = fs::write(&temp, bytes).and_then(|_| fs::rename(&temp, &path));
+    if saved.is_err() {
+        let _ = fs::remove_file(&temp);
     }
-    fs::rename(temp, path)?;
+    saved?;
     // Bound disk usage to five recent workspaces.
     let mut files: Vec<_> = fs::read_dir(directory)?
         .filter_map(Result::ok)
@@ -300,6 +325,77 @@ mod tests {
             configuration: BTreeMap::new(),
         }
     }
+    #[test]
+    fn concurrent_snapshot_writers_keep_inventory_and_status_paired() {
+        let root = std::env::temp_dir().join(format!(
+            "orcasvn-snapshot-writers-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let directory = root.join("cache");
+        fs::create_dir_all(&directory).unwrap();
+        let threads: Vec<_> = (0..8)
+            .map(|value| {
+                let root = root.clone();
+                let directory = directory.clone();
+                std::thread::spawn(move || {
+                    let mut files = inventory(1);
+                    files.files[0].1.modified = value;
+                    let entries = vec![SvnStatus {
+                        path: "file-000".into(),
+                        status: "modified".into(),
+                        status_code: value.to_string(),
+                        prop_status: "none".into(),
+                        locked: false,
+                        history: false,
+                        switched: false,
+                    }];
+                    write(&directory, &root, files, entries).unwrap();
+                })
+            })
+            .collect();
+        for thread in threads {
+            thread.join().unwrap();
+        }
+        let snapshot = read(&directory, &root).unwrap();
+        assert_eq!(
+            snapshot.inventory.files[0].1.modified.to_string(),
+            snapshot.entries[0].status_code
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn temporary_svn_files_are_skipped_and_metadata_files_invalidate_cache() {
+        let root = std::env::temp_dir().join(format!(
+            "orcasvn-inventory-metadata-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(root.join(".svn/tmp")).unwrap();
+        fs::create_dir_all(root.join(".svn/pristine/aa")).unwrap();
+        fs::create_dir_all(root.join("src/tmp")).unwrap();
+        fs::write(root.join(".svn/wc.db"), "baseline").unwrap();
+        let before = capture(&root).unwrap();
+        fs::write(root.join(".svn/tmp/scratch"), "temporary").unwrap();
+        fs::write(root.join(".svn/pristine/aa/base"), "pristine").unwrap();
+        let temporary = capture(&root).unwrap();
+        assert_eq!(differences(&before, &temporary), Some(vec![]));
+        fs::write(root.join("src/tmp/file"), "normal file").unwrap();
+        let normal = capture(&root).unwrap();
+        assert_eq!(
+            differences(&temporary, &normal),
+            Some(vec!["src/tmp/file".into()])
+        );
+        fs::write(root.join(".svn/wc.db"), "metadata update").unwrap();
+        assert!(differences(&normal, &capture(&root).unwrap()).is_none());
+        fs::remove_dir_all(root).unwrap();
+    }
+
     #[test]
     fn configuration_change_and_large_scope_require_complete_scan() {
         let before = inventory(0);
