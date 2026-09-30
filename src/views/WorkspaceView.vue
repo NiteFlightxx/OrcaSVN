@@ -112,9 +112,10 @@
         </div>
 
         <!-- 文件列表 -->
-        <div class="file-list">
+        <div class="file-list" :aria-busy="workspaceStore.isLoading">
+          <GlassLoading :active="workspaceStore.isLoading && workspaceStore.statusList.length === 0" :label="$t('common.loading')" />
           <div v-if="workspaceStore.isLoading && workspaceStore.statusList.length === 0" class="loading-files">
-            <el-skeleton :rows="6" animated />
+            <el-skeleton :rows="6" />
           </div>
           <VirtualViewport v-else-if="filteredFiles.length" ref="fileViewport" class="workspace-files"
             :item-count="filteredFiles.length" :row-height="fileRowHeight"
@@ -203,13 +204,14 @@
             {{ $t('diff.title') }}
           </span>
         </div>
-        <div class="panel-content">
+        <div class="panel-content" :aria-busy="isLoadingDiff">
+          <GlassLoading :active="isLoadingDiff" :label="$t('common.loading')" />
           <div v-if="!selectedFile" class="empty-diff">
             <el-icon><Document /></el-icon>
             <span>{{ $t('diff.selectFile') }}</span>
           </div>
           <div v-else-if="isLoadingDiff" class="loading-diff">
-            <el-skeleton :rows="10" animated />
+            <el-skeleton :rows="10" />
           </div>
           <div v-else-if="diffResult" class="diff-content">
             <div class="diff-header">
@@ -243,6 +245,7 @@ import { getStatusClass, getStatusLabelKey } from '@/composables/useSvnStatus'
 import { useWorkspace } from '@/composables/useWorkspace'
 import VirtualViewport from '@/components/VirtualViewport.vue'
 import DiffViewer from '@/components/DiffViewer.vue'
+import GlassLoading from '@/components/GlassLoading.vue'
 import { writeClipboardText } from '@/utils/clipboard'
 import type { SvnStatus, DiffResult } from '@/types'
 
@@ -609,6 +612,7 @@ const handleFileAction = async (file: SvnStatus) => {
 }
 
 .panel-content {
+  position: relative;
   flex: 1;
   min-height: 0;
   overflow: hidden;
@@ -732,6 +736,7 @@ const handleFileAction = async (file: SvnStatus) => {
 
 /* 文件列表 */
 .file-list {
+  position: relative;
   display: flex;
   flex-direction: column;
   flex: 1;

@@ -30,6 +30,7 @@ function harness(status = 'modified', path = 'file.ts') {
     '@/composables/useWorkspace': { useWorkspace: () => ({ refreshStatusAfterMutation: async () => { refreshes++; return true } }) },
     '@/components/VirtualViewport.vue': {},
     '@/components/DiffViewer.vue': {},
+    '@/components/GlassLoading.vue': {},
     '@/utils/clipboard': {},
   }
   const script = fs.readFileSync('src/views/WorkspaceView.vue', 'utf8').match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1]
