@@ -87,6 +87,27 @@ fn merge_status(previous: &[SvnStatus], fresh: Vec<SvnStatus>, paths: &[String])
     entries
 }
 
+async fn persist_status(
+    workspace: &mut WorkspaceStatus,
+    root: &Path,
+    directory: PathBuf,
+    before: Arc<Inventory>,
+    entries: Vec<SvnStatus>,
+) {
+    if let Some(previous) = workspace.pending_save.take() {
+        let _ = previous.await;
+    }
+    let save_root = root.to_path_buf();
+    workspace.pending_save = Some(tokio::task::spawn_blocking(move || {
+        let Some(after) = status_snapshot::verify(&save_root, &before) else {
+            return;
+        };
+        if let Err(error) = status_snapshot::write(&directory, &save_root, after, entries) {
+            tracing::warn!(%error, "could not persist workspace status");
+        }
+    }));
+}
+
 /// Each scheduled refresh compares filesystem metadata, then scopes SVN queries.
 pub async fn cached_status(
     path: &str,
@@ -118,18 +139,13 @@ pub async fn cached_status(
     };
     // Run directory I/O away from the async command thread; enumerate once per
     // refresh, including while the app is open, with no watcher registration.
-    let (current, restored) = tokio::task::spawn_blocking(move || {
+    let (scan, restored) = tokio::task::spawn_blocking(move || {
         let restored =
             restore_dir.and_then(|directory| status_snapshot::read(&directory, &scan_root));
-        let baseline = previous_inventory.as_deref().or_else(|| restored.as_ref().map(|snapshot| &snapshot.inventory));
-        let current = status_snapshot::capture_incremental(&scan_root, baseline)
-            .or_else(|error| {
-                if baseline.is_some() {
-                    tracing::debug!(%error, "directory cache changed during scan; retrying full enumeration");
-                    status_snapshot::capture(&scan_root)
-                } else { Err(error) }
-            }).map(Arc::new);
-        (current, restored)
+        let baseline = previous_inventory
+            .as_deref()
+            .or_else(|| restored.as_ref().map(|snapshot| &snapshot.inventory));
+        (status_snapshot::scan(&scan_root, baseline), restored)
     })
     .await
     .map_err(|error| SvnError::CommandFailed(error.to_string()))?;
@@ -139,19 +155,23 @@ pub async fn cached_status(
         workspace.inventory = Some(Arc::new(snapshot.inventory));
         workspace.last_full_check = Some(Instant::now());
     }
-    let current = match current {
-        Ok(inventory) => Some(inventory),
+    let (current, hint, journal_reset) = match scan {
+        Ok(scan) => (Some(Arc::new(scan.inventory)), scan.paths, scan.force_full),
         Err(error) => {
             tracing::warn!(%error, "filesystem comparison unavailable; using complete SVN scan");
-            None
+            (None, None, true)
         }
     };
-    let changed = workspace
-        .inventory
-        .as_deref()
-        .zip(current.as_deref())
-        .and_then(|(before, after)| status_snapshot::differences(before, after));
+    // USN reasons remain candidates even when an editor preserves mtime/size.
+    let changed = hint.or_else(|| {
+        workspace
+            .inventory
+            .as_deref()
+            .zip(current.as_deref())
+            .and_then(|(before, after)| status_snapshot::differences(before, after))
+    });
     let full = force
+        || journal_reset
         || workspace.entries.is_none()
         || changed.is_none()
         || workspace
@@ -165,8 +185,14 @@ pub async fn cached_status(
         {
             workspace.last_query = Some(QueryMode::Reuse);
         }
+        let entries = workspace.entries.clone().unwrap_or_default();
+        if let (Some(directory), Some(before)) = (cache_dir, current.clone()) {
+            if status_snapshot::checkpoint_changed(workspace.inventory.as_deref(), &before) {
+                persist_status(&mut workspace, &root, directory, before, entries.clone()).await;
+            }
+        }
         workspace.inventory = current;
-        return Ok(workspace.entries.clone().unwrap_or_default());
+        return Ok(entries);
     }
     let mut used_full_scan = full;
     let result = if full {
@@ -205,24 +231,7 @@ pub async fn cached_status(
                 });
             }
             if let (Some(directory), Some(before)) = (cache_dir, current) {
-                if let Some(previous) = workspace.pending_save.take() {
-                    let _ = previous.await;
-                }
-                let save_root = root.clone();
-                let saved_entries = entries.clone();
-                workspace.pending_save = Some(tokio::task::spawn_blocking(move || {
-                    let Ok(after) = status_snapshot::capture(&save_root) else {
-                        return;
-                    };
-                    if before.as_ref() != &after {
-                        return;
-                    }
-                    if let Err(error) =
-                        status_snapshot::write(&directory, &save_root, after, saved_entries)
-                    {
-                        tracing::warn!(%error, "could not persist workspace status");
-                    }
-                }));
+                persist_status(&mut workspace, &root, directory, before, entries.clone()).await;
             }
             Ok(entries)
         }

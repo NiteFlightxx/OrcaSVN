@@ -10,11 +10,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 static NEXT_TEMP_FILE: AtomicU64 = AtomicU64::new(0);
 
-const VERSION: u32 = 3;
+const VERSION: u32 = 4;
 const MAX_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_FILES: usize = 500_000;
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(super) struct Stamp {
     #[serde(rename = "k")]
     kind: u8,
@@ -39,11 +39,13 @@ struct Directory {
     stamp: DirectoryStamp,
     children: Vec<usize>,
 }
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(super) struct Inventory {
     files: Vec<(String, Stamp)>,
     directories: BTreeMap<String, Directory>,
     configuration: BTreeMap<String, u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    journal: Option<super::status_usn::Journal>,
 }
 impl Inventory {
     #[cfg(test)]
@@ -188,7 +190,27 @@ pub(super) fn capture_incremental(
     root: &Path,
     previous: Option<&Inventory>,
 ) -> io::Result<Inventory> {
+    #[cfg(windows)]
+    let journal_start = super::status_usn::begin(root).ok();
     let (inventory, stats) = capture_measured(root, previous)?;
+    #[cfg(windows)]
+    let inventory = {
+        let mut inventory = inventory;
+        if let Some(session) = journal_start {
+            let expected = inventory
+                .files
+                .iter()
+                .map(|(path, stamp)| (path.clone(), stamp.kind == 0))
+                .collect::<Vec<_>>();
+            match session.index(root, &expected) {
+                Ok(journal) => inventory.journal = Some(journal),
+                Err(error) => {
+                    tracing::debug!(%error, "USN index unavailable; retaining metadata scans")
+                }
+            }
+        }
+        inventory
+    };
     tracing::debug!(
         enumerated_directories = stats.enumerated_directories,
         reused_directories = stats.reused_directories,
@@ -299,6 +321,7 @@ pub(super) fn capture_measured(
             files,
             directories,
             configuration,
+            journal: None,
         },
         stats,
     ))
@@ -343,9 +366,158 @@ fn capture_unchanged_directories(
             files,
             directories: previous.directories.clone(),
             configuration: configuration.clone(),
+            journal: None,
         },
         stats,
     ))
+}
+
+pub(super) struct Scan {
+    pub inventory: Inventory,
+    pub paths: Option<Vec<String>>,
+    pub force_full: bool,
+}
+
+pub(super) fn scan(root: &Path, previous: Option<&Inventory>) -> io::Result<Scan> {
+    #[cfg(windows)]
+    if let Some(previous) = previous.filter(|previous| previous.journal.is_some()) {
+        match capture_usn(root, previous) {
+            Ok((inventory, paths)) => {
+                tracing::debug!(
+                    changed_paths = paths.len(),
+                    "USN journal scoped filesystem query"
+                );
+                return Ok(Scan {
+                    inventory,
+                    paths: Some(paths),
+                    force_full: false,
+                });
+            }
+            Err(error) => {
+                tracing::debug!(%error, "USN history unavailable or changes unsafe; full status required");
+                return capture(root).map(|inventory| Scan {
+                    inventory,
+                    paths: None,
+                    force_full: true,
+                });
+            }
+        }
+    }
+    let inventory = capture_incremental(root, previous).or_else(|error| {
+        if previous.is_some() {
+            tracing::debug!(%error, "directory cache changed during scan; retrying full enumeration");
+            capture(root)
+        } else { Err(error) }
+    })?;
+    // Enabling USN after metadata-only caching establishes a new trustworthy
+    // baseline; do not reuse status that predates this journal checkpoint.
+    let force_full = inventory.journal.is_some()
+        && previous
+            .and_then(|before| before.journal.as_ref())
+            .is_none();
+    Ok(Scan {
+        inventory,
+        paths: None,
+        force_full,
+    })
+}
+
+#[cfg(windows)]
+fn capture_usn(root: &Path, previous: &Inventory) -> io::Result<(Inventory, Vec<String>)> {
+    if configuration()? != previous.configuration {
+        return Err(io::Error::other("SVN configuration changed"));
+    }
+    let delta = super::status_usn::probe(root, previous.journal.as_ref().unwrap())?;
+    let mut inventory = previous.clone();
+    let mut updates = BTreeMap::new();
+    let mut parents = std::collections::BTreeSet::new();
+    for path in &delta.paths {
+        let absolute = root.join(path);
+        let stamp = match fs::symlink_metadata(&absolute) {
+            Ok(metadata) => Some(file_stamp(&metadata, &absolute)?),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+            Err(error) => return Err(error),
+        };
+        parents.insert(path.rsplit_once('/').map_or("", |(parent, _)| parent));
+        updates.insert(path.as_str(), stamp);
+    }
+    if !updates.is_empty() {
+        let mut files = Vec::with_capacity(inventory.files.len() + updates.len());
+        for (path, before) in &inventory.files {
+            match updates.remove(path.as_str()) {
+                Some(Some(stamp)) => files.push((path.clone(), stamp)),
+                Some(None) => {}
+                None => files.push((path.clone(), before.clone())),
+            }
+        }
+        for (path, stamp) in updates {
+            if let Some(stamp) = stamp {
+                files.push((path.to_owned(), stamp));
+            }
+        }
+        if files.len() > MAX_FILES {
+            return Err(io::Error::other("USN inventory too large"));
+        }
+        files.sort_unstable_by(|a, b| a.0.cmp(&b.0));
+        inventory.files = files;
+        for parent in parents {
+            inventory
+                .directories
+                .get_mut(parent)
+                .ok_or_else(|| io::Error::other("USN parent not in cached directories"))?
+                .stamp = directory_stamp(&fs::symlink_metadata(root.join(parent))?)?;
+        }
+        for directory in inventory.directories.values_mut() {
+            directory.children.clear();
+        }
+        for (index, (path, _)) in inventory.files.iter().enumerate() {
+            let parent = path.rsplit_once('/').map_or("", |(parent, _)| parent);
+            inventory
+                .directories
+                .get_mut(parent)
+                .ok_or_else(|| io::Error::other("USN directory structure incomplete"))?
+                .children
+                .push(index);
+        }
+    }
+    let expected = inventory
+        .files
+        .iter()
+        .map(|(path, stamp)| (path.clone(), stamp.kind == 0))
+        .collect::<Vec<_>>();
+    if !super::status_usn::valid(&delta.journal, &expected) {
+        return Err(io::Error::other(
+            "USN identity index inconsistent after changes",
+        ));
+    }
+    inventory.journal = Some(delta.journal);
+    Ok((inventory, delta.paths))
+}
+
+pub(super) fn checkpoint_changed(before: Option<&Inventory>, after: &Inventory) -> bool {
+    after.journal.as_ref().is_some_and(|journal| {
+        before
+            .and_then(|inventory| inventory.journal.as_ref())
+            .is_none_or(|before| before.next != journal.next || before.id != journal.id)
+    })
+}
+
+pub(super) fn verify(root: &Path, before: &Inventory) -> Option<Inventory> {
+    #[cfg(windows)]
+    if let Some(journal) = &before.journal {
+        if configuration().ok()? != before.configuration {
+            return None;
+        }
+        let delta = super::status_usn::probe(root, journal).ok()?;
+        if !delta.paths.is_empty() {
+            return None;
+        }
+        let mut checked = before.clone();
+        checked.journal = Some(delta.journal);
+        return Some(checked);
+    }
+    let after = capture(root).ok()?;
+    (before == &after).then_some(after)
 }
 
 /// None requests a full scan (SVN metadata or directory structure changed).
@@ -473,6 +645,17 @@ pub(super) fn read(directory: &Path, root: &Path) -> Option<Snapshot> {
         && snapshot.root == root
         && snapshot.inventory.files.len() <= MAX_FILES
         && valid_directory_index(&snapshot.inventory)
+        && snapshot.inventory.journal.as_ref().is_none_or(|journal| {
+            super::status_usn::valid(
+                journal,
+                &snapshot
+                    .inventory
+                    .files
+                    .iter()
+                    .map(|(path, stamp)| (path.clone(), stamp.kind == 0))
+                    .collect::<Vec<_>>(),
+            )
+        })
         && snapshot
             .inventory
             .files
@@ -562,6 +745,7 @@ mod tests {
                 },
             )]),
             configuration: BTreeMap::new(),
+            journal: None,
         }
     }
     #[test]
