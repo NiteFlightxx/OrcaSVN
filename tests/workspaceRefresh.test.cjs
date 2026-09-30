@@ -26,7 +26,7 @@ function harness() {
   const mocks = {
     '@/stores/workspace': { useWorkspaceStore: () => store },
     '@/api/svn': {
-      svnStatus: path => { const request = { path, ...deferred() }; requests.push(request); return request.promise },
+      svnStatus: (path, force = false) => { const request = { path, force, ...deferred() }; requests.push(request); return request.promise },
       svnLocalRevision: async () => 12,
     },
     '@tauri-apps/plugin-dialog': {},
@@ -165,4 +165,17 @@ test('post-mutation scan invalidates persistence and old file actions until fres
   h.requests[0].resolve([])
   await pending
   assert.equal(h.store.statusIsStale, false)
+})
+
+test('filesystem-scoped background checks do not satisfy an explicit complete refresh', async () => {
+  const h = harness(), workspace = h.useWorkspace()
+  const background = workspace.refreshStatusIfStale(0)
+  assert.equal(h.requests[0].force, false)
+  const manual = workspace.refreshStatus()
+  assert.equal(h.requests[1].force, true)
+  h.requests[1].resolve([{ path: 'verified.ts' }])
+  assert.equal(await manual, true)
+  h.requests[0].resolve([{ path: 'old.ts' }])
+  assert.equal(await background, false)
+  assert.equal(h.store.statusList[0].path, 'verified.ts')
 })

@@ -27,8 +27,8 @@ export async function svnCommit(
   return invoke<CommandResult>('svn_commit', { path, message, files })
 }
 
-export async function svnStatus(path: string): Promise<SvnStatus[]> {
-  return invoke<SvnStatus[]>('svn_status', { path })
+export async function svnStatus(path: string, force = false): Promise<SvnStatus[]> {
+  return invoke<SvnStatus[]>('svn_status', { path, force })
 }
 
 export async function svnLog(

@@ -229,19 +229,57 @@ pub async fn commit(
 pub async fn status(path: &str) -> Result<Vec<SvnStatus>, SvnError> {
     let output = execute_svn(&["status", "--xml"], Some(path)).await?;
     let mut entries = parse_status_xml(&output)?;
-    // Default status collapses deleted directories. Expand only when needed,
-    // avoiding a verbose scan for the common modified-file case.
-    if entries
+    // Default status collapses deleted directories. Expand only affected
+    // targets, avoiding a second verbose traversal of the whole workspace.
+    let targets: Vec<_> = entries
         .iter()
-        .any(|entry| matches!(entry.status_code.as_str(), "deleted" | "replaced"))
-    {
-        let output = execute_svn(&["status", "--xml", "--verbose"], Some(path)).await?;
-        entries = parse_status_xml(&output)?;
+        .filter(|entry| matches!(entry.status_code.as_str(), "deleted" | "replaced"))
+        .map(|entry| normalize_diff_target(&entry.path))
+        .collect();
+    for group in targets.chunks(16) {
+        let mut args: Vec<String> = ["status", "--xml", "--verbose", "--"]
+            .iter()
+            .map(|arg| arg.to_string())
+            .collect();
+        args.extend(group.iter().cloned());
+        let refs: Vec<_> = args.iter().map(String::as_str).collect();
+        let output = execute_svn(&refs, Some(path)).await?;
+        entries.extend(parse_status_xml(&output)?);
+    }
+    let mut changed = std::collections::BTreeMap::new();
+    for entry in entries {
+        if !matches!(entry.status_code.as_str(), "normal" | "none")
+            || matches!(entry.prop_status.as_str(), "modified" | "conflicted")
+        {
+            changed.insert(entry.path.clone(), entry);
+        }
+    }
+    Ok(changed.into_values().collect())
+}
+
+/// Query only exact paths. The filesystem event queue chooses these
+/// targets; a complete status scan remains the fallback for unknown scope.
+pub(super) async fn status_for_paths(
+    path: &str,
+    paths: &[String],
+) -> Result<Vec<SvnStatus>, SvnError> {
+    let mut entries = Vec::new();
+    // Batch the identified paths; oversized platform argv limits fall back
+    // to a complete scan in the caller.
+    for group in paths.chunks(64) {
+        let mut args: Vec<String> = ["status", "--xml", "--depth", "empty", "--"]
+            .iter()
+            .map(|arg| arg.to_string())
+            .collect();
+        args.extend(group.iter().map(|target| normalize_diff_target(target)));
+        let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+        let output = execute_svn(&refs, Some(path)).await?;
+        entries.extend(parse_status_xml(&output)?);
     }
     Ok(entries
         .into_iter()
         .filter(|entry| {
-            !matches!(entry.status_code.as_str(), "normal" | "none")
+            !matches!(entry.status_code.as_str(), "normal" | "none" | "ignored")
                 || matches!(entry.prop_status.as_str(), "modified" | "conflicted")
         })
         .collect())

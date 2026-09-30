@@ -9,12 +9,12 @@ import { cacheWorkspaceSnapshot, getWorkspaceSnapshot, invalidateWorkspaceSnapsh
 import type { SvnInfo } from '@/types'
 
 let workspaceRequestGeneration = 0
-let pendingRequest: { path: string; generation: number; promise: Promise<boolean> } | null = null
+let pendingRequest: { path: string; generation: number; force: boolean; promise: Promise<boolean> } | null = null
 let lastRefresh: { path: string; generation: number; timestamp: number } | null = null
 
-function trackRequest(path: string, operation: () => Promise<boolean>): Promise<boolean> {
+function trackRequest(path: string, operation: () => Promise<boolean>, force = false): Promise<boolean> {
   const promise = operation()
-  const request = { path, generation: workspaceRequestGeneration, promise }
+  const request = { path, generation: workspaceRequestGeneration, force, promise }
   pendingRequest = request
   request.promise = promise.then(success => {
     if (success && request.generation === workspaceRequestGeneration) {
@@ -192,7 +192,7 @@ export function useWorkspace() {
     return loadWorkspace(path)
   }
 
-  async function performRefreshStatus(): Promise<boolean> {
+  async function performRefreshStatus(force = false): Promise<boolean> {
     if (!workspaceStore.currentPath) return false
 
     const generation = ++workspaceRequestGeneration
@@ -204,7 +204,7 @@ export function useWorkspace() {
     workspaceStore.setLoading(true)
     workspaceStore.setError(null)
     try {
-      const statusRequest = svnStatus(path)
+      const statusRequest = svnStatus(path, force)
       const infoRequest = requestWorkspaceInfo(path, isCurrent)
       const gitignoreRequest = loadGitignoreIfNeeded(path, workspaceStore, isCurrent)
       const status = await statusRequest
@@ -238,8 +238,8 @@ export function useWorkspace() {
   function refreshStatus(): Promise<boolean> {
     const path = workspaceStore.currentPath
     if (!path) return Promise.resolve(false)
-    if (pendingRequest?.path === path && pendingRequest.generation === workspaceRequestGeneration) return pendingRequest.promise
-    return trackRequest(path, performRefreshStatus)
+    if (pendingRequest?.path === path && pendingRequest.force && pendingRequest.generation === workspaceRequestGeneration) return pendingRequest.promise
+    return trackRequest(path, () => performRefreshStatus(true), true)
   }
 
   // A mutation or setting change requires a scan started after that change;
@@ -250,7 +250,7 @@ export function useWorkspace() {
       invalidateWorkspaceSnapshot(path)
       workspaceStore.setStatusIsStale(true)
     }
-    return path ? trackRequest(path, performRefreshStatus) : Promise.resolve(false)
+    return path ? trackRequest(path, () => performRefreshStatus(true), true) : Promise.resolve(false)
   }
 
   function refreshStatusIfStale(maxAgeMs: number): Promise<boolean> {
@@ -259,7 +259,7 @@ export function useWorkspace() {
     if (pendingRequest?.path === path && pendingRequest.generation === workspaceRequestGeneration) return pendingRequest.promise
     if (lastRefresh?.path === path && lastRefresh.generation === workspaceRequestGeneration
       && Date.now() - lastRefresh.timestamp < maxAgeMs) return Promise.resolve(true)
-    return refreshStatus()
+    return trackRequest(path, () => performRefreshStatus(false))
   }
 
   return { loadWorkspace, openWorkspace, restoreLastWorkspace, refreshStatus, refreshStatusAfterMutation, refreshStatusIfStale }

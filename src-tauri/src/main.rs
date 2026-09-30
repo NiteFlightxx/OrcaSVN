@@ -552,8 +552,10 @@ async fn svn_commit(
 }
 
 #[tauri::command]
-async fn svn_status(path: String) -> Result<Vec<SvnStatus>, String> {
-    svn::status(&path).await.map_err(|e| e.to_string())
+async fn svn_status(path: String, force: Option<bool>) -> Result<Vec<SvnStatus>, String> {
+    svn::cached_status(&path, force.unwrap_or(false))
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
