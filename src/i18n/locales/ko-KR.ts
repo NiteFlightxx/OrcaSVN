@@ -108,6 +108,8 @@ export default {
     selectedFiles: '{count}개 파일 선택됨',
     markDeleted: '삭제 표시',
     viewDiff: '파일 비교 보기',
+    revertFileConfirm: '이 대상의 SVN 변경 사항을 되돌리시겠습니까? 커밋하지 않은 내용 또는 속성 변경이 손실될 수 있으며 SVN으로 복구할 수 없습니다.',
+    deleteUnversionedConfirm: '이 버전 관리되지 않은 파일 또는 디렉터리를 영구 삭제하시겠습니까? 디렉터리의 모든 내용도 삭제됩니다. 휴지통으로 이동하지 않으며 되돌릴 수 없습니다.',
     revertFile: '이 파일 되돌리기',
     deleteUnversioned: '버전 관리 안 된 파일 삭제',
     openInExplorer: '파일 탐색기에서 열기',

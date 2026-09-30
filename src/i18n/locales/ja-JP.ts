@@ -108,6 +108,8 @@ export default {
     selectedFiles: '{count} 個のファイルを選択中',
     markDeleted: '削除としてマーク',
     viewDiff: 'ファイル差分を表示',
+    revertFileConfirm: 'この対象の SVN 変更を元に戻しますか？未コミットの内容や属性の変更が失われ、SVN では復元できない場合があります。',
+    deleteUnversionedConfirm: 'この未管理のファイルまたはディレクトリを完全に削除しますか？ディレクトリ内のすべての内容も削除されます。ごみ箱には移動されず、元に戻せません。',
     revertFile: 'このファイルを元に戻す',
     deleteUnversioned: 'バージョン管理外ファイルを削除',
     openInExplorer: 'ファイルマネージャーで開く',

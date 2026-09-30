@@ -156,10 +156,11 @@
                       </el-button>
                     </span>
                   </el-tooltip>
-                  <el-tooltip :content="$t('common.revert')" placement="top" :show-after="150">
-                    <span class="file-action-trigger" :title="$t('common.revert')" @click.stop>
-                      <el-button text size="small" type="danger" :aria-label="$t('common.revert')" @click="revertFile(file)">
-                        <el-icon><RefreshLeft /></el-icon>
+                  <el-tooltip :content="fileActionLabel(file)" placement="top" :show-after="150">
+                    <span class="file-action-trigger" :title="fileActionLabel(file)" @click.stop>
+                      <el-button text size="small" type="danger" :aria-label="fileActionLabel(file)"
+                        :disabled="pendingFileAction !== null" @click="handleFileAction(file)">
+                        <el-icon><Delete v-if="file.status_code === 'unversioned'" /><RefreshLeft v-else /></el-icon>
                       </el-button>
                     </span>
                   </el-tooltip>
@@ -231,12 +232,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, onBeforeUnmount, onMounted, reactive, watch } from 'vue'
+import { h, ref, computed, nextTick, onBeforeUnmount, onMounted, reactive, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { deleteUnversioned, revealWorkspaceFile, svnCleanup, svnRevert, svnDiff } from '@/api/svn'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus/es/components/message/index'
+import { ElMessageBox } from 'element-plus/es/components/message-box/index'
 import { getStatusClass, getStatusLabelKey } from '@/composables/useSvnStatus'
 import { useWorkspace } from '@/composables/useWorkspace'
 import VirtualViewport from '@/components/VirtualViewport.vue'
@@ -254,6 +256,8 @@ const selectedFile = ref<string | null>(null)
 const isLoadingDiff = ref(false)
 const diffResult = ref<DiffResult | null>(null)
 let diffRequestGeneration = 0
+let fileActionWorkspaceGeneration = 0
+const pendingFileAction = ref<string | null>(null)
 const fileContextMenu = reactive({
   visible: false,
   x: 0,
@@ -413,12 +417,13 @@ const handleDocumentKeydown = (event: KeyboardEvent) => {
 }
 
 watch(() => workspaceStore.currentPath, () => {
+  fileActionWorkspaceGeneration += 1
   diffRequestGeneration += 1
   selectedFile.value = null
   diffResult.value = null
   isLoadingDiff.value = false
   hideFileContextMenu()
-})
+}, { flush: 'sync' })
 
 onMounted(() => {
   document.addEventListener('click', hideFileContextMenu)
@@ -428,31 +433,70 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  fileActionWorkspaceGeneration += 1
   document.removeEventListener('click', hideFileContextMenu)
   document.removeEventListener('contextmenu', hideFileContextMenu)
   document.removeEventListener('scroll', hideFileContextMenu, true)
   document.removeEventListener('keydown', handleDocumentKeydown)
 })
 
-const revertFile = async (file: SvnStatus) => {
+const fileActionLabel = (file: SvnStatus) => t(file.status_code === 'unversioned' ? 'common.delete' : 'common.revert')
+
+const handleFileAction = async (file: SvnStatus) => {
   hideFileContextMenu()
-  if (!workspaceStore.currentPath) return
+  const workspacePath = workspaceStore.currentPath
+  if (!workspacePath || pendingFileAction.value !== null) return
   const path = file.path
+  const statusCode = file.status_code
+  const propStatus = file.prop_status
+  const isUnversioned = statusCode === 'unversioned'
+  const generation = fileActionWorkspaceGeneration
+  const isCurrent = () => generation === fileActionWorkspaceGeneration && workspaceStore.currentPath === workspacePath
+  pendingFileAction.value = path
   try {
-    if (file.status_code === 'unversioned') {
-      await deleteUnversioned(workspaceStore.currentPath, [path])
-    } else {
-      await svnRevert(workspaceStore.currentPath, [path])
+    try {
+      await ElMessageBox.confirm(
+        h('div', [
+          h('p', t(isUnversioned ? 'workspace.deleteUnversionedConfirm' : 'workspace.revertFileConfirm')),
+          h('code', { style: { display: 'block', marginTop: '12px', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', userSelect: 'text' } }, joinWorkspacePath(workspacePath, path)),
+        ]),
+        t(isUnversioned ? 'common.delete' : 'common.revert'),
+        {
+          type: 'warning',
+          confirmButtonText: t(isUnversioned ? 'common.delete' : 'common.revert'),
+          confirmButtonType: 'danger',
+          cancelButtonText: t('common.cancel'),
+          closeOnClickModal: false,
+          autofocus: false,
+          distinguishCancelAndClose: true,
+        },
+      )
+    } catch (action) {
+      if (action === 'cancel' || action === 'close') return
+      throw action
     }
+    if (!isCurrent()) return
+    // A background refresh can remove the target or change its SVN state while
+    // the dialog is open. Such a target requires a new confirmation.
+    const currentFile = workspaceStore.statusList.find(entry => entry.path === path)
+    if (!currentFile || currentFile.status_code !== statusCode || currentFile.prop_status !== propStatus) return
+    if (isUnversioned) await deleteUnversioned(workspacePath, [path])
+    else await svnRevert(workspacePath, [path])
+    if (!isCurrent()) return
     await refreshStatusAfterMutation()
-    if (selectedFile.value === path) {
+    if (isCurrent() && selectedFile.value === path) {
+      diffRequestGeneration += 1
       selectedFile.value = null
       diffResult.value = null
+      isLoadingDiff.value = false
     }
   } catch (err) {
-    workspaceStore.setError(String(err))
+    if (isCurrent()) workspaceStore.setError(String(err))
+  } finally {
+    pendingFileAction.value = null
   }
 }
+
 </script>
 
 <style scoped>
