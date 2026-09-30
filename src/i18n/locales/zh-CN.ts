@@ -108,6 +108,7 @@ export default {
     selectedFiles: '已选择 {count} 个文件',
     markDeleted: '标记删除',
     viewDiff: '查看文件差异',
+    cachedStatus: '显示上次状态，尚未完成校验',
     revertFileConfirm: '还原此目标的 SVN 变更？未提交的内容或属性修改可能丢失，且无法通过 SVN 恢复。',
     deleteUnversionedConfirm: '永久删除此未版本文件或目录？目录内的全部内容也会删除，不会进入回收站，且无法撤销。',
     revertFile: '还原此文件',

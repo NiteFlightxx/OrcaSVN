@@ -141,3 +141,17 @@ test('unmounting the view invalidates a pending confirmation', async () => {
   await pending
   assert.equal(h.operations.length, 0)
 })
+
+
+test('unverified cached status cannot start or confirm a destructive file action', async () => {
+  const h = harness()
+  h.store.statusIsStale = true
+  await h.handleFileAction(h.file)
+  assert.equal(h.dialogs.length, 0)
+  h.store.statusIsStale = false
+  const pending = h.handleFileAction(h.file)
+  h.store.statusIsStale = true
+  h.confirmation.resolve('confirm')
+  await pending
+  assert.equal(h.operations.length, 0)
+})

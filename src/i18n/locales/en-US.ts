@@ -108,6 +108,7 @@ export default {
     selectedFiles: '{count} files selected',
     markDeleted: 'Mark Deleted',
     viewDiff: 'View file diff',
+    cachedStatus: 'Showing previous status; verification pending',
     revertFileConfirm: 'Revert SVN changes to this target? Uncommitted content or property changes may be lost and cannot be recovered through SVN.',
     deleteUnversionedConfirm: 'Permanently delete this unversioned file or directory? All directory contents will also be deleted. This bypasses the trash and cannot be undone.',
     revertFile: 'Revert this file',

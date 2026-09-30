@@ -15,7 +15,7 @@
               <el-icon><Refresh /></el-icon>
               {{ $t('common.refresh') }}
             </el-button>
-            <el-button type="primary" size="small" @click="openCreateDialog" :disabled="!hasStashableChanges">
+            <el-button type="primary" size="small" @click="openCreateDialog" :disabled="!hasStashableChanges || workspaceStore.statusIsStale">
               <el-icon><Plus /></el-icon>
               {{ $t('stash.create') }}
             </el-button>
@@ -26,6 +26,8 @@
       <el-empty v-if="!workspaceStore.currentPath" :description="$t('log.openWorkspaceFirst')" class="empty-state" />
 
       <div v-else class="stash-content">
+        <el-alert v-if="workspaceStore.statusIsStale" :title="$t('workspace.cachedStatus')"
+          type="warning" :closable="false" show-icon />
         <el-alert
           v-if="hasStashableChanges"
           :title="$t('stash.workingCopyHint', { count: stashableFiles.length + unversionedFiles.length })"
@@ -42,7 +44,7 @@
         />
 
         <el-empty v-if="stashes.length === 0" :description="$t('stash.empty')" class="empty-state">
-          <el-button type="primary" :disabled="!hasStashableChanges" @click="openCreateDialog">
+          <el-button type="primary" :disabled="!hasStashableChanges || workspaceStore.statusIsStale" @click="openCreateDialog">
             {{ $t('stash.create') }}
           </el-button>
         </el-empty>
@@ -161,7 +163,7 @@
       </div>
       <template #footer>
         <el-button @click="createDialogVisible = false">{{ $t('common.cancel') }}</el-button>
-        <el-button type="primary" :loading="creating" :disabled="selectedItemCount === 0" @click="createStash">
+        <el-button type="primary" :loading="creating" :disabled="selectedItemCount === 0 || workspaceStore.statusIsStale" @click="createStash">
           {{ $t('stash.saveAndHide') }}
         </el-button>
       </template>
@@ -225,7 +227,7 @@ const lineClass = (line: string) => ({
 })
 
 const openCreateDialog = async () => {
-  if (!workspaceStore.currentPath || loadingDiffs.value) return
+  if (!workspaceStore.currentPath || workspaceStore.statusIsStale || loadingDiffs.value) return
   const workspacePath = workspaceStore.currentPath
   createDialogVisible.value = true
   stashName.value = `WIP on ${new Date().toLocaleString(locale.value)}`
@@ -286,7 +288,7 @@ const onUnversionedToggle = (path: string, value: unknown) => {
 }
 
 const createStash = async () => {
-  if (!workspaceStore.currentPath || selectedItemCount.value === 0) return
+  if (!workspaceStore.currentPath || workspaceStore.statusIsStale || selectedItemCount.value === 0) return
   const workspacePath = workspaceStore.currentPath
   const patch = buildPatch(diffFiles.value, new Set(selectedHunks.value))
   if (!patch && selectedUnversioned.value.length === 0) {

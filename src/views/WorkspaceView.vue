@@ -111,10 +111,14 @@
           </button>
         </div>
 
+        <div v-if="workspaceStore.statusIsStale" class="cached-status-notice" role="status">
+          {{ $t('workspace.cachedStatus') }}<span v-if="workspaceStore.isLoading"> · {{ $t('common.loading') }}</span>
+        </div>
+
         <!-- 文件列表 -->
         <div class="file-list" :aria-busy="workspaceStore.isLoading">
-          <GlassLoading :active="workspaceStore.isLoading && workspaceStore.statusList.length === 0" :label="$t('common.loading')" />
-          <div v-if="workspaceStore.isLoading && workspaceStore.statusList.length === 0" class="loading-files">
+          <GlassLoading :active="workspaceStore.isLoading && !workspaceStore.statusIsStale && workspaceStore.statusList.length === 0" :label="$t('common.loading')" />
+          <div v-if="workspaceStore.isLoading && !workspaceStore.statusIsStale && workspaceStore.statusList.length === 0" class="loading-files">
             <el-skeleton :rows="6" />
           </div>
           <VirtualViewport v-else-if="filteredFiles.length" ref="fileViewport" class="workspace-files"
@@ -160,7 +164,7 @@
                   <el-tooltip :content="fileActionLabel(file)" placement="top" :show-after="150">
                     <span class="file-action-trigger" :title="fileActionLabel(file)" @click.stop>
                       <el-button text size="small" type="danger" :aria-label="fileActionLabel(file)"
-                        :disabled="pendingFileAction !== null" @click="handleFileAction(file)">
+                        :disabled="pendingFileAction !== null || workspaceStore.statusIsStale" @click="handleFileAction(file)">
                         <el-icon><Delete v-if="file.status_code === 'unversioned'" /><RefreshLeft v-else /></el-icon>
                       </el-button>
                     </span>
@@ -448,7 +452,7 @@ const fileActionLabel = (file: SvnStatus) => t(file.status_code === 'unversioned
 const handleFileAction = async (file: SvnStatus) => {
   hideFileContextMenu()
   const workspacePath = workspaceStore.currentPath
-  if (!workspacePath || pendingFileAction.value !== null) return
+  if (!workspacePath || pendingFileAction.value !== null || workspaceStore.statusIsStale) return
   const path = file.path
   const statusCode = file.status_code
   const propStatus = file.prop_status
@@ -478,7 +482,7 @@ const handleFileAction = async (file: SvnStatus) => {
       if (action === 'cancel' || action === 'close') return
       throw action
     }
-    if (!isCurrent()) return
+    if (!isCurrent() || workspaceStore.statusIsStale) return
     // A background refresh can remove the target or change its SVN state while
     // the dialog is open. Such a target requires a new confirmation.
     const currentFile = workspaceStore.statusList.find(entry => entry.path === path)
@@ -732,6 +736,14 @@ const handleFileAction = async (file: SvnStatus) => {
 .status-badge.conflicted .badge-count,
 .status-badge.missing .badge-count {
   color: var(--app-color-status-error-text);
+}
+
+.cached-status-notice {
+  padding: 8px 12px;
+  color: var(--md-sys-color-on-surface-variant);
+  background: var(--md-sys-color-surface-container);
+  font-size: 12px;
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
 }
 
 /* 文件列表 */

@@ -20,6 +20,8 @@
       </div>
 
       <div v-else class="commit-content">
+        <el-alert v-if="workspaceStore.statusIsStale" :title="$t('workspace.cachedStatus')"
+          type="warning" :closable="false" show-icon class="commit-info" />
         <el-alert
           :title="$t('commit.commitMessage')"
           type="info"
@@ -174,7 +176,7 @@
               type="primary"
               @click="doCommit"
               :loading="loading"
-              :disabled="!commitMessage || selectedFiles.length === 0"
+              :disabled="!commitMessage || selectedFiles.length === 0 || workspaceStore.statusIsStale"
             >
               <el-icon><Upload /></el-icon>
               {{ $t(hasUnversionedSelection ? 'commit.addAndReview' : 'common.commit') }}
@@ -351,7 +353,7 @@ const openWorkspace = async () => {
 }
 
 const doCommit = async () => {
-  if (!workspaceStore.currentPath || !commitMessage.value || selectedFiles.value.length === 0) {
+  if (!workspaceStore.currentPath || workspaceStore.statusIsStale || !commitMessage.value || selectedFiles.value.length === 0) {
     return
   }
 

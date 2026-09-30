@@ -10,12 +10,13 @@ function deferred() {
   return { promise, resolve, reject }
 }
 function harness() {
-  const requests = []
+  const requests = [], snapshots = new Map(), writes = [], invalidations = []
   const store = {
     currentPath: '/a', statusList: [], svnInfo: null, gitignorePatterns: [],
     setCurrentPath(path) { this.currentPath = path },
     setStatusList(list) { this.statusList = list },
     setSvnInfo(info) { this.svnInfo = info },
+    setStatusIsStale(value) { this.statusIsStale = value },
     setLoading(value) { this.isLoading = value },
     setError(value) { this.error = value },
     setGitignorePatterns(value) { this.gitignorePatterns = value },
@@ -32,12 +33,13 @@ function harness() {
     '@/composables/useSettings': { useSettings: () => ({ settings: { gitignoreEnabled: false } }) },
     '@/utils/gitignore': {},
     '@/utils/gitignoreWorker': { filterByGitignoreAsync: list => filter(list) },
+    '@/utils/workspaceSnapshot': { getWorkspaceSnapshot: path => snapshots.get(path) || null, cacheWorkspaceSnapshot: (...args) => writes.push(args), invalidateWorkspaceSnapshot: path => { invalidations.push(path); snapshots.delete(path) } },
     '@/utils/svnInfoCache': { getCachedSvnInfoMetadata: () => ({ url: 'file:///repo' }) },
   }
   const context = { exports: {}, require: name => { assert.ok(name in mocks, name); return mocks[name] } }
   const code = ts.transpileModule(fs.readFileSync('src/composables/useWorkspace.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText
   vm.runInNewContext(code, context)
-  return { store, requests, useWorkspace: context.exports.useWorkspace, setFilter: value => { filter = value } }
+  return { store, requests, snapshots, writes, invalidations, useWorkspace: context.exports.useWorkspace, setFilter: value => { filter = value } }
 }
 
 test('separate consumers share an in-flight refresh and background polls reuse fresh state', async () => {
@@ -104,4 +106,63 @@ test('late worker reply cannot overwrite status after a mutation', async () => {
   worker.resolve([{ path: 'old' }])
   assert.equal(await old, false)
   assert.equal(h.store.statusList[0].path, 'fresh')
+})
+
+
+test('reopening shows a cached small change list synchronously and verifies it in the background', async () => {
+  const h = harness(), workspace = h.useWorkspace()
+  h.snapshots.set('/b', { statusList: [{ path: 'cached.ts' }], svnInfo: { revision: 11 } })
+  const pending = workspace.loadWorkspace('/b')
+  assert.equal(h.store.currentPath, '/b')
+  assert.equal(h.store.statusList[0].path, 'cached.ts')
+  assert.equal(h.store.svnInfo.revision, 11)
+  assert.equal(h.store.statusIsStale, true)
+  assert.equal(h.store.isLoading, true)
+  assert.equal(h.requests.length, 1)
+  h.requests[0].resolve([{ path: 'fresh.ts' }])
+  assert.equal(await pending, true)
+  assert.equal(h.store.statusList[0].path, 'fresh.ts')
+  assert.equal(h.store.statusIsStale, false)
+  assert.equal(h.store.isLoading, false)
+  assert.equal(h.writes[0][0], '/b')
+  assert.equal(h.writes[0][1][0].path, 'fresh.ts')
+})
+
+test('an empty cached list is still marked unverified until the scan succeeds', async () => {
+  const h = harness()
+  h.snapshots.set('/b', { statusList: [], svnInfo: { revision: 11 } })
+  const pending = h.useWorkspace().loadWorkspace('/b')
+  assert.equal(h.store.statusIsStale, true)
+  h.requests[0].resolve([{ path: 'new.ts' }])
+  assert.equal(await pending, true)
+  assert.equal(h.store.statusIsStale, false)
+})
+
+test('failed verification preserves the cached view but does not mark it fresh', async () => {
+  const h = harness(), workspace = h.useWorkspace()
+  h.snapshots.set('/b', { statusList: [{ path: 'cached.ts' }], svnInfo: { revision: 11 } })
+  const pending = workspace.loadWorkspace('/b')
+  h.requests[0].reject(new Error('workspace unavailable'))
+  assert.equal(await pending, false)
+  assert.equal(h.store.currentPath, '/b')
+  assert.equal(h.store.statusList[0].path, 'cached.ts')
+  assert.equal(h.store.statusIsStale, true)
+  assert.match(h.store.error, /workspace unavailable/)
+  assert.equal(h.writes.length, 0)
+  const retry = workspace.refreshStatus()
+  h.requests[1].resolve([])
+  assert.equal(await retry, true)
+  assert.equal(h.store.statusIsStale, false)
+})
+
+test('post-mutation scan invalidates persistence and old file actions until fresh status arrives', async () => {
+  const h = harness()
+  h.snapshots.set('/a', { statusList: [{ path: 'old.ts' }], svnInfo: { revision: 11 } })
+  const pending = h.useWorkspace().refreshStatusAfterMutation()
+  assert.deepEqual(h.invalidations, ['/a'])
+  assert.equal(h.snapshots.has('/a'), false)
+  assert.equal(h.store.statusIsStale, true)
+  h.requests[0].resolve([])
+  await pending
+  assert.equal(h.store.statusIsStale, false)
 })

@@ -5,6 +5,7 @@ import { useSettings } from '@/composables/useSettings'
 import { parseGitignore } from '@/utils/gitignore'
 import { filterByGitignoreAsync } from '@/utils/gitignoreWorker'
 import { cacheSvnInfoMetadata, getCachedSvnInfoMetadata, type SvnInfoMetadata } from '@/utils/svnInfoCache'
+import { cacheWorkspaceSnapshot, getWorkspaceSnapshot, invalidateWorkspaceSnapshot } from '@/utils/workspaceSnapshot'
 import type { SvnInfo } from '@/types'
 
 let workspaceRequestGeneration = 0
@@ -109,6 +110,9 @@ export function useWorkspace() {
     const previousPath = workspaceStore.currentPath
     const previousStatusList = workspaceStore.statusList
     const previousSvnInfo = workspaceStore.svnInfo
+    const previousStatusIsStale = workspaceStore.statusIsStale
+    const { settings } = useSettings()
+    const snapshot = getWorkspaceSnapshot(path, settings.gitignoreEnabled)
     const isCurrentGeneration = () => generation === workspaceRequestGeneration
     const isCurrent = () => (
       isCurrentGeneration() && workspaceStore.currentPath === path
@@ -119,8 +123,9 @@ export function useWorkspace() {
 
     // 提前设置 currentPath，让依赖工作区路径的视图尽早切换。
     workspaceStore.setCurrentPath(path, false)
-    workspaceStore.setStatusList([])
-    workspaceStore.setSvnInfo(null)
+    workspaceStore.setStatusList(snapshot?.statusList || [])
+    workspaceStore.setSvnInfo(snapshot?.svnInfo || null)
+    workspaceStore.setStatusIsStale(Boolean(snapshot))
 
     const statusRequest = svnStatus(path)
     // Convert the eager metadata request into a fulfilled result so a status
@@ -142,15 +147,25 @@ export function useWorkspace() {
       if (!isCurrent()) return false
       workspaceStore.setStatusList(filteredStatus)
       workspaceStore.setSvnInfo(info)
+      workspaceStore.setStatusIsStale(false)
+      cacheWorkspaceSnapshot(path, filteredStatus, info, useSettings().settings.gitignoreEnabled)
       workspaceStore.rememberWorkspace(path)
       return true
     } catch (err) {
       if (!isCurrent()) return false
 
+      if (snapshot) {
+        workspaceStore.setStatusList(snapshot.statusList)
+        workspaceStore.setSvnInfo(snapshot.svnInfo)
+        workspaceStore.setStatusIsStale(true)
+        workspaceStore.setError(String(err))
+        return false
+      }
       if (previousPath) workspaceStore.setCurrentPath(previousPath, false)
       else workspaceStore.clearWorkspace()
       workspaceStore.setStatusList(previousStatusList)
       workspaceStore.setSvnInfo(previousSvnInfo)
+      workspaceStore.setStatusIsStale(previousStatusIsStale)
       workspaceStore.setError(String(err))
       return false
     } finally {
@@ -203,6 +218,8 @@ export function useWorkspace() {
       if (!isCurrent()) return false
       workspaceStore.setStatusList(filteredStatus)
       workspaceStore.setSvnInfo(info)
+      workspaceStore.setStatusIsStale(false)
+      cacheWorkspaceSnapshot(path, filteredStatus, info, useSettings().settings.gitignoreEnabled)
       return true
     } catch (err) {
       if (!isCurrent()) return false
@@ -229,6 +246,10 @@ export function useWorkspace() {
   // an older background scan must not satisfy this request.
   function refreshStatusAfterMutation(): Promise<boolean> {
     const path = workspaceStore.currentPath
+    if (path) {
+      invalidateWorkspaceSnapshot(path)
+      workspaceStore.setStatusIsStale(true)
+    }
     return path ? trackRequest(path, performRefreshStatus) : Promise.resolve(false)
   }
 
