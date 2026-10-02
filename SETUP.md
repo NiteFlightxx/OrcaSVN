@@ -29,7 +29,7 @@ npm run tauri dev
 npm run check
 ```
 
-该命令依次检查前端类型和构建，并运行 Rust 格式检查与单元测试。
+该命令依次检查前端类型和构建、运行前端单元测试，再检查 Rust 格式并运行 Rust 单元测试。
 
 ## 发布构建
 
@@ -37,7 +37,7 @@ npm run check
 npm run tauri build
 ```
 
-安装包和二进制产物位于 `src-tauri/target/release/`。推送 `v*` 标签时，GitHub Actions 会为三个桌面平台创建 Release。
+安装包和二进制产物位于 `src-tauri/target/release/`。推送不含连字符的 `v*` 标签（例如 `v0.6.2`）时，正式发布流水线为三个桌面平台创建 Release。预发布标签（例如 `v0.6.3-rc.1`）由独立流水线处理，详见[预发布说明](docs/prerelease.md)。
 
 ## 排查问题
 

@@ -6,15 +6,20 @@ OrcaSVN 是一个基于 Tauri、Rust 和 Vue 3 的跨平台 SVN 桌面客户端�
 
 ![OrcaSVN 软件界面](docs/images/orcasvn-workspace.png)
 
+当前 0.6.2 开发界面，2026-10-02 截取；使用示例工作区数据，正式发行版可能略有差异。[深色主题](docs/images/orcasvn-workspace-dark.png)。
+
 ## 核心能力
 
 - 以类似 `git status` 的分类查看本地变更、未版本文件、冲突和缺失文件
-- Checkout、Update、Commit、Add、Delete、Revert、Cleanup、Switch 和 Merge
+- 检出、更新、按文件或目录选择提交、加入版本控制、还原和清理工作副本
+- 本地贮藏：按文件或文本分块保存修改，并恢复到原工作区
 - 查看提交历史、文件差异和逐行 Blame
 - 支持简体中文、繁体中文、英语、日语和韩语
 - 支持浅色、深色主题以及 Windows、macOS、Linux
 
 > OrcaSVN 调用本机的 `svn` 命令行工具，不会自行实现 SVN 协议。
+
+Switch、Merge、Resolve 和受控文件安排删除目前需使用其他 SVN 客户端或命令行完成，再回到 OrcaSVN 刷新。工作区中的“删除”按钮用于删除未跟踪的本地文件。
 
 ## 安装
 
@@ -35,7 +40,7 @@ svn --version --quiet
 ## 快速开始
 
 1. 打开 OrcaSVN，选择已有 SVN 工作副本，或通过 Checkout 检出仓库。
-2. 在工作区按“变更、未版本、冲突、缺失”筛选文件。
+2. 在工作区按“变更、未跟踪、冲突、缺失”筛选文件。
 3. 选择文件查看 Diff，确认后进入 Commit 页面提交。
 4. 提交前先执行 Update，并优先解决冲突。
 
@@ -45,7 +50,9 @@ svn --version --quiet
 
 未跟踪目录先通过“加入版本控制并预览”展开文件列表，检查后再提交。删除或替换目录必须完整选择其子项；复制或移动目录暂不支持部分提交，会提示使用 SVN 客户端处理完整操作。
 
-更完整的操作说明见 [QUICKSTART.md](QUICKSTART.md)。
+入门步骤见 [快速使用](QUICKSTART.md)，完整操作与常见问题见 [用户手册](docs/user-guide.md)。
+
+日志页默认每页 20 条，可按作者、关键词和日期范围筛选；长作者名和提交信息省略显示，悬停查看全文。打开已缓存工作区时会先显示旧列表，再验证最新状态，未验证时显示提示并限制相关变更操作。
 
 ## 本地开发
 
@@ -68,6 +75,8 @@ npm run check
 ```
 
 详细环境配置和常见问题见 [SETUP.md](SETUP.md)，贡献约定见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
+预发布打包流程见 [预发布说明](docs/prerelease.md)，工作区加载的实测数据与测量边界见 [性能基准](docs/workspace-startup-benchmark.md)。
 
 ## 项目结构
 

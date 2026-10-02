@@ -6,15 +6,20 @@ OrcaSVN is a cross-platform SVN desktop client built with Tauri, Rust, and Vue 3
 
 ![OrcaSVN application interface](docs/images/orcasvn-workspace.png)
 
+Current 0.6.2 development UI, captured on 2026-10-02 with example workspace data. Released versions may differ. [Dark theme](docs/images/orcasvn-workspace-dark.png).
+
 ## Features
 
 - View local changes, unversioned files, conflicts, and missing files in `git status`-style groups
-- Checkout, Update, Commit, Add, Delete, Revert, Cleanup, Switch, and Merge
+- Check out, update, select files or directories to commit, add files, revert changes, and clean up working copies
+- Save local changes in stashes by file or text hunk and restore them to the original workspace
 - Browse commit history, inspect file diffs, and view line-by-line blame information
 - Available in Simplified Chinese, Traditional Chinese, English, Japanese, and Korean
 - Light and dark themes on Windows, macOS, and Linux
 
 > OrcaSVN uses the locally installed `svn` command-line tool; it does not implement the SVN protocol itself.
+
+Switch, Merge, Resolve, and scheduling deletion of versioned files currently require another SVN client or the command line. Refresh OrcaSVN afterward. The workspace Delete button removes unversioned local files.
 
 ## Installation
 
@@ -39,7 +44,7 @@ svn --version --quiet
 3. Select a file to inspect its diff, then review and commit your changes from the Commit page.
 4. Run Update before committing and resolve any conflicts first.
 
-For detailed usage instructions, see [QUICKSTART.md](QUICKSTART.md).
+For usage instructions, see the [quick start](QUICKSTART.md) and [user guide](docs/user-guide.md) (Simplified Chinese).
 
 ## Local Development
 

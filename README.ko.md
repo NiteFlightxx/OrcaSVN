@@ -6,15 +6,20 @@ OrcaSVN은 Tauri, Rust, Vue 3로 만든 크로스 플랫폼 SVN 데스크톱 클
 
 ![OrcaSVN 애플리케이션 화면](docs/images/orcasvn-workspace.png)
 
+2026-10-02에 예제 작업 사본 데이터로 촬영한 0.6.2 개발 버전 화면입니다. 정식 배포 버전과 다를 수 있습니다. [다크 테마](docs/images/orcasvn-workspace-dark.png).
+
 ## 주요 기능
 
 - 로컬 변경 사항, 버전 관리되지 않은 파일, 충돌 및 누락된 파일을 `git status`와 유사한 그룹으로 표시
-- Checkout, Update, Commit, Add, Delete, Revert, Cleanup, Switch 및 Merge
+- 체크아웃, 업데이트, 파일 또는 디렉터리를 선택하여 커밋, 버전 관리에 추가, 변경 되돌리기 및 작업 사본 정리
+- 파일이나 텍스트 변경 블록을 로컬 스태시에 저장하고 원래 작업 사본에 복원
 - 커밋 기록, 파일 Diff 및 줄 단위 Blame 정보 확인
 - 중국어 간체, 중국어 번체, 영어, 일본어 및 한국어 지원
 - Windows, macOS, Linux와 라이트 및 다크 테마 지원
 
 > OrcaSVN은 로컬에 설치된 `svn` 명령줄 도구를 사용하며 SVN 프로토콜을 직접 구현하지 않습니다.
+
+Switch, Merge, Resolve 및 버전 관리 대상 파일의 삭제 예약은 현재 다른 SVN 클라이언트나 명령줄에서 수행한 뒤 OrcaSVN을 새로 고쳐야 합니다. 작업 사본의 삭제 버튼은 버전 관리되지 않은 로컬 파일을 삭제합니다. 자세한 내용은 [사용자 가이드(중국어 간체)](docs/user-guide.md)를 참고하세요.
 
 ## 설치
 

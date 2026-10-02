@@ -6,15 +6,20 @@ OrcaSVN 是一款以 Tauri、Rust 和 Vue 3 打造的跨平台 SVN 桌面用戶�
 
 ![OrcaSVN 軟體介面](docs/images/orcasvn-workspace.png)
 
+目前 0.6.2 開發版介面，於 2026-10-02 使用範例工作副本資料擷取；正式發行版可能略有差異。[深色主題](docs/images/orcasvn-workspace-dark.png)。
+
 ## 核心功能
 
 - 以類似 `git status` 的分類檢視本機變更、未納入版本控制的檔案、衝突和遺失檔案
-- Checkout、Update、Commit、Add、Delete、Revert、Cleanup、Switch 和 Merge
+- 簽出、更新、按檔案或目錄選擇提交、加入版本控制、還原與清理工作副本
+- 本機貯藏：按檔案或文字區塊儲存修改，並還原至原工作副本
 - 瀏覽提交記錄、檢視檔案差異與逐行 Blame 資訊
 - 支援簡體中文、繁體中文、英文、日文和韓文
 - 支援 Windows、macOS、Linux，以及淺色與深色主題
 
 > OrcaSVN 使用本機安裝的 `svn` 命令列工具，不會自行實作 SVN 通訊協定。
+
+Switch、Merge、Resolve 與受控檔案的刪除排程目前需使用其他 SVN 用戶端或命令列完成，再回到 OrcaSVN 重新整理。工作區的「刪除」按鈕用於刪除未納入版本控制的本機檔案。完整操作說明見[使用者手冊（簡體中文）](docs/user-guide.md)。
 
 ## 安裝
 
