@@ -102,11 +102,11 @@
               <el-tag type="primary" size="small" effect="plain">r{{ row.revision }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="author" :label="$t('log.author')" width="120">
+          <el-table-column prop="author" :label="$t('log.author')" width="180">
             <template #default="{ row }">
               <div class="author-cell">
                 <el-icon><User /></el-icon>
-                <span>{{ row.author }}</span>
+                <span :title="row.author">{{ row.author }}</span>
               </div>
             </template>
           </el-table-column>
@@ -118,9 +118,9 @@
               </div>
             </template>
           </el-table-column>
-          <el-table-column prop="message" :label="$t('log.commitMessage')" show-overflow-tooltip>
+          <el-table-column prop="message" :label="$t('log.commitMessage')" min-width="220">
             <template #default="{ row }">
-              <span class="message-text">{{ row.message }}</span>
+              <span class="message-text" :title="row.message">{{ row.message }}</span>
             </template>
           </el-table-column>
           <el-table-column
@@ -261,7 +261,7 @@ const dialogVisible = ref(false)
 const selectedLog = ref<SvnLogEntry | null>(null)
 const LOG_CACHE_TTL_MS = 5 * 60 * 1000
 const LOG_CACHE_KEY_VERSION = 'v4'
-const DEFAULT_LOG_PAGE_SIZE = 50
+const DEFAULT_LOG_PAGE_SIZE = 20
 const MAX_CACHE_SIZE = 50
 type LogCacheEntry = {
   entries: SvnLogEntry[]
@@ -827,8 +827,16 @@ onUnmounted(() => {
 
 .author-cell .el-icon,
 .date-cell .el-icon {
+  flex-shrink: 0;
   font-size: 14px;
   color: var(--el-text-color-secondary);
+}
+
+.author-cell span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .message-text {
