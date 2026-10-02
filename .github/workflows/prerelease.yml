@@ -1,0 +1,126 @@
+name: Pre-release
+
+on:
+  push:
+    tags:
+      - "v*-*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: prerelease-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: "lts/*"
+  RUST_BACKTRACE: 1
+
+jobs:
+  prepare:
+    name: Validate version and prepare draft
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    outputs:
+      release-id: ${{ steps.release.outputs.id }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Validate tag and package versions
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: node scripts/validate-prerelease.cjs
+      - name: Create or reuse prerelease draft
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" --json id >/dev/null 2>&1; then
+            if [ "$(gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft')" != "true" ]; then
+              echo "::error::This prerelease is already published. Use a new tag for another release."
+              exit 1
+            fi
+            gh release edit "$RELEASE_TAG" --prerelease --latest=false
+          else
+            gh release create "$RELEASE_TAG" --verify-tag --draft --prerelease --latest=false --generate-notes --title "OrcaSVN $RELEASE_TAG"
+          fi
+          release_id=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate --jq ".[] | select(.tag_name == \"$RELEASE_TAG\") | .id")
+          if [[ ! "$release_id" =~ ^[0-9]+$ ]]; then
+            echo "::error::Could not resolve a unique numeric release ID."
+            exit 1
+          fi
+          echo "id=$release_id" >> "$GITHUB_OUTPUT"
+
+  desktop:
+    name: Test and build (${{ matrix.platform }})
+    needs: prepare
+    runs-on: ${{ matrix.platform }}
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [ubuntu-22.04, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf subversion
+      - name: Install SVN on Windows
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          choco install svn --no-progress -y
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          [Environment]::GetEnvironmentVariable('Path', 'Machine') -split ';' |
+            Where-Object { $_ -match 'svn' } |
+            Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Install SVN on macOS
+        if: matrix.platform == 'macos-latest'
+        run: brew install subversion
+      - run: npm ci
+      - name: Generate app icons
+        run: npm run icons
+      - name: Verify SVN test tools
+        run: |
+          svn --version --quiet
+          svnadmin --version --quiet
+      - name: Build and run regression checks
+        run: npm run check
+      - name: Build and upload installers to draft
+        uses: tauri-apps/tauri-action@v0.6.2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          releaseId: ${{ needs.prepare.outputs.release-id }}
+
+  publish:
+    name: Publish complete prerelease
+    needs: [prepare, desktop]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - name: Publish after all platforms succeed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: gh release edit "$RELEASE_TAG" --draft=false --prerelease --latest=false

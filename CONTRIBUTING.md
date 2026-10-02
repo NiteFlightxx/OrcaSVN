@@ -10,6 +10,10 @@
 4. 运行 `npm run check`。
 5. 在 Pull Request 中说明用户可见行为、风险和验证方式。
 
+完整 SVN 集成测试需要同时提供 `svn` 和 `svnadmin`；缺少工具时部分 Rust 用例会提前返回。原生 USN 测试还依赖 NTFS 卷读取权限，不能只凭测试显示通过就认定该路径已验证。
+
+性能基准为显式运行的 ignored 测试，测量范围和重跑方法见 [工作区加载基准](docs/workspace-startup-benchmark.md)。正式版与预发布标签的区别、版本校验及失败重跑见 [预发布流程](docs/prerelease.md)。
+
 ## 代码约定
 
 - 前端使用 Vue 3 Composition API、TypeScript 和现有 Pinia/composable 模式。
