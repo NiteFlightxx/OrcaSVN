@@ -662,7 +662,7 @@ watch(() => workspaceStore.currentPath, () => {
 .unversioned-file {
   border-top: 1px solid var(--md-sys-color-outline-variant);
   cursor: pointer;
-  transition: background-color 0.15s ease;
+  transition: background-color var(--app-transition-fast);
 }
 
 .unversioned-file-header {
@@ -719,7 +719,7 @@ watch(() => workspaceStore.currentPath, () => {
   padding: 10px 12px;
   background: var(--el-fill-color-light);
   cursor: pointer;
-  transition: background-color 0.15s ease;
+  transition: background-color var(--app-transition-fast);
 }
 
 .diff-file-header.selected {
@@ -735,7 +735,7 @@ watch(() => workspaceStore.currentPath, () => {
   position: relative;
   border-top: 1px solid var(--md-sys-color-outline-variant);
   cursor: pointer;
-  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+  transition: background-color var(--app-transition-fast), box-shadow var(--app-transition-fast);
 }
 
 .hunk-card.selected {

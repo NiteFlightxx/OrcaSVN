@@ -196,18 +196,12 @@ onBeforeUnmount(() => {
 .diff-marker { text-align: center; font-weight: 700; }
 .diff-code { padding: 3px 12px; white-space: pre; tab-size: 8; color: var(--md-sys-color-on-surface); font: inherit; }
 .compact .diff-line-number, .compact .diff-marker, .compact .diff-code { padding-top: 1px; padding-bottom: 1px; }
-.diff-added { background: #ecfdf3; }
-.diff-added .diff-line-number, .diff-added .diff-marker { background: #dcfce7; color: #15803d; }
-.diff-removed { background: #fff1f2; }
-.diff-removed .diff-line-number, .diff-removed .diff-marker { background: #fee2e2; color: #dc2626; }
-.diff-meta { background: #eef2ff; }
-.diff-meta .diff-code, .diff-meta .diff-marker { color: #4338ca; font-weight: 700; }
+.diff-added { background: var(--app-color-status-added-bg); }
+.diff-added .diff-line-number, .diff-added .diff-marker { background: var(--app-color-status-added-bg); color: var(--app-color-status-added-text); }
+.diff-removed { background: var(--app-color-status-error-bg); }
+.diff-removed .diff-line-number, .diff-removed .diff-marker { background: var(--app-color-status-error-bg); color: var(--app-color-status-error-text); }
+.diff-meta { background: var(--app-color-status-unversioned-bg); }
+.diff-meta .diff-code, .diff-meta .diff-marker { color: var(--app-color-status-unversioned-text); font-weight: 700; }
 .is-search-match { box-shadow: inset 3px 0 var(--md-sys-color-primary); }
-mark { background: #fde68a; color: #111827; }
-.dark .diff-added { background: #052e16; }
-.dark .diff-added .diff-line-number, .dark .diff-added .diff-marker { background: #052e16; color: #4ade80; }
-.dark .diff-removed { background: #450a0a; }
-.dark .diff-removed .diff-line-number, .dark .diff-removed .diff-marker { background: #450a0a; color: #f87171; }
-.dark .diff-meta { background: #1e1b4b; }
-.dark .diff-meta .diff-code, .dark .diff-meta .diff-marker { color: #a5b4fc; }
+mark { background: var(--app-color-status-modified-bg); color: var(--app-color-status-modified-text); }
 </style>

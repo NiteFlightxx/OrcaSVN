@@ -331,12 +331,12 @@ watch(
 :global(.theme-dark) .section-header span,
 :global(.dark) .revision-strip span,
 :global(.dark) .section-header span {
-  color: #8fa0ae;
+  color: var(--md-sys-color-on-surface-variant);
 }
 
 :global(.theme-dark) .revision-strip strong,
 :global(.dark) .revision-strip strong {
-  color: #e2eaf0;
+  color: var(--md-sys-color-on-surface);
 }
 
 .update-section {
@@ -428,12 +428,12 @@ watch(
 
 :global(.theme-dark) .file-link,
 :global(.dark) .file-link {
-  color: #8fd0e8;
+  color: var(--md-sys-color-primary);
 }
 
 :global(.theme-dark) .file-link:hover,
 :global(.dark) .file-link:hover {
-  color: #b8e5f5;
+  color: var(--md-sys-color-on-primary-container);
 }
 
 @media (max-width: 860px) {

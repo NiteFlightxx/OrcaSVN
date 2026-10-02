@@ -647,29 +647,29 @@ const useRecentMessage = (message: string) => {
   height: 28px;
   padding: 0 var(--app-spacing);
   border-radius: var(--app-radius-full);
-  background: #f5f5fb;
+  background: var(--md-sys-color-surface-container-low);
   font-weight: 700;
   font-size: 12px;
 }
 
 .status-added {
-  color: #15803d;
-  background: #dcfce7;
+  color: var(--app-color-status-added-text);
+  background: var(--app-color-status-added-bg);
 }
 
 .status-modified {
-  color: #a16207;
-  background: #fef9c3;
+  color: var(--app-color-status-modified-text);
+  background: var(--app-color-status-modified-bg);
 }
 
 .status-deleted {
-  color: #dc2626;
-  background: #fee2e2;
+  color: var(--app-color-status-error-text);
+  background: var(--app-color-status-error-bg);
 }
 
 .status-unversioned {
-  color: #6366f1;
-  background: #e0e7ff;
+  color: var(--app-color-status-unversioned-text);
+  background: var(--app-color-status-unversioned-bg);
 }
 
 .commit-toolbar {
@@ -692,6 +692,8 @@ const useRecentMessage = (message: string) => {
     padding: 0 var(--app-spacing);
   }
   
+  .commit-toolbar, .filter-tags { flex-wrap: wrap; }
+  .search-input { width: 100%; min-width: 0; }
   .info-item {
     flex-direction: column;
     align-items: flex-start;

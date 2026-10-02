@@ -30,6 +30,7 @@
   --md-sys-color-success: #15803d;
   --md-sys-color-warning: #a16207;
   --md-sys-color-error: #ba1a1a;
+  --md-sys-color-on-error: #ffffff;
   --md-sys-color-info: #1261a0;
 
   --md-sys-elevation-0: none;
@@ -71,6 +72,9 @@
   --app-transition-normal: .25s ease;
   --app-transition-slow: .35s ease;
   --app-transition-bounce: .4s cubic-bezier(.34, 1.56, .64, 1);
+  --app-duration-fast: 150ms;
+  --app-duration-normal: 250ms;
+  --app-duration-slow: 350ms;
 
   --el-color-primary-light-3: color-mix(in srgb, var(--md-sys-color-primary) 70%, var(--md-sys-color-surface-container-lowest));
   --el-color-primary-light-5: color-mix(in srgb, var(--md-sys-color-primary) 50%, var(--md-sys-color-surface-container-lowest));
@@ -120,6 +124,7 @@ html:root {
   --app-color-status-unversioned-bg: #e8ebff;
   --app-color-status-unversioned-text: #414aa4;
   --el-color-primary: var(--md-sys-color-primary);
+  --el-color-danger: var(--md-sys-color-error);
   --el-color-primary-light-9: var(--md-sys-color-primary-container);
   --el-color-primary-dark-2: var(--md-sys-color-primary-active);
   --el-text-color-primary: var(--md-sys-color-on-surface);
@@ -136,6 +141,11 @@ html:root {
 }
 
 html:root.theme-dark {
+  --md-sys-color-success: #7fe3a2;
+  --md-sys-color-warning: #ffd278;
+  --md-sys-color-error: #ffb4ab;
+  --md-sys-color-on-error: #690005;
+  --md-sys-color-info: #8bc7fa;
   --md-sys-color-primary: #8bc7fa;
   --md-sys-color-on-primary: #082840;
   --md-sys-color-primary-container: #163c61;

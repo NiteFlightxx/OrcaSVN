@@ -465,11 +465,12 @@ const handleFileAction = async (file: SvnStatus) => {
       await ElMessageBox.confirm(
         h('div', [
           h('p', t(isUnversioned ? 'workspace.deleteUnversionedConfirm' : 'workspace.revertFileConfirm')),
-          h('code', { style: { display: 'block', marginTop: '12px', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', userSelect: 'text' } }, joinWorkspacePath(workspacePath, path)),
+          h('code', { class: 'workspace-file-confirm__path' }, joinWorkspacePath(workspacePath, path)),
         ]),
         t(isUnversioned ? 'common.delete' : 'common.revert'),
         {
           type: 'warning',
+          customClass: 'workspace-file-confirm',
           confirmButtonText: t(isUnversioned ? 'common.delete' : 'common.revert'),
           confirmButtonType: 'danger',
           cancelButtonText: t('common.cancel'),
@@ -700,7 +701,7 @@ const handleFileAction = async (file: SvnStatus) => {
   background: var(--el-fill-color-light);
   border: 1px solid transparent;
   cursor: pointer;
-  transition: all var(--app-transition-fast);
+  transition: color var(--app-transition-fast), background-color var(--app-transition-fast), border-color var(--app-transition-fast);
   font-size: 12px;
 }
 
@@ -776,11 +777,6 @@ const handleFileAction = async (file: SvnStatus) => {
 
 .file-item.selected {
   background: var(--md-sys-color-primary-container);
-}
-
-.file-item:focus-within {
-  outline: 2px solid var(--md-sys-color-primary);
-  outline-offset: -2px;
 }
 
 .file-item:focus-within .file-actions {
@@ -863,9 +859,9 @@ const handleFileAction = async (file: SvnStatus) => {
 }
 
 .file-actions :deep(.el-button.el-button--danger:hover) {
-  color: #fff;
-  border-color: #bd3d45;
-  background: #bd3d45;
+  color: var(--md-sys-color-on-error);
+  border-color: var(--md-sys-color-error);
+  background: var(--md-sys-color-error);
 }
 
 .file-action-trigger {
@@ -976,7 +972,7 @@ const handleFileAction = async (file: SvnStatus) => {
   }
   
   .right-panel {
-    display: none;
+    display: flex;
   }
 }
 </style>
@@ -989,21 +985,22 @@ const handleFileAction = async (file: SvnStatus) => {
   align-items: stretch;
   justify-content: stretch;
   padding: 0;
-  background: #fff;
+  background: var(--md-sys-color-surface-container-lowest);
 }
 
 .welcome-sidebar,
 .left-panel {
   width: 210px;
-  background: linear-gradient(90deg, #eeeeee, #e8e8e8);
-  border-right: 1px solid #c8c8c8;
-  color: #444;
+  background: var(--md-sys-color-surface-container-low);
+  border-right: 1px solid var(--md-sys-color-outline-variant);
+  color: var(--md-sys-color-on-surface-variant);
 }
 
 .empty-content {
   align-self: start;
   max-width: 680px;
-  margin: 42px 44px;
+  margin: var(--app-spacing-xl);
+  min-width: 0;
   padding: 48px;
   border: 1px solid var(--md-sys-color-outline-variant);
   border-radius: var(--app-radius-xl);
@@ -1070,8 +1067,8 @@ const handleFileAction = async (file: SvnStatus) => {
   justify-content: space-between;
   height: 37px;
   padding: 0 9px 0 12px;
-  border-bottom: 1px solid #c8c8c8;
-  color: #333;
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  color: var(--md-sys-color-on-surface);
   font-size: 12px;
 }
 
@@ -1083,12 +1080,12 @@ const handleFileAction = async (file: SvnStatus) => {
   border: 0;
   border-radius: 3px;
   background: transparent;
-  color: #777;
+  color: var(--md-sys-color-on-surface-variant);
 }
 
 .repository-name button:hover,
 .sidebar-row:hover {
-  background: rgba(255, 255, 255, 0.65);
+  background: var(--md-sys-state-hover);
 }
 
 .sidebar-section {
@@ -1097,7 +1094,7 @@ const handleFileAction = async (file: SvnStatus) => {
 
 .sidebar-heading {
   padding: 3px 7px;
-  color: #707070;
+  color: var(--md-sys-color-on-surface-variant);
   font-size: 9px;
   font-weight: 700;
   letter-spacing: .06em;
@@ -1113,14 +1110,14 @@ const handleFileAction = async (file: SvnStatus) => {
   border: 0;
   border-radius: 4px;
   background: transparent;
-  color: #444;
+  color: var(--md-sys-color-on-surface-variant);
   font-size: 11px;
   text-align: left;
 }
 
 .sidebar-row.active {
-  color: #fff;
-  background: #1473e6;
+  color: var(--md-sys-color-on-primary-container);
+  background: var(--md-sys-color-primary-container);
 }
 
 .sidebar-row span {
@@ -1134,7 +1131,7 @@ const handleFileAction = async (file: SvnStatus) => {
 .repository-meta {
   margin: 10px 12px;
   padding-top: 8px;
-  border-top: 1px solid #c9c9c9;
+  border-top: 1px solid var(--md-sys-color-outline-variant);
 }
 
 .repository-meta div {
@@ -1147,7 +1144,7 @@ const handleFileAction = async (file: SvnStatus) => {
 }
 
 .repository-meta span {
-  color: #888;
+  color: var(--md-sys-color-on-surface-variant);
   font-size: 9px;
   text-transform: uppercase;
 }
@@ -1155,7 +1152,7 @@ const handleFileAction = async (file: SvnStatus) => {
 .repository-meta strong {
   overflow: hidden;
   margin-top: 2px;
-  color: #555;
+  color: var(--md-sys-color-on-surface-variant);
   font-size: 10px;
   font-weight: 500;
   text-overflow: ellipsis;
@@ -1167,7 +1164,7 @@ const handleFileAction = async (file: SvnStatus) => {
   gap: 4px;
   margin-top: auto;
   padding: 9px;
-  border-top: 1px solid #c8c8c8;
+  border-top: 1px solid var(--md-sys-color-outline-variant);
 }
 
 .sidebar-actions button {
@@ -1176,10 +1173,10 @@ const handleFileAction = async (file: SvnStatus) => {
   height: 27px;
   gap: 6px;
   padding: 0 8px;
-  border: 1px solid #c3c3c3;
+  border: 1px solid var(--md-sys-color-outline);
   border-radius: 4px;
-  background: linear-gradient(#fff, #e9e9e9);
-  color: #444;
+  background: var(--md-sys-color-surface-container-low);
+  color: var(--md-sys-color-on-surface-variant);
   font-size: 10px;
 }
 
@@ -1312,7 +1309,7 @@ const handleFileAction = async (file: SvnStatus) => {
 
 :global(.theme-dark) .panel-title,
 :global(.dark) .panel-title {
-  color: #d7e1e8 !important;
+  color: var(--md-sys-color-on-surface) !important;
 }
 
 :global(.theme-dark) .status-summary,
@@ -1330,7 +1327,7 @@ const handleFileAction = async (file: SvnStatus) => {
 
 :global(.theme-dark) .status-badge:hover,
 :global(.dark) .status-badge:hover {
-  color: #d7e1e8;
+  color: var(--md-sys-color-on-surface);
   background: var(--md-sys-color-surface-container-high) !important;
 }
 
@@ -1343,7 +1340,7 @@ const handleFileAction = async (file: SvnStatus) => {
 
 :global(.theme-dark) .status-badge.active .badge-label,
 :global(.dark) .status-badge.active .badge-label {
-  color: #d7eef7 !important;
+  color: var(--md-sys-color-on-primary-container) !important;
 }
 
 :global(.theme-dark) .file-list,
@@ -1353,15 +1350,15 @@ const handleFileAction = async (file: SvnStatus) => {
 
 :global(.theme-dark) .file-item,
 :global(.dark) .file-item {
-  color: #c7d3dc !important;
+  color: var(--md-sys-color-on-surface-variant) !important;
   background: var(--md-sys-color-surface-container-lowest) !important;
   border-bottom-color: rgba(115, 115, 115, .12) !important;
 }
 
 :global(.theme-dark) .file-item:hover,
 :global(.dark) .file-item:hover {
-  color: #e2eaf0 !important;
-  background: var(--el-table-row-hover-bg-color) !important;
+  color: var(--md-sys-color-on-surface) !important;
+  background: var(--md-sys-color-surface-container-high) !important;
 }
 
 :global(.theme-dark) .file-item.selected,
@@ -1372,14 +1369,14 @@ const handleFileAction = async (file: SvnStatus) => {
 
 :global(.theme-dark) .file-actions :deep(.el-button),
 :global(.dark) .file-actions :deep(.el-button) {
-  color: #aebdca;
-  background: #1a2b37;
+  color: var(--md-sys-color-on-surface-variant);
+  background: var(--md-sys-color-surface-container);
   border-color: rgba(115, 115, 115, .16);
 }
 
 :global(.theme-dark) .file-actions :deep(.el-button:hover),
 :global(.dark) .file-actions :deep(.el-button:hover) {
-  color: #e2eaf0;
+  color: var(--md-sys-color-on-surface);
   background: var(--md-sys-color-surface-container-highest);
   border-color: rgba(143, 160, 174, .28);
 }
@@ -1388,14 +1385,14 @@ const handleFileAction = async (file: SvnStatus) => {
 :global(.theme-dark) .empty-files,
 :global(.dark) .empty-diff,
 :global(.dark) .empty-files {
-  color: #8fa0ae;
+  color: var(--md-sys-color-on-surface-variant);
 }
 
 :global(.theme-dark) .empty-diff .el-icon,
 :global(.theme-dark) .empty-files .el-icon,
 :global(.dark) .empty-diff .el-icon,
 :global(.dark) .empty-files .el-icon {
-  color: #6f8291;
+  color: var(--md-sys-color-outline);
 }
 
 :global(.theme-dark) .file-context-menu,
@@ -1407,12 +1404,12 @@ const handleFileAction = async (file: SvnStatus) => {
 
 :global(.theme-dark) .context-menu-item,
 :global(.dark) .context-menu-item {
-  color: #c7d3dc;
+  color: var(--md-sys-color-on-surface-variant);
 }
 
 :global(.theme-dark) .context-menu-item:hover,
 :global(.dark) .context-menu-item:hover {
-  color: #e2eaf0;
+  color: var(--md-sys-color-on-surface);
   background: var(--md-sys-color-surface-container-high);
 }
 
@@ -1423,16 +1420,28 @@ const handleFileAction = async (file: SvnStatus) => {
   .welcome-sidebar {
     display: none;
   }
+  .workspace-layout {
+    flex-direction: column;
+    overflow-y: auto;
+  }
   .center-panel {
-    flex: 1 1 auto;
+    flex: 0 0 300px;
+    min-height: 300px;
     width: 100%;
     border-right: 0;
+    border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  }
+  .right-panel {
+    flex: 1 0 320px;
+    min-height: 320px;
+    width: 100%;
   }
 }
 
 @media (max-width: 650px) {
   .empty-content {
-    padding: 28px;
+    margin: var(--app-spacing-md);
+    padding: var(--app-spacing-lg);
   }
 }
 </style>

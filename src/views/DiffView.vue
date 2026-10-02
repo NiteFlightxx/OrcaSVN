@@ -587,11 +587,11 @@ watch(
   flex-shrink: 0;
 }
 
-.dot-modified { background: #a16207; }
-.dot-added { background: #15803d; }
-.dot-deleted { background: #dc2626; }
-.dot-unversioned { background: #6366f1; }
-.dot-replaced { background: #a16207; }
+.dot-modified { background: var(--app-color-status-modified-text); }
+.dot-added { background: var(--app-color-status-added-text); }
+.dot-deleted { background: var(--app-color-status-error-text); }
+.dot-unversioned { background: var(--app-color-status-unversioned-text); }
+.dot-replaced { background: var(--app-color-status-modified-text); }
 
 .file-name {
   flex: 1;

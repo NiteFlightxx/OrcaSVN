@@ -161,7 +161,7 @@
       <el-dialog
         v-model="dialogVisible"
         :title="$t('log.commitDetails')"
-        width="60%"
+        width="min(960px, calc(100vw - 32px))"
         class="log-dialog"
         destroy-on-close
         @close="onDialogClose"
@@ -715,7 +715,7 @@ onUnmounted(() => {
 
 .author-select :deep(.el-select__wrapper.is-focused),
 .author-select :deep(.el-select__wrapper.is-focus) {
-  box-shadow: 0 0 0 1px #0b668f inset;
+  box-shadow: 0 0 0 2px var(--md-sys-color-primary) inset;
 }
 
 .author-select :deep(.el-select__input),
@@ -791,12 +791,12 @@ onUnmounted(() => {
 
 :global(.theme-dark) .log-query-state,
 :global(.dark) .log-query-state {
-  color: #8fa0ae;
+  color: var(--md-sys-color-on-surface-variant);
 }
 
 :global(.theme-dark) .query-status,
 :global(.dark) .query-status {
-  color: #b8e5f5;
+  color: var(--md-sys-color-on-primary-container);
 }
 
 :global(.theme-dark) .log-table,
@@ -814,7 +814,7 @@ onUnmounted(() => {
 
 :global(.theme-dark) .empty-log-result,
 :global(.dark) .empty-log-result {
-  color: #8fa0ae;
+  color: var(--md-sys-color-on-surface-variant);
 }
 
 .author-cell,
@@ -847,7 +847,7 @@ onUnmounted(() => {
 }
 
 .log-dialog {
-  border-radius: var(--app-radius-lg);
+  border-radius: var(--app-radius-xl);
 }
 
 .log-detail {

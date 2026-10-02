@@ -73,28 +73,25 @@ defineProps<{ active: boolean; label: string }>()
 }
 
 .glass-reveal-enter-active {
-  transition: opacity 180ms ease, backdrop-filter 180ms ease;
+  transition: opacity var(--app-duration-fast) ease;
 }
 
 .glass-reveal-leave-active {
-  transition: opacity 520ms ease, backdrop-filter 520ms ease, -webkit-backdrop-filter 520ms ease;
+  transition: opacity var(--app-duration-normal) ease;
 }
 
 .glass-reveal-enter-from,
 .glass-reveal-leave-to {
   opacity: 0;
-  backdrop-filter: blur(0);
-  -webkit-backdrop-filter: blur(0);
 }
 
 .glass-reveal-leave-active .glass-loading-indicator {
-  transition: opacity 360ms ease, transform 520ms ease, filter 520ms ease;
+  transition: opacity var(--app-duration-normal) ease, transform var(--app-duration-normal) ease;
 }
 
 .glass-reveal-leave-to .glass-loading-indicator {
   opacity: 0;
-  transform: scale(1.3);
-  filter: blur(6px);
+  transform: scale(1.05);
 }
 
 @keyframes glass-diffuse {
