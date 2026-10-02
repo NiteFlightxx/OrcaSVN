@@ -771,7 +771,9 @@ mod tests {
         // Let directory timestamps leave the conservative one-second window.
         #[cfg(unix)]
         std::thread::sleep(std::time::Duration::from_millis(1100));
-        let initial = capture(&root).unwrap();
+        // Exercise metadata directory reuse independently of optional USN
+        // checkpoints, which are present on privileged Windows CI runners.
+        let (initial, _) = capture_measured(&root, None).unwrap();
         let (unchanged, stats) = capture_measured(&root, Some(&initial)).unwrap();
         assert_eq!(initial, unchanged);
         #[cfg(unix)]
@@ -779,7 +781,7 @@ mod tests {
         assert_eq!(stats.checked_files, 3);
         fs::write(root.join("a/edit"), "edit").unwrap();
         let (edited, _stats) = capture_measured(&root, Some(&unchanged)).unwrap();
-        assert_eq!(edited, capture(&root).unwrap());
+        assert_eq!(edited, capture_measured(&root, None).unwrap().0);
         assert_eq!(
             differences(&unchanged, &edited),
             Some(vec!["a/edit".into()])
@@ -795,7 +797,7 @@ mod tests {
             .set_times(fs::FileTimes::new().set_modified(modified))
             .unwrap();
         let (deleted, _stats) = capture_measured(&root, Some(&edited)).unwrap();
-        assert_eq!(deleted, capture(&root).unwrap());
+        assert_eq!(deleted, capture_measured(&root, None).unwrap().0);
         assert_eq!(
             differences(&edited, &deleted),
             Some(vec!["a/delete".into()])
@@ -804,7 +806,7 @@ mod tests {
         assert_eq!(_stats.enumerated_directories, 1);
         fs::rename(root.join("b/move"), root.join("a/moved")).unwrap();
         let (moved, _stats) = capture_measured(&root, Some(&deleted)).unwrap();
-        assert_eq!(moved, capture(&root).unwrap());
+        assert_eq!(moved, capture_measured(&root, None).unwrap().0);
         assert_eq!(
             differences(&deleted, &moved),
             Some(vec!["a/moved".into(), "b/move".into()])
@@ -813,12 +815,12 @@ mod tests {
         assert_eq!(_stats.enumerated_directories, 2);
         fs::create_dir(root.join("b/new-dir")).unwrap();
         fs::write(root.join("b/new-dir/new"), "new").unwrap();
-        let nested = capture_incremental(&root, Some(&moved)).unwrap();
-        assert_eq!(nested, capture(&root).unwrap());
+        let (nested, _) = capture_measured(&root, Some(&moved)).unwrap();
+        assert_eq!(nested, capture_measured(&root, None).unwrap().0);
         assert!(differences(&moved, &nested).is_none());
         fs::remove_dir_all(root.join("a")).unwrap();
-        let removed = capture_incremental(&root, Some(&nested)).unwrap();
-        assert_eq!(removed, capture(&root).unwrap());
+        let (removed, _) = capture_measured(&root, Some(&nested)).unwrap();
+        assert_eq!(removed, capture_measured(&root, None).unwrap().0);
         assert!(differences(&nested, &removed).is_none());
         fs::remove_dir_all(root).unwrap();
     }
