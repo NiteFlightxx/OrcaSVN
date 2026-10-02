@@ -23,6 +23,8 @@ git push origin v0.6.3-rc.1
 
 Windows 固定安装 SlikSVN 1.14.5 到 `C:\Tools\SlikSvn`，核验 `bin` 下的 `svn.exe` 与 `svnadmin.exe`，再将该目录加入后续任务的 PATH。草稿创建后读取 Release ID 最多重试 5 次，以应对列表短暂未同步。修复流水线后应创建新的候选版本标签；重跑旧任务仍使用旧标签对应的流程。
 
+Windows 预发布仅生成 NSIS EXE 安装包，因为 MSI 目标不支持 `alpha.N`、`beta.N`、`rc.N` 这样的非数字预发布标识。正式版本仍使用原有的全部打包目标，包括 EXE 和 MSI。
+
 标签必须使用小写 alpha、beta、rc 通道，数字不得包含多余前导零。推送标签前必须同步全部版本文件，不能跳过版本校验。工作流仅在标签被推送后运行，不提供手动选择分支发布入口。
 
 首次使用时确认仓库允许 GitHub Actions 的 `GITHUB_TOKEN` 写入 Releases；流程无需 WinGet PAT。Release ID 必须解析为唯一数值后才进入构建。已公开的同名版本会拒绝重跑整个流程，请为新版本创建新标签；失败的草稿可复用，不要强制移动已有发布标签。

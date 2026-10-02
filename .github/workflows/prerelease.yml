@@ -123,6 +123,8 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           releaseId: ${{ needs.prepare.outputs.release-id }}
+          # MSI requires a numeric prerelease identifier; NSIS supports rc.N.
+          args: ${{ matrix.platform == 'windows-latest' && '--bundles nsis' || '' }}
 
   publish:
     name: Publish complete prerelease
