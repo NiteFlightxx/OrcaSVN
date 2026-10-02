@@ -21,6 +21,8 @@ git push origin v0.6.3-rc.1
 
 流程先校验版本并创建 GitHub Release 草稿；Windows、macOS、Linux 分别安装 SVN 工具、运行完整检查并打包上传。全部平台成功后公开为 Pre-release，使用 GitHub 自动生成的更新说明，不标记为 Latest，也不发布到 WinGet。任何平台失败时保留草稿，可在 Actions 中重跑失败任务。
 
+Windows 固定安装 SlikSVN 1.14.5 到 `C:\Tools\SlikSvn`，核验 `bin` 下的 `svn.exe` 与 `svnadmin.exe`，再将该目录加入后续任务的 PATH。草稿创建后读取 Release ID 最多重试 5 次，以应对列表短暂未同步。修复流水线后应创建新的候选版本标签；重跑旧任务仍使用旧标签对应的流程。
+
 标签必须使用小写 alpha、beta、rc 通道，数字不得包含多余前导零。推送标签前必须同步全部版本文件，不能跳过版本校验。工作流仅在标签被推送后运行，不提供手动选择分支发布入口。
 
 首次使用时确认仓库允许 GitHub Actions 的 `GITHUB_TOKEN` 写入 Releases；流程无需 WinGet PAT。Release ID 必须解析为唯一数值后才进入构建。已公开的同名版本会拒绝重跑整个流程，请为新版本创建新标签；失败的草稿可复用，不要强制移动已有发布标签。

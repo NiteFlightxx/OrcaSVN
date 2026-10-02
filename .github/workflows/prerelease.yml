@@ -49,7 +49,13 @@ jobs:
           else
             gh release create "$RELEASE_TAG" --verify-tag --draft --prerelease --latest=false --generate-notes --title "OrcaSVN $RELEASE_TAG"
           fi
-          release_id=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate --jq ".[] | select(.tag_name == \"$RELEASE_TAG\") | .id")
+          # A newly created draft can take a moment to appear in the REST list.
+          release_id=""
+          for attempt in 1 2 3 4 5; do
+            release_id=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate --jq ".[] | select(.tag_name == \"$RELEASE_TAG\") | .id")
+            if [[ "$release_id" =~ ^[0-9]+$ ]]; then break; fi
+            sleep 2
+          done
           if [[ ! "$release_id" =~ ^[0-9]+$ ]]; then
             echo "::error::Could not resolve a unique numeric release ID."
             exit 1
@@ -87,11 +93,18 @@ jobs:
         if: matrix.platform == 'windows-latest'
         shell: pwsh
         run: |
-          choco install svn --no-progress -y
+          choco install sliksvn --version=1.14.5 --no-progress -y --package-parameters="/InstallDir=C:\Tools\SlikSvn"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          [Environment]::GetEnvironmentVariable('Path', 'Machine') -split ';' |
-            Where-Object { $_ -match 'svn' } |
-            Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          $svnBin = 'C:\Tools\SlikSvn\bin'
+          foreach ($tool in @('svn.exe', 'svnadmin.exe')) {
+            $executable = Join-Path $svnBin $tool
+            if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
+              throw "SVN installation is missing $executable"
+            }
+            & $executable --version --quiet
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          $svnBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
       - name: Install SVN on macOS
         if: matrix.platform == 'macos-latest'
         run: brew install subversion
