@@ -10,7 +10,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 static NEXT_TEMP_FILE: AtomicU64 = AtomicU64::new(0);
 
-const VERSION: u32 = 4;
+// Invalidate snapshots containing Windows status paths with backslashes.
+const VERSION: u32 = 5;
 const MAX_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_FILES: usize = 500_000;
 
@@ -48,6 +49,11 @@ pub(super) struct Inventory {
     journal: Option<super::status_usn::Journal>,
 }
 impl Inventory {
+    #[cfg(test)]
+    pub fn journal_available(&self) -> bool {
+        self.journal.is_some()
+    }
+
     #[cfg(test)]
     pub fn len(&self) -> usize {
         self.files.len()
@@ -772,14 +778,14 @@ mod tests {
         assert_eq!(stats.enumerated_directories, 0);
         assert_eq!(stats.checked_files, 3);
         fs::write(root.join("a/edit"), "edit").unwrap();
-        let (edited, stats) = capture_measured(&root, Some(&unchanged)).unwrap();
+        let (edited, _stats) = capture_measured(&root, Some(&unchanged)).unwrap();
         assert_eq!(edited, capture(&root).unwrap());
         assert_eq!(
             differences(&unchanged, &edited),
             Some(vec!["a/edit".into()])
         );
         #[cfg(unix)]
-        assert_eq!(stats.enumerated_directories, 0);
+        assert_eq!(_stats.enumerated_directories, 0);
         #[cfg(unix)]
         let modified = fs::metadata(root.join("a")).unwrap().modified().unwrap();
         fs::remove_file(root.join("a/delete")).unwrap();
@@ -788,23 +794,23 @@ mod tests {
             .unwrap()
             .set_times(fs::FileTimes::new().set_modified(modified))
             .unwrap();
-        let (deleted, stats) = capture_measured(&root, Some(&edited)).unwrap();
+        let (deleted, _stats) = capture_measured(&root, Some(&edited)).unwrap();
         assert_eq!(deleted, capture(&root).unwrap());
         assert_eq!(
             differences(&edited, &deleted),
             Some(vec!["a/delete".into()])
         );
         #[cfg(unix)]
-        assert_eq!(stats.enumerated_directories, 1);
+        assert_eq!(_stats.enumerated_directories, 1);
         fs::rename(root.join("b/move"), root.join("a/moved")).unwrap();
-        let (moved, stats) = capture_measured(&root, Some(&deleted)).unwrap();
+        let (moved, _stats) = capture_measured(&root, Some(&deleted)).unwrap();
         assert_eq!(moved, capture(&root).unwrap());
         assert_eq!(
             differences(&deleted, &moved),
             Some(vec!["a/moved".into(), "b/move".into()])
         );
         #[cfg(unix)]
-        assert_eq!(stats.enumerated_directories, 2);
+        assert_eq!(_stats.enumerated_directories, 2);
         fs::create_dir(root.join("b/new-dir")).unwrap();
         fs::write(root.join("b/new-dir/new"), "new").unwrap();
         let nested = capture_incremental(&root, Some(&moved)).unwrap();

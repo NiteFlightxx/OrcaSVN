@@ -28,6 +28,12 @@ pub fn parse_status_xml(xml: &str) -> Result<Vec<SvnStatus>, SvnError> {
                                 .unescape_value()
                                 .map_err(|e| SvnError::ParseError(e.to_string()))?
                                 .into_owned();
+                            // Filesystem inventories use forward slashes. SVN on
+                            // Windows emits backslashes even for scoped targets.
+                            #[cfg(windows)]
+                            {
+                                current_path = current_path.replace('\\', "/");
+                            }
                         }
                     }
                 }
@@ -307,6 +313,14 @@ pub fn parse_blame_text(output: &str) -> Result<Vec<crate::svn::BlameLine>, SvnE
 
 #[cfg(test)]
 mod tests {
+    #[cfg(windows)]
+    #[test]
+    fn status_paths_normalize_windows_separators() {
+        let xml = r#"<status><target path="."><entry path="src\sub\file@name.txt"><wc-status item="modified" props="none" /></entry></target></status>"#;
+        let entries = super::parse_status_xml(xml).unwrap();
+        assert_eq!(entries[0].path, "src/sub/file@name.txt");
+    }
+
     use super::*;
 
     #[test]

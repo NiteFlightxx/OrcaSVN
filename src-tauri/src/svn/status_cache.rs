@@ -688,4 +688,73 @@ mod tests {
             eprintln!("20,000 files / 40 changes: initial + snapshot {initial_ms:.1} ms, filesystem-scoped {scoped_ms:.1} ms, full SVN {full_ms:.1} ms, unchanged {unchanged_ms:.1} ms");
         });
     }
+
+    #[test]
+    #[ignore = "read-only startup benchmark; set ORCASVN_BENCH_WORKSPACE"]
+    fn benchmark_workspace_startup() {
+        let path = std::env::var("ORCASVN_BENCH_WORKSPACE")
+            .expect("set ORCASVN_BENCH_WORKSPACE to a real SVN working copy");
+        let root = fs::canonicalize(&path).unwrap();
+        let temporary = Fixture {
+            wc: root.clone(),
+            root: std::env::temp_dir().join(format!(
+                "orcasvn-startup-bench-{}-{}",
+                std::process::id(),
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            )),
+        };
+        let inventory = status_snapshot::capture(&root).unwrap();
+        eprintln!(
+            "Workspace: {path}; inventory entries: {}; USN accessible: {}; optimized: {}",
+            inventory.len(),
+            inventory.journal_available(),
+            !cfg!(debug_assertions)
+        );
+        runtime().block_on(async {
+            let expected = statuses(&status(&path).await.unwrap());
+            eprintln!("Changed status entries: {}", expected.len());
+            for scenario in ["no-cache", "disk-cache"] {
+                let mut measurements = Vec::new();
+                for iteration in 0..7 {
+                    let directory = if scenario == "no-cache" {
+                        temporary.root.join(format!("cold-{iteration}"))
+                    } else {
+                        temporary.root.join("cold-6")
+                    };
+                    // A fresh in-memory workspace models application reopening.
+                    if WORKSPACES.get().is_some() { forget_workspace(&root); }
+                    let started = Instant::now();
+                    let revision_path = path.clone();
+                    let revision = tokio::spawn(async move {
+                        let started = Instant::now();
+                        super::super::operations::local_revision(&revision_path).await.unwrap();
+                        started.elapsed().as_secs_f64() * 1000.
+                    });
+                    let metadata_path = path.clone();
+                    let metadata = (scenario == "no-cache").then(|| tokio::spawn(async move {
+                        super::super::operations::info(&metadata_path).await
+                    }));
+                    let status_started = Instant::now();
+                    let entries = super::cached_status(&path, false, Some(directory)).await.unwrap();
+                    let status_ms = status_started.elapsed().as_secs_f64() * 1000.;
+                    let revision_ms = revision.await.unwrap();
+                    if let Some(metadata) = metadata { metadata.await.unwrap().unwrap(); }
+                    let total_ms = started.elapsed().as_secs_f64() * 1000.;
+                    assert_eq!(statuses(&entries), expected, "workspace changed during benchmark");
+                    assert_query_mode(&root, if scenario == "no-cache" { QueryMode::Full } else { QueryMode::Reuse }).await;
+                    // Excluded from foreground time; settle before next reopening.
+                    flush_snapshot(&root).await;
+                    measurements.push(total_ms);
+                    eprintln!("STARTUP {scenario} run {}: status={status_ms:.1} ms, revision={revision_ms:.1} ms, total={total_ms:.1} ms", iteration + 1);
+                }
+                measurements.sort_by(f64::total_cmp);
+                eprintln!("SUMMARY {scenario}: min={:.1} ms median={:.1} ms max={:.1} ms (7 runs)",
+                    measurements[0], measurements[3], measurements[6]);
+            }
+            forget_workspace(&root);
+        });
+    }
 }
