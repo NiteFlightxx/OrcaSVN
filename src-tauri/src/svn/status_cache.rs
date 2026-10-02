@@ -442,6 +442,10 @@ mod tests {
         let before = status_snapshot::capture(&root).unwrap();
         #[cfg(unix)]
         let original_time = fs::metadata(root.join("file")).unwrap().modified().unwrap();
+        // Restoring mtime leaves ctime as the edit signal. Let the filesystem
+        // clock advance so both writes cannot share one timestamp tick.
+        #[cfg(unix)]
+        std::thread::sleep(std::time::Duration::from_millis(1100));
         fs::write(root.join("file"), "bbbb").unwrap();
         #[cfg(unix)]
         fs::File::options()
