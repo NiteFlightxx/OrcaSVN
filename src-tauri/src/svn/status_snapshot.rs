@@ -10,8 +10,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 static NEXT_TEMP_FILE: AtomicU64 = AtomicU64::new(0);
 
-// Invalidate snapshots containing Windows status paths with backslashes.
-const VERSION: u32 = 5;
+// Older snapshots did not track administration outside the selected directory.
+const VERSION: u32 = 6;
 const MAX_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_FILES: usize = 500_000;
 
@@ -45,6 +45,7 @@ pub(super) struct Inventory {
     files: Vec<(String, Stamp)>,
     directories: BTreeMap<String, Directory>,
     configuration: BTreeMap<String, u64>,
+    administration: BTreeMap<PathBuf, Stamp>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     journal: Option<super::status_usn::Journal>,
 }
@@ -188,6 +189,51 @@ fn file_stamp(metadata: &fs::Metadata, path: &Path) -> io::Result<Stamp> {
     })
 }
 
+fn ancestor_administration(root: &Path) -> io::Result<BTreeMap<PathBuf, Stamp>> {
+    let mut files = BTreeMap::new();
+    for ancestor in root.ancestors() {
+        for name in [".svn", "_svn"] {
+            let directory = ancestor.join(name);
+            match fs::symlink_metadata(&directory) {
+                Ok(metadata) => {
+                    directory_stamp(&metadata)?;
+                    // Administration inside the selected directory is already
+                    // part of its filesystem inventory (and optional USN index).
+                    if ancestor == root {
+                        return Ok(files);
+                    }
+                    let mut pending = vec![directory];
+                    while let Some(directory) = pending.pop() {
+                        files.insert(directory.clone(), directory_entry());
+                        for entry in fs::read_dir(&directory)? {
+                            let entry = entry?;
+                            if entry.file_name() == "pristine" || entry.file_name() == "tmp" {
+                                continue;
+                            }
+                            let path = entry.path();
+                            let metadata = entry.metadata()?;
+                            if metadata.is_dir() {
+                                pending.push(path);
+                            } else {
+                                files.insert(path.clone(), file_stamp(&metadata, &path)?);
+                            }
+                            if files.len() + pending.len() > MAX_FILES {
+                                return Err(io::Error::other(
+                                    "SVN administration inventory too large",
+                                ));
+                            }
+                        }
+                    }
+                    return Ok(files);
+                }
+                Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error),
+            }
+        }
+    }
+    Ok(files)
+}
+
 pub(super) fn capture(root: &Path) -> io::Result<Inventory> {
     capture_incremental(root, None)
 }
@@ -231,8 +277,11 @@ pub(super) fn capture_measured(
     previous: Option<&Inventory>,
 ) -> io::Result<(Inventory, CaptureStats)> {
     let configuration = configuration()?;
+    let administration = ancestor_administration(root)?;
     if let Some(previous) = previous {
-        if let Some(result) = capture_unchanged_directories(root, previous, &configuration) {
+        if let Some(result) =
+            capture_unchanged_directories(root, previous, &configuration, &administration)
+        {
             return Ok(result);
         }
     }
@@ -327,6 +376,7 @@ pub(super) fn capture_measured(
             files,
             directories,
             configuration,
+            administration,
             journal: None,
         },
         stats,
@@ -337,8 +387,12 @@ fn capture_unchanged_directories(
     root: &Path,
     previous: &Inventory,
     configuration: &BTreeMap<String, u64>,
+    administration: &BTreeMap<PathBuf, Stamp>,
 ) -> Option<(Inventory, CaptureStats)> {
-    if previous.configuration != *configuration || previous.directories.is_empty() {
+    if previous.configuration != *configuration
+        || previous.administration != *administration
+        || previous.directories.is_empty()
+    {
         return None;
     }
     for (path, directory) in &previous.directories {
@@ -372,6 +426,7 @@ fn capture_unchanged_directories(
             files,
             directories: previous.directories.clone(),
             configuration: configuration.clone(),
+            administration: administration.clone(),
             journal: None,
         },
         stats,
@@ -432,6 +487,9 @@ pub(super) fn scan(root: &Path, previous: Option<&Inventory>) -> io::Result<Scan
 fn capture_usn(root: &Path, previous: &Inventory) -> io::Result<(Inventory, Vec<String>)> {
     if configuration()? != previous.configuration {
         return Err(io::Error::other("SVN configuration changed"));
+    }
+    if ancestor_administration(root)? != previous.administration {
+        return Err(io::Error::other("SVN administrative metadata changed"));
     }
     let delta = super::status_usn::probe(root, previous.journal.as_ref().unwrap())?;
     let mut inventory = previous.clone();
@@ -514,6 +572,9 @@ pub(super) fn verify(root: &Path, before: &Inventory) -> Option<Inventory> {
         if configuration().ok()? != before.configuration {
             return None;
         }
+        if ancestor_administration(root).ok()? != before.administration {
+            return None;
+        }
         let delta = super::status_usn::probe(root, journal).ok()?;
         if !delta.paths.is_empty() {
             return None;
@@ -528,7 +589,8 @@ pub(super) fn verify(root: &Path, before: &Inventory) -> Option<Inventory> {
 
 /// None requests a full scan (SVN metadata or directory structure changed).
 pub(super) fn differences(before: &Inventory, after: &Inventory) -> Option<Vec<String>> {
-    if before.configuration != after.configuration {
+    if before.configuration != after.configuration || before.administration != after.administration
+    {
         return None;
     }
     let before = &before.files;
@@ -751,6 +813,7 @@ mod tests {
                 },
             )]),
             configuration: BTreeMap::new(),
+            administration: BTreeMap::new(),
             journal: None,
         }
     }

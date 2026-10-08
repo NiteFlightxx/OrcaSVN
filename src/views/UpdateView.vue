@@ -158,11 +158,13 @@ const applyCachedState = (path: string) => {
 }
 
 const loadUpdateState = async (force = false) => {
-  if (!isActive || !workspaceStore.currentPath || (!force && (loading.value || updating.value))) return
+  // A completed update must refresh shared workspace state even after navigation.
+  if (!workspaceStore.currentPath || (!force && (!isActive || loading.value || updating.value))) return
   const requestedPath = workspaceStore.currentPath
   const generation = ++updateRequestGeneration
   const isCurrent = () => generation === updateRequestGeneration
     && workspaceStore.currentPath === requestedPath
+    && isActive
   loading.value = true
   try {
     const refreshed = await (force ? refreshStatusAfterMutation() : refreshStatusIfStale(updateStateIntervalMs))
@@ -201,6 +203,7 @@ const doUpdate = async () => {
   try {
     await svnUpdate(requestedPath)
     if (workspaceStore.currentPath !== requestedPath) return
+    updateStateCache.delete(requestedPath)
     await loadUpdateState(true)
     if (workspaceStore.currentPath !== requestedPath) return
     ElMessage.success(`${t('common.update')} ${t('common.success')}`)

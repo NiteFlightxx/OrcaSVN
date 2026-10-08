@@ -549,6 +549,42 @@ mod tests {
             .map(|entry| (entry.path.clone(), format!("{entry:?}")))
             .collect()
     }
+
+    #[test]
+    fn subdirectory_cache_checks_ancestor_administration_in_memory_and_on_disk() {
+        let Some(fixture) = Fixture::new() else {
+            return;
+        };
+        fixture.init();
+        let subdirectory = fixture.wc.join("src/sub");
+        let path = subdirectory.to_str().unwrap();
+        let directory = fixture.root.join("cache");
+        runtime().block_on(async {
+            let query = || super::cached_status(path, false, Some(directory.clone()));
+            assert!(query().await.unwrap().is_empty());
+            flush_snapshot(&subdirectory).await;
+
+            // Property edits change wc.db in the parent working-copy root,
+            // leaving the selected subtree's filesystem inventory unchanged.
+            fixture.svn(&["propset", "test:property", "value", path]);
+            let current = query().await.unwrap();
+            assert_eq!(statuses(&current), statuses(&status(path).await.unwrap()));
+            assert!(current
+                .iter()
+                .any(|entry| entry.path == "." && entry.prop_status == "modified"));
+            flush_snapshot(&subdirectory).await;
+            forget_workspace(&subdirectory);
+
+            // Reopening must also reject an unchanged subtree paired with an
+            // outdated disk snapshot after an external metadata-only revert.
+            fixture.svn(&["revert", path]);
+            let current = query().await.unwrap();
+            assert!(current.is_empty());
+            assert_eq!(statuses(&current), statuses(&status(path).await.unwrap()));
+            flush_snapshot(&subdirectory).await;
+        });
+    }
+
     #[test]
     fn real_svn_scoped_status_preserves_ignore_rules_and_unversioned_directory_collapsing() {
         let Some(fixture) = Fixture::new() else {
