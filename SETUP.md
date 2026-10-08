@@ -37,7 +37,7 @@ npm run check
 npm run tauri build
 ```
 
-安装包和二进制产物位于 `src-tauri/target/release/`。推送不含连字符的 `v*` 标签（例如 `v0.6.2`）时，正式发布流水线为三个桌面平台创建 Release。预发布标签（例如 `v0.6.3-rc.1`）由独立流水线处理，详见[预发布说明](docs/prerelease.md)。
+安装包和二进制产物位于 `src-tauri/target/release/`。推送 `vX.Y.Z` 标签（例如 `v0.6.3`）时，正式发布流水线校验全部版本文件、运行三平台检查并打包，全部成功后公开 Release 并标记为 Latest，详见[发布流程](docs/releasing.md)。预发布标签（例如 `v0.6.3-rc.1`）由独立流水线处理，详见[预发布说明](docs/prerelease.md)。
 
 ## 排查问题
 

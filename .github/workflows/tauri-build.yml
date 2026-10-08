@@ -7,153 +7,146 @@ on:
       - "!v*-*"
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
   NODE_VERSION: "lts/*"
   RUST_BACKTRACE: 1
 
 jobs:
+  prepare:
+    name: Validate version and prepare draft
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    outputs:
+      release-id: ${{ steps.release.outputs.id }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Validate tag and package versions
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          node scripts/validate-release.cjs
+          test -f "docs/releases/$RELEASE_TAG.md"
+      - name: Create or reuse release draft
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" --json id >/dev/null 2>&1; then
+            if [ "$(gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft')" != "true" ]; then
+              echo "::error::This release is already published. Use a new tag for another release."
+              exit 1
+            fi
+            gh release edit "$RELEASE_TAG" --prerelease=false --latest=false --notes-file "docs/releases/$RELEASE_TAG.md"
+          else
+            gh release create "$RELEASE_TAG" --verify-tag --draft --latest=false --notes-file "docs/releases/$RELEASE_TAG.md" --title "OrcaSVN $RELEASE_TAG"
+          fi
+          # A newly created draft can take a moment to appear in the REST list.
+          release_id=""
+          for attempt in 1 2 3 4 5; do
+            release_id=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate --jq ".[] | select(.tag_name == \"$RELEASE_TAG\") | .id")
+            if [[ "$release_id" =~ ^[0-9]+$ ]]; then break; fi
+            sleep 2
+          done
+          if [[ ! "$release_id" =~ ^[0-9]+$ ]]; then
+            echo "::error::Could not resolve a unique numeric release ID."
+            exit 1
+          fi
+          echo "id=$release_id" >> "$GITHUB_OUTPUT"
+
   desktop:
-    name: Desktop (${{ matrix.platform }})
+    name: Test and build (${{ matrix.platform }})
+    needs: prepare
     runs-on: ${{ matrix.platform }}
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - platform: ubuntu-22.04
-            args: ""
-          - platform: windows-latest
-            args: ""
-          - platform: macos-latest
-            args: ""
-
+        platform: [ubuntu-22.04, windows-latest, macos-latest]
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Rust
-        uses: swatinem/rust-cache@v2
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: swatinem/rust-cache@v2
         with:
           workspaces: "./src-tauri -> target"
-
       - name: Install Linux dependencies
         if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
-          sudo apt-get install -y pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
-
-      - name: Install frontend dependencies
-        run: npm ci
-
+          sudo apt-get install -y pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf subversion
+      - name: Install SVN on Windows
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          choco install sliksvn --version=1.14.5 --no-progress -y --package-parameters="/InstallDir=C:\Tools\SlikSvn"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $svnBin = 'C:\Tools\SlikSvn\bin'
+          foreach ($tool in @('svn.exe', 'svnadmin.exe')) {
+            $executable = Join-Path $svnBin $tool
+            if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
+              throw "SVN installation is missing $executable"
+            }
+            & $executable --version --quiet
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          $svnBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Install SVN on macOS
+        if: matrix.platform == 'macos-latest'
+        run: brew install subversion
+      - run: npm ci
       - name: Generate app icons
         run: npm run icons
-
-      - name: Build frontend
-        run: npm run build
-
-      - name: Build Tauri desktop app
+      - name: Verify SVN test tools
+        run: |
+          svn --version --quiet
+          svnadmin --version --quiet
+      - name: Build and run regression checks
+        run: npm run check
+      - name: Build and upload installers to draft
         uses: tauri-apps/tauri-action@v0.6.2
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
         with:
-          args: ${{ matrix.args }}
-          tagName: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
-          releaseName: ${{ startsWith(github.ref, 'refs/tags/v') && format('OrcaSVN {0}', github.ref_name) || '' }}
-          # __VERSION__ is replaced by tauri-action with the app version.
-          # Update the highlights below before tagging a new release.
-          releaseBody: |-
-            ## What's new since v0.6.1
+          releaseId: ${{ needs.prepare.outputs.release-id }}
+          # Stable versions support both Windows NSIS and MSI installers.
+          args: ""
 
-            ### Improvements
-            - Unify light/dark colors, typography, controls, file status badges, and scrollbars
-            - Simplify the toolbar and improve responsive navigation, welcome screens, and theme selection
-            - Support keyboard operation and accessible labels for workspace filters and file selection
-            - Reduce page margins to 6px and panel corner radii to 8px
-
-            ### Fixes
-            - Prevent repository names and revisions from being vertically clipped; truncate long values and show full text on hover
-            - Distinguish an empty workspace from a filter with no matching files
-            - Disable developer tools, deny Tauri's internal toggle command, and block inspection shortcuts while preserving editing shortcuts
-
-            ## 自 v0.6.1 以来的更新
-
-            ### 功能改进
-            - 统一浅色/深色主题、字体、控件、文件状态徽标与滚动条样式
-            - 精简顶部工具栏，优化响应式导航、欢迎页面和主题选择
-            - 工作区筛选与文件选择支持键盘操作，补充无障碍标签
-            - 页面外边距缩小至 6px，面板圆角缩小至 8px
-
-            ### 问题修复
-            - 修复顶部仓库名和版本文字下沿裁切；超长内容省略显示，悬停可查看完整内容
-            - 区分工作区没有改动与筛选结果为空的提示
-            - 禁用开发者工具及 Tauri 内部切换命令，拦截调试快捷键并保留常用编辑快捷键
-
-            <div align=center>
-
-            [![Release Downloads](https://img.shields.io/github/downloads/wustites/OrcaSVN/v__VERSION__/total?style=flat-square&logo=github)](https://github.com/wustites/OrcaSVN/releases)
-
-            </div>
-
-            **Download based on your OS:**
-
-            <div align=left>
-            <table>
-                <thead align=left>
-                    <tr>
-                        <th>OS</th>
-                        <th>Download</th>
-                    </tr>
-                </thead>
-                <tbody align=left>
-                    <tr>
-                        <td>Windows</td>
-                        <td>
-                            <a href="https://github.com/wustites/OrcaSVN/releases/download/v__VERSION__/OrcaSVN___VERSION___x64-setup.exe"><img src="https://img.shields.io/badge/Setup-x64-2d7d9a.svg?logo=windows"></a><br>
-                            <a href="https://github.com/wustites/OrcaSVN/releases/download/v__VERSION__/OrcaSVN___VERSION___x64_en-US.msi"><img src="https://img.shields.io/badge/MSI-x64-0078d4.svg?logo=windows"></a>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>macOS</td>
-                        <td>
-                            <a href="https://github.com/wustites/OrcaSVN/releases/download/v__VERSION__/OrcaSVN___VERSION___aarch64.dmg"><img src="https://img.shields.io/badge/DMG-Apple%20Silicon-%23000000.svg?logo=apple"></a><br>
-                            <a href="https://github.com/wustites/OrcaSVN/releases/download/v__VERSION__/OrcaSVN_aarch64.app.tar.gz"><img src="https://img.shields.io/badge/TGZ-Apple%20Silicon-%23555555.svg?logo=apple"></a>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>Linux</td>
-                        <td>
-                            <a href="https://github.com/wustites/OrcaSVN/releases/download/v__VERSION__/OrcaSVN___VERSION___amd64.AppImage"><img src="https://img.shields.io/badge/AppImage-x64-f84e29.svg?logo=linux"> </a><br>
-                            <a href="https://github.com/wustites/OrcaSVN/releases/download/v__VERSION__/OrcaSVN___VERSION___amd64.deb"><img src="https://img.shields.io/badge/DebPackage-x64-FF9966.svg?logo=debian"> </a><br>
-                            <a href="https://github.com/wustites/OrcaSVN/releases/download/v__VERSION__/OrcaSVN-__VERSION__-1.x86_64.rpm"><img src="https://img.shields.io/badge/RpmPackage-x64-F1B42F.svg?logo=redhat"> </a>
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
-
-            </div>
-
-            <div dir="ltr">
-
-            **List of all changes:** [GitHub Releases](https://github.com/wustites/OrcaSVN/releases)
-
-            </div>
-          releaseDraft: false
-          prerelease: false
+  publish:
+    name: Publish complete release
+    needs: [prepare, desktop]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - name: Publish after all platforms succeed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: gh release edit "$RELEASE_TAG" --draft=false --prerelease=false --latest=true
 
   publish-to-winget:
     name: Publish to WinGet
     runs-on: windows-latest
-    needs: desktop
+    needs: publish
     continue-on-error: true
     steps:
       - name: Get version from tag

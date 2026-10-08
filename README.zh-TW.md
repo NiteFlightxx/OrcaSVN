@@ -6,7 +6,9 @@ OrcaSVN 是一款以 Tauri、Rust 和 Vue 3 打造的跨平台 SVN 桌面用戶�
 
 ![OrcaSVN 軟體介面](docs/images/orcasvn-workspace.png)
 
-目前 0.6.2 開發版介面，於 2026-10-02 使用範例工作副本資料擷取；正式發行版可能略有差異。[深色主題](docs/images/orcasvn-workspace-dark.png)。
+0.6.3 發布前的開發版介面，於 2026-10-02 使用範例工作副本資料擷取。[深色主題](docs/images/orcasvn-workspace-dark.png)。
+
+目前正式版本為 **0.6.3**，更新內容見[發布說明](docs/releases/v0.6.3.md)。
 
 ## 核心功能
 

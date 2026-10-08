@@ -6,7 +6,7 @@ OrcaSVN 是一个基于 Tauri、Rust 和 Vue 3 的跨平台 SVN 桌面客户端�
 
 ![OrcaSVN 软件界面](docs/images/orcasvn-workspace.png)
 
-当前 0.6.2 开发界面，2026-10-02 截取；使用示例工作区数据，正式发行版可能略有差异。[深色主题](docs/images/orcasvn-workspace-dark.png)。
+0.6.3 发布前开发界面，2026-10-02 截取；使用示例工作区数据。[深色主题](docs/images/orcasvn-workspace-dark.png)。
 
 ## 核心能力
 
@@ -76,7 +76,7 @@ npm run check
 
 详细环境配置和常见问题见 [SETUP.md](SETUP.md)，贡献约定见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
-预发布打包流程见 [预发布说明](docs/prerelease.md)，工作区加载的实测数据与测量边界见 [性能基准](docs/workspace-startup-benchmark.md)。
+当前正式版本为 **0.6.3**，更新内容见 [发布说明](docs/releases/v0.6.3.md)。正式发布步骤见 [发布流程](docs/releasing.md)，候选版本见 [预发布说明](docs/prerelease.md)，与 v0.6.2 的性能对照及测量边界见 [性能基准](docs/workspace-startup-benchmark.md)。
 
 ## 项目结构
 
