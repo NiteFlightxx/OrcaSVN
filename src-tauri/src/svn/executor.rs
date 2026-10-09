@@ -73,6 +73,20 @@ async fn execute_svn_inner(
     let args_vec: Vec<String> = args.iter().map(|s| s.to_string()).collect();
     let mut cmd = Command::new(&executable);
     cmd.args(build_command_args(&args_vec));
+    // SVN converts paths and messages using the process locale. Desktop launches
+    // may inherit no locale, an ASCII locale, or a non-UTF-8 locale even though
+    // Rust passes UTF-8 arguments. Override LC_ALL (which takes precedence over
+    // LANG and LC_CTYPE) for the child only, keeping its output UTF-8 as well.
+    #[cfg(unix)]
+    {
+        // macOS ships en_US.UTF-8; C.UTF-8 is available on Linux without
+        // installing or generating an additional language locale.
+        #[cfg(target_os = "macos")]
+        const SVN_LOCALE: &str = "en_US.UTF-8";
+        #[cfg(not(target_os = "macos"))]
+        const SVN_LOCALE: &str = "C.UTF-8";
+        cmd.env("LC_ALL", SVN_LOCALE);
+    }
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
     // Dropping the output future on timeout kills the child rather than leaving
@@ -115,6 +129,111 @@ async fn collect_command_output(cmd: &mut Command, deadline: Duration) -> Result
 mod tests {
     use super::*;
     use std::path::Path;
+
+    #[cfg(unix)]
+    #[test]
+    fn non_ascii_paths_work_without_a_utf8_parent_locale() {
+        const CHILD_MARKER: &str = "ORCASVN_ENCODING_TEST_CHILD";
+        if std::env::var_os(CHILD_MARKER).is_none() {
+            for executable in ["svn", "svnadmin"] {
+                if std::process::Command::new(executable)
+                    .arg("--version")
+                    .output()
+                    .is_err()
+                {
+                    eprintln!("Skipping encoding regression test: {executable} is unavailable");
+                    return;
+                }
+            }
+            // Isolate parent locale changes from other tests running in parallel.
+            for locale in [None, Some("C"), Some("invalid_ORCASVN_locale")] {
+                let mut child = std::process::Command::new(std::env::current_exe().unwrap());
+                child.args([
+                    "--exact",
+                    "svn::executor::tests::non_ascii_paths_work_without_a_utf8_parent_locale",
+                    "--nocapture",
+                ]);
+                child.env(CHILD_MARKER, "1");
+                for variable in ["LC_ALL", "LC_CTYPE", "LANG"] {
+                    match locale {
+                        Some(value) => {
+                            child.env(variable, value);
+                        }
+                        None => {
+                            child.env_remove(variable);
+                        }
+                    }
+                }
+                let output = child.output().unwrap();
+                assert!(
+                    output.status.success(),
+                    "encoding regression failed with parent locale {locale:?}:\n{}\n{}",
+                    String::from_utf8_lossy(&output.stdout),
+                    String::from_utf8_lossy(&output.stderr)
+                );
+            }
+            return;
+        }
+
+        let directory = std::env::temp_dir().join(format!(
+            "orcasvn-encoding-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&directory).unwrap();
+        struct Cleanup(PathBuf);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_dir_all(&self.0);
+            }
+        }
+        let _cleanup = Cleanup(directory.clone());
+        let repository = directory.join("repository");
+        let created = std::process::Command::new("svnadmin")
+            .arg("create")
+            .arg(&repository)
+            .output()
+            .unwrap();
+        assert!(created.status.success());
+        let url = format!("file://{}", repository.to_str().unwrap());
+        let wc = directory.join("工作副本");
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let run = |args: &[&str], path: Option<&str>| {
+            runtime
+                .block_on(execute_svn_inner(PathBuf::from("svn"), args, path))
+                .unwrap()
+        };
+        run(&["checkout", &url, wc.to_str().unwrap()], None);
+        std::fs::create_dir(wc.join("子目录")).unwrap();
+        std::fs::write(wc.join("子目录/文件.xlsx"), "中文内容").unwrap();
+        run(&["add", "子目录"], Some(wc.to_str().unwrap()));
+        run(
+            &["commit", "-m", "提交中文文件", "子目录/文件.xlsx", "子目录"],
+            Some(wc.to_str().unwrap()),
+        );
+        let log = run(&["log", "--xml", "-v", &url], None);
+        assert!(log.contains("提交中文文件"));
+        assert!(log.contains("/子目录/文件.xlsx"));
+        let second_wc = directory.join("第二副本");
+        run(
+            &[
+                "checkout",
+                &format!("{url}/子目录"),
+                second_wc.to_str().unwrap(),
+            ],
+            None,
+        );
+        assert_eq!(
+            std::fs::read_to_string(second_wc.join("文件.xlsx")).unwrap(),
+            "中文内容"
+        );
+    }
 
     #[test]
     fn captures_svn_stdout() {
