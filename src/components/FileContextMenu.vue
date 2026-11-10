@@ -23,7 +23,9 @@
             :title="item.title"
             @click="openSubmenu(item)"
           >
-            {{ item.label }}<span>›</span>
+            <el-icon><component :is="item.icon || menuIcon(item.id)" /></el-icon
+            ><span>{{ item.label }}</span
+            ><el-icon><ChevronRight /></el-icon>
           </button>
           <div
             v-if="submenu === item.id && !item.disabled"
@@ -42,7 +44,8 @@
               :title="child.title"
               @click="$emit('action', child.id)"
             >
-              {{ child.label }}
+              <el-icon><component :is="child.icon || menuIcon(child.id)" /></el-icon
+              ><span>{{ child.label }}</span>
             </button>
           </div>
         </div>
@@ -56,7 +59,8 @@
           :title="item.title"
           @click="$emit('action', item.id)"
         >
-          <span>{{ item.label }}</span
+          <el-icon><component :is="item.icon || menuIcon(item.id)" /></el-icon
+          ><span>{{ item.label }}</span
           ><kbd v-if="item.shortcut">{{ item.shortcut }}</kbd>
         </button>
       </template>
@@ -66,6 +70,40 @@
 <script setup lang="ts">
 import { nextTick, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { fitMenu, type FileMenuItem } from '@/utils/fileMenu'
+function menuIcon(id: string) {
+  const icons: Record<string, string> = {
+    open: 'Document',
+    diff: 'Connection',
+    reveal: 'FolderOpened',
+    blame: 'User',
+    history: 'History',
+    stage: 'Plus',
+    discard: 'RefreshLeft',
+    'stage-all': 'ChevronsDown',
+    ignore: 'Minus',
+    'ignore-exact': 'Minus',
+    'ignore-extension': 'Minus',
+    stash: 'Archive',
+    patch: 'Download',
+    'copy-relative': 'CopyDocument',
+    'copy-absolute': 'CopyDocument',
+    'refresh-status': 'Refresh',
+    'resolve-conflicts': 'Warning',
+    'branch-switch': 'GitBranch',
+    'branch-history': 'History',
+    'branch-favorite': 'Star',
+    'branch-browse': 'FolderOpened',
+    'branch-remove': 'Close',
+    others: 'Close',
+    right: 'Close',
+    apply: 'Archive',
+    pop: 'ArrowUpFromLine',
+    export: 'Download',
+    remove: 'Close',
+    migrate: 'Archive',
+  }
+  return icons[id] || 'Document'
+}
 const props = defineProps<{ x: number; y: number; items: FileMenuItem[]; notice?: string }>()
 const emit = defineEmits<{ action: [id: string]; close: [] }>()
 const element = ref<HTMLElement | null>(null)

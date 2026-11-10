@@ -55,9 +55,10 @@ export default {
     svnPathInvalid: 'この SVN 実行ファイルを使用できません：{error}',
     encoding: 'デフォルトのエンコーディング',
     gitignore: '無視ファイル (.gitignore)',
-    gitignoreHint: '有効にすると .gitignore に一致するファイルが除外されます',
+    gitignoreHint: '一致する未管理ファイルのみ非表示。SVN 管理対象の変更は表示されます',
     autoDeleteMissingOnCommit: '欠落ファイルを自動削除',
-    autoDeleteMissingOnCommitHint: 'デフォルトではオフです。有効にすると、選択した欠落ファイルに対してコミット前に svn delete --force を実行します。',
+    autoDeleteMissingOnCommitHint:
+      'デフォルトではオフです。有効にすると、選択した欠落ファイルに対してコミット前に svn delete --force を実行します。',
     logLimit: 'ログのデフォルト読み込み件数',
     theme: 'テーマ',
     themeLight: 'ライト',
@@ -112,8 +113,10 @@ export default {
     markDeleted: '削除としてマーク',
     viewDiff: 'ファイル差分を表示',
     cachedStatus: '前回の状態を表示中・検証待ち',
-    revertFileConfirm: 'この対象の SVN 変更を元に戻しますか？未コミットの内容や属性の変更が失われ、SVN では復元できない場合があります。',
-    deleteUnversionedConfirm: 'この未管理のファイルまたはディレクトリを完全に削除しますか？ディレクトリ内のすべての内容も削除されます。ごみ箱には移動されず、元に戻せません。',
+    revertFileConfirm:
+      'この対象の SVN 変更を元に戻しますか？未コミットの内容や属性の変更が失われ、SVN では復元できない場合があります。',
+    deleteUnversionedConfirm:
+      'この未管理のファイルまたはディレクトリを完全に削除しますか？ディレクトリ内のすべての内容も削除されます。ごみ箱には移動されず、元に戻せません。',
     revertFile: 'このファイルを元に戻す',
     deleteUnversioned: 'バージョン管理外ファイルを削除',
     openInExplorer: 'ファイルマネージャーで開く',
@@ -161,12 +164,13 @@ export default {
     actionUnknown: '不明',
   },
   commit: {
-    scope: "コミット範囲",
-    allDirectories: "すべてのディレクトリ",
-    selectedCount: "{count} 件選択",
-    selectedCountWithHidden: "{count} 件選択、うち {hidden} 件はフィルターで非表示",
-    addAndReview: "追加して確認",
-    reviewAdded: "バージョン管理に追加しました。展開された一覧を確認し、不要な項目を外してからコミットしてください。",
+    scope: 'コミット範囲',
+    allDirectories: 'すべてのディレクトリ',
+    selectedCount: '{count} 件選択',
+    selectedCountWithHidden: '{count} 件選択、うち {hidden} 件はフィルターで非表示',
+    addAndReview: '追加して確認',
+    reviewAdded:
+      'バージョン管理に追加しました。展開された一覧を確認し、不要な項目を外してからコミットしてください。',
 
     title: '変更をコミット',
     output: 'コミット出力',
@@ -246,8 +250,10 @@ export default {
     subtitle: 'git stash のように作業コピーの変更を保存',
     create: 'スタッシュを作成',
     createTitle: 'スタッシュを作成',
-    workingCopyHint: '作業コピーに {count} 個の変更ファイルがあります。任意のハンクを選択できます。',
-    unsupportedChanges: '現在の変更はスタッシュできません。競合、プロパティのみ、非テキストの変更には対応していません。',
+    workingCopyHint:
+      '作業コピーに {count} 個の変更ファイルがあります。任意のハンクを選択できます。',
+    unsupportedChanges:
+      '現在の変更はスタッシュできません。競合、プロパティのみ、非テキストの変更には対応していません。',
     empty: 'このワークスペースにスタッシュはありません',
     selectHunks: 'スタッシュするハンクを選択',
     selectHunksHint: '選択しない変更は作業コピーに残ります',

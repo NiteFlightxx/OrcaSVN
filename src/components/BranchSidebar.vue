@@ -11,27 +11,23 @@
           :disabled="flow.busy"
           @click="manager = 'add'"
         >
-          ＋</button
+          <el-icon><Plus /></el-icon></button
         ><button
           :title="$t('branchUI.directory')"
           :aria-label="$t('branchUI.directory')"
           @click="manager = 'browse'"
         >
-          …</button
+          <el-icon><MoreFilled /></el-icon></button
         ><button
-          :title="$t('flow.refresh')"
+          :title="$t('flow.branches') + ' · ' + $t('flow.refresh')"
           :aria-label="$t('flow.refresh')"
           :disabled="loading"
           @click="refresh"
         >
-          ↻
+          <el-icon><Refresh /></el-icon>
         </button>
       </div>
     </header>
-    <div class="branch-current" :title="flow.identity?.url">
-      <span class="current-dot">●</span><strong>{{ flow.branchName || '—' }}</strong
-      ><small>{{ $t('branchUI.current') }}</small>
-    </div>
     <input
       ref="filterInput"
       v-model="filter"
@@ -39,14 +35,19 @@
       :placeholder="$t('flow.filterBranches')"
       :aria-label="$t('flow.filterBranches')"
     />
-    <div class="branch-options">
-      <select v-model="sortMode" :aria-label="$t('experience.sort')">
-        <option value="name">{{ $t('experience.name') }}</option>
-        <option value="path">{{ $t('experience.path') }}</option></select
-      ><label
-        ><input v-model="groupPaths" type="checkbox" />{{ $t('experience.groupPaths') }}</label
-      >
-    </div>
+    <details class="branch-options">
+      <summary :title="$t('experience.sort')">
+        <el-icon><List /></el-icon>{{ $t('experience.sort') }}
+      </summary>
+      <div class="branch-options-body">
+        <select v-model="sortMode" :aria-label="$t('experience.sort')">
+          <option value="name">{{ $t('experience.name') }}</option>
+          <option value="path">{{ $t('experience.path') }}</option></select
+        ><label
+          ><input v-model="groupPaths" type="checkbox" />{{ $t('experience.groupPaths') }}</label
+        >
+      </div>
+    </details>
     <p v-if="flow.error" class="flow-error" :title="flow.error">{{ flow.error }}</p>
     <button
       v-if="flow.branchError"
@@ -54,11 +55,18 @@
       :title="$t('branchUI.directoryHint')"
       @click="manager = 'browse'"
     >
-      ⓘ {{ $t('branchUI.directoryUnavailable') }} <span>›</span>
+      <el-icon><InfoFilled /></el-icon> {{ $t('branchUI.directoryUnavailable') }}
+      <el-icon><ChevronRight /></el-icon>
     </button>
     <div class="branch-groups" @keydown="navigate">
-      <details v-for="group in groups" :key="group.key" class="branch-group" open>
-        <summary>
+      <component
+        :is="group.key === 'branches' ? 'section' : 'details'"
+        v-for="group in groups"
+        :key="group.key"
+        class="branch-group"
+        open
+      >
+        <summary v-if="group.key !== 'branches'">
           {{ group.title || $t(group.key === 'favorites' ? 'flow.favorites' : 'flow.branches') }}
           <small>({{ group.entries.length }})</small>
         </summary>
@@ -77,8 +85,8 @@
             @click="browseHistory(entry.url)"
             @dblclick="prepare(entry.url)"
           >
-            <span class="branch-icon" aria-hidden="true">⑂</span><span>{{ entry.name }}</span
-            ><small v-if="isCurrent(entry.url)">✓</small>
+            <el-icon class="branch-icon"><GitBranch /></el-icon><span>{{ entry.name }}</span
+            ><el-icon v-if="isCurrent(entry.url)" class="current-check"><Check /></el-icon>
           </button>
           <button
             class="branch-star"
@@ -91,19 +99,12 @@
             "
             @click="toggleFavorite(entry.url)"
           >
-            {{ isFavorite(entry.url) ? '★' : '☆' }}
+            <el-icon><StarFilled v-if="isFavorite(entry.url)" /><Star v-else /></el-icon>
           </button>
         </div>
-      </details>
+      </component>
       <p v-if="!rows.length" class="branch-empty">{{ $t('branchUI.noMatches') }}</p>
     </div>
-    <button
-      class="branch-explicit-switch"
-      :disabled="flow.busy || !selectedUrl || isCurrent(selectedUrl)"
-      @click="prepare(selectedUrl)"
-    >
-      {{ $t('branchUI.switchSelected') }}<span>↵</span>
-    </button>
     <FileContextMenu
       v-if="branchMenu.visible"
       :x="branchMenu.x"

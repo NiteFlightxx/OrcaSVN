@@ -4,7 +4,10 @@
     :style="{ '--history-split': `${historySplit}%`, '--files-width': `${filesWidth}px` }"
     @click="contextVisible = false"
   >
-    <div class="log-branch-context">
+    <div
+      v-if="scopedHistory || (logSource && logSource !== flow.identity?.url)"
+      class="log-branch-context"
+    >
       <span>{{ $t('flow.current') }}: {{ flow.identity?.url || workspaceStore.svnInfo?.url }}</span
       ><span>{{ $t('flow.browsing') }}: {{ logSource }}</span
       ><button v-if="scopedHistory" @click="router.replace({ name: 'log', query: {} })">

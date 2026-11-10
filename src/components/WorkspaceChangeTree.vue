@@ -18,7 +18,7 @@
           :disabled="!rows.length"
           @click="setAllExpanded(true)"
         >
-          ⌄
+          <el-icon><ExpandAll /></el-icon>
         </button>
         <button
           v-if="!viewMode || viewMode === 'tree'"
@@ -27,7 +27,7 @@
           :disabled="!rows.length"
           @click="setAllExpanded(false)"
         >
-          ⌃
+          <el-icon><CollapseAll /></el-icon>
         </button>
         <button
           :disabled="disabled || !selectedSelectable.length"
@@ -35,7 +35,7 @@
           :aria-label="$t(staged ? 'changes.unstage' : 'changes.stage')"
           @click="toggleSelected"
         >
-          {{ staged ? '↑' : '↓' }}
+          <el-icon><ArrowUp v-if="staged" /><ArrowDownToLine v-else /></el-icon>
         </button>
         <button
           :disabled="disabled || !batchTargets.length"
@@ -43,7 +43,7 @@
           :aria-label="$t(staged ? 'changes.unstageAll' : 'changes.stageAll')"
           @click="$emit('toggle-selection', batchTargets)"
         >
-          {{ staged ? '⇈' : '⇊' }}
+          <el-icon><ChevronsUp v-if="staged" /><ChevronsDown v-else /></el-icon>
         </button>
       </div>
     </header>
@@ -84,21 +84,23 @@
             class="tree-disclosure"
             tabindex="-1"
             :aria-label="$t(collapsed.has(row.node.path) ? 'changes.expand' : 'changes.collapse')"
-            @click.stop="() => { selectNode(row.node)
-              toggleFolder(row.node.path) }"
+            @click.stop="
+              () => {
+                selectNode(row.node)
+                toggleFolder(row.node.path)
+              }
+            "
           >
-            {{ collapsed.has(row.node.path) ? '›' : '⌄' }}</button
+            <el-icon
+              ><ChevronRight v-if="collapsed.has(row.node.path)" /><ArrowDown v-else
+            /></el-icon></button
           ><span v-else class="tree-disclosure"></span>
           <el-icon v-if="row.node.children.length || row.node.path === '.'" class="folder-icon"
             ><Folder v-if="collapsed.has(row.node.path)" /><FolderOpened v-else
           /></el-icon>
-          <span
-            v-if="row.node.entry"
-            class="tree-status"
-            :class="statusClass(row.node.entry)"
-            :title="statusLabel(row.node.entry)"
-            >{{ statusCode(row.node.entry) }}</span
-          >
+          <el-icon v-if="row.node.entry && !row.node.children.length" class="file-type-icon"
+            ><component :is="fileIconName(row.node.path)"
+          /></el-icon>
           <button
             class="tree-label"
             :title="row.node.path"
@@ -110,6 +112,13 @@
               row.node.path.slice(0, Math.max(0, row.node.path.lastIndexOf('/')))
             }}</small>
           </button>
+          <span
+            v-if="row.node.entry"
+            class="tree-status"
+            :class="statusClass(row.node.entry)"
+            :title="statusLabel(row.node.entry)"
+            >{{ statusCode(row.node.entry) }}</span
+          >
           <span v-if="row.node.children.length" class="tree-count">{{
             row.node.targets.length
           }}</span>
@@ -119,17 +128,25 @@
               :disabled="disabled"
               :title="$t(staged ? 'changes.unstage' : 'changes.stage')"
               :aria-label="$t(staged ? 'changes.unstage' : 'changes.stage')"
-              @click.stop="() => { selectNode(row.node)
-                toggleSelected() }"
+              @click.stop="
+                () => {
+                  selectNode(row.node)
+                  toggleSelected()
+                }
+              "
             >
-              {{ staged ? '−' : '+' }}
+              <el-icon><Minus v-if="staged" /><Plus v-else /></el-icon>
             </button>
             <button
               :disabled="disabled || actionPending || !row.node.targets.length"
               :title="$t('fileMenu.discard')"
               :aria-label="$t('fileMenu.discard')"
-              @click.stop="() => { selectNode(row.node)
-                $emit('discard-targets', row.node.targets) }"
+              @click.stop="
+                () => {
+                  selectNode(row.node)
+                  $emit('discard-targets', row.node.targets)
+                }
+              "
             >
               <el-icon><RefreshLeft /></el-icon>
             </button>
@@ -144,6 +161,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { fileIconName } from '@/utils/filePresentation'
 import VirtualViewport from './VirtualViewport.vue'
 import { buildChangeTree, flattenChangeTree, type ChangeNode } from '@/utils/changeTree'
 import { changeTargets, selectChangeRows } from '@/utils/changeSelection'

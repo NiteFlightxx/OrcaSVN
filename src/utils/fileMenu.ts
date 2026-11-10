@@ -1,4 +1,5 @@
 export interface FileMenuItem {
+  icon?: string
   id: string
   label: string
   disabled?: boolean
@@ -8,6 +9,16 @@ export interface FileMenuItem {
   shortcut?: string
   children?: FileMenuItem[]
 }
-export function fitMenu(x: number, y: number, width: number, height: number, viewportWidth: number, viewportHeight: number) {
-  return { x: Math.max(8, Math.min(x, viewportWidth - width - 8)), y: Math.max(8, Math.min(y, viewportHeight - height - 8)) }
+export function fitMenu(
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  viewportWidth: number,
+  viewportHeight: number
+) {
+  return {
+    x: Math.max(8, Math.min(x, viewportWidth - width - 8)),
+    y: Math.max(8, Math.min(y, viewportHeight - height - 8)),
+  }
 }

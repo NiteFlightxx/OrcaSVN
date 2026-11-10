@@ -125,3 +125,333 @@
   color: inherit;
   cursor: pointer;
 }
+
+/* Compact shell: one repository title, one page heading, one action per scope. */
+html .source-shell .brand-logo {
+  width: 21px;
+  height: 21px;
+  object-fit: contain;
+}
+html .source-shell .app-mark {
+  padding: 0 12px;
+  gap: 7px;
+}
+html .source-shell .tab-close,
+html .source-shell .add-repository {
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+  padding: 0 8px;
+}
+html .source-shell .repository-toolbar {
+  background: var(--md-sys-color-surface-container-lowest);
+  padding: 0 8px;
+}
+html .source-shell .toolbar-primary {
+  justify-content: flex-start;
+  gap: 3px;
+  margin-left: 5px;
+}
+html .source-shell .tool-button {
+  height: 28px;
+  gap: 6px;
+}
+html .source-shell .tool-button .el-icon {
+  font-size: 16px;
+}
+html .source-shell .page-switcher {
+  gap: 3px;
+  padding-top: 7px;
+  background: var(--md-sys-color-surface-container-lowest);
+}
+html .source-shell .page-switcher > button {
+  height: 34px;
+  min-height: 34px;
+  width: 34px;
+  border-radius: 5px;
+}
+html .source-shell .page-switcher > button .el-icon {
+  font-size: 18px;
+}
+html .source-shell .page-switcher > button.active {
+  box-shadow: inset 2px 0 var(--md-sys-color-primary);
+}
+html .source-shell .source-sidebar {
+  background: var(--md-sys-color-surface-container-lowest);
+}
+html .source-shell .branch-panel {
+  border-top: 0;
+  padding-top: 5px;
+}
+html .source-shell .branch-heading {
+  height: 30px;
+}
+html .source-shell .branch-heading button {
+  font-size: 14px;
+}
+html .source-shell .branch-heading > div {
+  display: flex;
+  align-items: center;
+}
+html .source-shell .branch-options {
+  display: block;
+  padding: 0 10px;
+  font-size: 11px;
+}
+html .source-shell .branch-options > summary {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 0;
+  list-style: none;
+  color: var(--md-sys-color-on-surface-variant);
+  cursor: pointer;
+}
+html .source-shell .branch-options-body {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0 6px;
+}
+html .source-shell .branch-options-body label {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+html .source-shell .branch-groups {
+  max-height: calc(100vh - 200px);
+  padding: 3px 0;
+}
+html .source-shell .branch-row {
+  padding-left: 10px;
+  height: 28px;
+}
+html .source-shell .branch-icon {
+  font-size: 14px;
+}
+html .source-shell .branch-name > span {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+html .source-shell .current-check {
+  font-size: 12px;
+  color: var(--md-sys-color-primary);
+}
+html .source-shell .branch-star {
+  font-size: 13px;
+}
+html .source-shell .fork-status {
+  font-size: 11px;
+  min-height: 23px;
+  padding: 3px 10px;
+}
+html .source-shell .status-path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.route-content .workspace-view .changes-filterbar {
+  height: 34px;
+  min-height: 34px;
+  padding: 4px 6px;
+  gap: 4px;
+}
+.route-content .changes-filterbar select {
+  width: 62px;
+  flex-shrink: 0;
+  font-size: 11px;
+  max-width: 72px;
+}
+.route-content .changes-filterbar input {
+  border-radius: 4px;
+  font-size: 12px;
+  padding: 3px 6px;
+}
+.route-content .changes-filterbar button[aria-pressed='true'] {
+  color: var(--md-sys-color-primary);
+  background: var(--md-sys-color-primary-container);
+}
+.route-content .workspace-view .right-panel {
+  grid-template-rows: 30px minmax(100px, 1fr) 4px minmax(150px, var(--composer-height));
+}
+.route-content .panel-header {
+  justify-content: space-between;
+  padding: 0 8px;
+  gap: 8px;
+}
+.route-content .panel-title {
+  min-width: 0;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 12px;
+}
+.route-content .panel-title > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.route-content .panel-tools {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+.route-content .panel-tools button,
+.quiet-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  cursor: pointer;
+}
+.route-content .panel-tools button:hover,
+.quiet-icon:hover {
+  background: var(--md-sys-color-surface-container-high);
+}
+.route-content .compact-diff-stats {
+  font-size: 10px;
+  display: flex;
+  gap: 6px;
+  margin-right: 6px;
+}
+.route-content .compact-diff-stats b {
+  color: var(--app-color-status-added-text);
+  font-weight: 500;
+}
+.route-content .compact-diff-stats i {
+  color: var(--app-color-status-error-text);
+  font-style: normal;
+}
+.route-content .file-type-icon {
+  font-size: 15px;
+  flex-shrink: 0;
+  color: var(--md-sys-color-on-surface-variant);
+}
+.route-content .change-row .tree-status {
+  background: transparent;
+  font-size: 10px;
+  min-width: 13px;
+  font-weight: 600;
+}
+.route-content .change-row .status-modified,
+.route-content .change-row .status-replaced {
+  color: var(--app-color-status-modified-text);
+}
+.route-content .change-row .status-added {
+  color: var(--app-color-status-added-text);
+}
+.route-content .change-row .status-deleted,
+.route-content .change-row .status-conflicted,
+.route-content .change-row .status-missing {
+  color: var(--app-color-status-error-text);
+}
+.route-content .change-row .status-unversioned {
+  color: var(--app-color-status-unversioned-text);
+}
+.route-content .tree-tools button {
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+  width: 23px;
+}
+.route-content .tree-disclosure {
+  font-size: 12px;
+}
+.route-content .workspace-commit-composer .compact label > span {
+  display: none;
+}
+.route-content .workspace-commit-composer .compact {
+  gap: 6px;
+}
+.route-content .workspace-commit-composer .message-actions {
+  font-size: 11px;
+  gap: 6px;
+}
+.route-content .workspace-commit-composer .message-actions select {
+  border: 0;
+  border-radius: 3px;
+  background: var(--md-sys-color-surface-container-low);
+  height: 22px;
+  color: var(--md-sys-color-on-surface-variant);
+}
+.route-content .workspace-commit-composer .commit-action-row {
+  margin-top: 2px;
+}
+.file-context-menu .context-menu-item,
+.file-context-menu .file-menu-submenu > button {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  gap: 9px;
+}
+.file-context-menu .el-icon {
+  font-size: 14px;
+  color: var(--md-sys-color-on-surface-variant);
+}
+.file-context-menu .danger .el-icon {
+  color: inherit;
+}
+.file-context-menu .context-menu-item.nested {
+  padding-left: 10px;
+}
+.route-content .stash-toolbar {
+  min-height: 36px;
+  box-sizing: border-box;
+  padding: 4px 8px;
+}
+.route-content .stash-toolbar > strong {
+  font-size: 12px;
+}
+.route-content .stash-toolbar small {
+  font-weight: 400;
+  color: var(--md-sys-color-on-surface-variant);
+  margin-left: 5px;
+}
+.route-content .stash-toolbar .actions {
+  gap: 4px;
+}
+html .source-shell .repository-conflict-bar {
+  padding: 3px 8px;
+  font-size: 11px;
+}
+html .source-shell .activity-trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  padding: 4px 10px;
+}
+@media (max-width: 850px) {
+  .route-content .workspace-view .workspace-layout {
+    grid-template-columns: minmax(220px, 40%) 4px minmax(0, 1fr);
+  }
+  .route-content .changes-filterbar select {
+    width: 54px;
+  }
+  .source-shell .language-switcher-button {
+    padding: 4px;
+  }
+}
+
+.route-content .external-tool-options {
+  margin: 0 0 16px;
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+}
+.route-content .external-tool-options > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface-variant);
+}

@@ -1,7 +1,8 @@
 <template>
   <div v-if="flow.busy || flow.activities.length || history.length" class="activity-panel">
     <button class="activity-trigger" @click="expanded = !expanded">
-      {{ flow.title }} · {{ $t(`experience.${flow.phase}`) }} {{ expanded ? '▾' : '▸' }}
+      {{ flow.title || $t('flow.activity') }} · {{ $t(`experience.${flow.phase}`) }}
+      <el-icon><ArrowDown v-if="expanded" /><ChevronRight v-else /></el-icon>
     </button>
     <p v-if="flow.refreshWarning" role="alert">{{ $t('experience.refreshFailed') }}</p>
     <div v-if="flow.busy && flow.progress" class="operation-progress">

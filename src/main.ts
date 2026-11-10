@@ -33,46 +33,7 @@ import { ElTag } from 'element-plus/es/components/tag/index'
 import { ElTooltip } from 'element-plus/es/components/tooltip/index'
 import 'element-plus/dist/index.css'
 import 'element-plus/theme-chalk/dark/css-vars.css'
-import 'material-symbols/rounded.css'
-import {
-  ArrowDown,
-  ArrowLeft,
-  ArrowRight,
-  Back,
-  Brush,
-  Calendar,
-  ChatLineSquare,
-  Check,
-  CircleCheck,
-  Close,
-  Connection,
-  CopyDocument,
-  Delete,
-  Document,
-  Download,
-  Edit,
-  Folder,
-  FolderOpened,
-  HomeFilled,
-  InfoFilled,
-  Link,
-  List,
-  Loading,
-  Minus,
-  Monitor,
-  Moon,
-  Plus,
-  PriceTag,
-  Refresh,
-  RefreshLeft,
-  RefreshRight,
-  Setting,
-  Search,
-  Sunny,
-  Switch,
-  Upload,
-  User,
-} from '@/components/icons/materialIcons'
+import * as icons from '@/components/icons/materialIcons'
 import router from './router'
 import i18n from './i18n'
 import App from './App.vue'
@@ -130,46 +91,6 @@ const components = [
   ElTag,
   ElTooltip,
 ]
-
-const icons = {
-  ArrowDown,
-  ArrowLeft,
-  ArrowRight,
-  Back,
-  Brush,
-  Calendar,
-  ChatLineSquare,
-  Check,
-  CircleCheck,
-  Close,
-  Connection,
-  CopyDocument,
-  Delete,
-  Document,
-  Download,
-  Edit,
-  Folder,
-  FolderOpened,
-  HomeFilled,
-  InfoFilled,
-  Link,
-  List,
-  Loading,
-  Minus,
-  Monitor,
-  Moon,
-  Plus,
-  PriceTag,
-  Refresh,
-  RefreshLeft,
-  RefreshRight,
-  Setting,
-  Search,
-  Sunny,
-  Switch,
-  Upload,
-  User,
-}
 
 for (const component of components) {
   app.use(component)

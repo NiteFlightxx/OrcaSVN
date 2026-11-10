@@ -104,14 +104,6 @@
             :title="workspaceName"
           />
           <button
-            :title="$t('menu.refresh')"
-            :aria-label="$t('menu.refresh')"
-            :disabled="workspaceStore.isLoading"
-            @click="refreshStatus"
-          >
-            <el-icon :class="{ 'is-loading': workspaceStore.isLoading }"><Refresh /></el-icon>
-          </button>
-          <button
             :title="$t('sourceUI.discardVisible')"
             :aria-label="$t('sourceUI.discardVisible')"
             :disabled="
@@ -121,13 +113,6 @@
           >
             <el-icon><RefreshLeft /></el-icon>
           </button>
-          <select v-model="viewMode" :aria-label="$t('sourceUI.viewMode')">
-            <option value="tree">{{ $t('sourceUI.tree') }}</option>
-            <option value="compact">{{ $t('sourceUI.compact') }}</option>
-            <option value="list">{{ $t('sourceUI.list') }}</option>
-          </select>
-        </div>
-        <div class="changes-status-filter">
           <select v-model="filter" :aria-label="$t('workspace.fileStatus')">
             <option value="all">
               {{ $t('common.all') }} ({{ workspaceStore.statusList.length }})
@@ -145,12 +130,25 @@
               {{ $t('status.missing') }} ({{ workspaceStore.missingCount }})
             </option>
           </select>
-          <span>{{ filteredFiles.length }} / {{ workspaceStore.statusList.length }}</span>
+          <button
+            v-if="ignoredCount"
+            :title="
+              $t('experience.showHidden') +
+              ' · ' +
+              $t('experience.ignored', { count: ignoredCount })
+            "
+            :aria-label="$t('experience.showHidden')"
+            :aria-pressed="showIgnored"
+            @click="showIgnored = !showIgnored"
+          >
+            <el-icon><Eye v-if="showIgnored" /><EyeOff v-else /></el-icon>
+          </button>
+          <select v-model="viewMode" :aria-label="$t('sourceUI.viewMode')">
+            <option value="tree">{{ $t('sourceUI.tree') }}</option>
+            <option value="compact">{{ $t('sourceUI.compact') }}</option>
+            <option value="list">{{ $t('sourceUI.list') }}</option>
+          </select>
         </div>
-        <label v-if="ignoredCount" class="staging-notice"
-          ><input v-model="showIgnored" type="checkbox" /> {{ $t('experience.showHidden') }} ·
-          {{ $t('experience.ignored', { count: ignoredCount }) }}</label
-        >
         <div v-if="workspaceStore.statusIsStale" class="cached-status-notice" role="status">
           {{ $t('workspace.cachedStatus')
           }}<span v-if="workspaceStore.isLoading"> · {{ $t('common.loading') }}</span>
@@ -271,10 +269,33 @@
       <!-- 右侧面板：差异预览 -->
       <aside class="right-panel">
         <div class="panel-header">
-          <span class="panel-title">
-            <el-icon><Connection /></el-icon>
-            {{ $t('diff.title') }}
-          </span>
+          <span class="panel-title" :title="selectedFile || ''"
+            ><el-icon><Connection /></el-icon
+            ><span>{{ selectedFile || $t('diff.title') }}</span></span
+          >
+          <div
+            v-if="selectedFile && !selectedConflict && !selectedDetails?.binary"
+            class="panel-tools"
+          >
+            <span v-if="diffResult" class="compact-diff-stats"
+              ><b>+{{ diffStats.added }}</b
+              ><i>−{{ diffStats.removed }}</i></span
+            ><button
+              :title="$t('experience.properties')"
+              :aria-label="$t('experience.properties')"
+              :aria-pressed="propertiesOpen"
+              @click="propertiesOpen = !propertiesOpen"
+            >
+              <el-icon><List /></el-icon></button
+            ><button
+              :title="$t('experience.externalDiff')"
+              :aria-label="$t('experience.externalDiff')"
+              :disabled="flow.busy"
+              @click="openExternal"
+            >
+              <el-icon><Connection /></el-icon>
+            </button>
+          </div>
         </div>
         <div class="panel-content" :aria-busy="isLoadingDiff">
           <GlassLoading :active="isLoadingDiff" :label="$t('common.loading')" />
@@ -304,22 +325,6 @@
             <el-button @click="loadDiff(selectedFile!)">{{ $t('experience.retry') }}</el-button>
           </div>
           <div v-else-if="diffResult" class="diff-content">
-            <div class="diff-header">
-              <el-tag class="diff-path-tag" type="primary" size="small" :title="selectedFile">{{
-                selectedFile
-              }}</el-tag>
-              <div class="diff-stats">
-                <el-tag type="success" size="small">+{{ diffStats.added }}</el-tag>
-                <el-tag type="danger" size="small">-{{ diffStats.removed }}</el-tag>
-              </div>
-            </div>
-            <div class="inspector-tools">
-              <button :disabled="flow.busy" @click="openExternal">
-                {{ $t('experience.externalDiff') }}</button
-              ><button @click="propertiesOpen = !propertiesOpen">
-                {{ $t('experience.properties') }}
-              </button>
-            </div>
             <pre v-if="propertiesOpen" class="property-diff">{{
               properties || $t('diff.noDiff')
             }}</pre>
@@ -340,9 +345,8 @@
         />
         <div class="workspace-commit-composer">
           <CommitMessageEditor compact :disabled="flow.busy" />
-          <small class="selection-hint">{{ $t('experience.latest') }}</small>
           <div class="commit-action-row">
-            <small :title="$t('changes.selectionHint')">{{
+            <small :title="$t('experience.latest')">{{
               $t('sourceUI.selectedForCommit', { count: staging.paths.length })
             }}</small
             ><el-button
@@ -543,6 +547,7 @@ const contextItems = computed<FileMenuItem[]>(() => {
     { id: 'history', label: t('fileMenu.history'), disabled: !current || !history },
     {
       id: 'stage',
+      icon: fileContextMenu.staged ? 'Minus' : 'Plus',
       label: t(
         fileContextMenu.multiple
           ? fileContextMenu.staged

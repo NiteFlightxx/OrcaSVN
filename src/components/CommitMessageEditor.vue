@@ -39,7 +39,7 @@
         :aria-label="$t('commitDetails.description')"
       />
     </label>
-    <small v-if="draft.message">{{
+    <small v-if="draft.message && !compact">{{
       $t('commitDetails.characters', { count: draft.message.length })
     }}</small>
   </section>

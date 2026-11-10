@@ -99,7 +99,7 @@ a:hover {
   border-radius: var(--app-radius-full);
   font-weight: 600;
   letter-spacing: 0.02em;
-  transition: 
+  transition:
     transform var(--app-transition-fast),
     box-shadow var(--app-transition-fast),
     background-color var(--app-transition-fast),
@@ -140,7 +140,9 @@ a:hover {
   border-radius: var(--app-radius-md);
   background: var(--md-sys-color-surface-container-lowest);
   box-shadow: 0 0 0 1px var(--md-sys-color-outline) inset;
-  transition: box-shadow var(--app-transition-fast), border-color var(--app-transition-fast);
+  transition:
+    box-shadow var(--app-transition-fast),
+    border-color var(--app-transition-fast);
 }
 
 .el-input__wrapper:hover,
@@ -233,7 +235,9 @@ a:hover {
 .branch-operation-dialog .el-dialog__header,
 .branch-operation-dialog .el-dialog__footer,
 .branch-manager-dialog .el-dialog__header,
-.branch-manager-dialog .el-dialog__footer { flex-shrink: 0; }
+.branch-manager-dialog .el-dialog__footer {
+  flex-shrink: 0;
+}
 
 .el-message-box.workspace-file-confirm {
   --el-messagebox-width: 480px;
@@ -520,7 +524,7 @@ a:hover {
     width: 100%;
     margin-top: var(--app-spacing-sm);
   }
-  
+
   .checkout-view,
   .commit-view,
   .settings-view {
@@ -532,11 +536,11 @@ a:hover {
   .el-card__header {
     padding: var(--app-spacing) var(--app-spacing-md);
   }
-  
+
   .el-card__body {
     padding: var(--app-spacing-md);
   }
-  
+
   .el-button {
     min-height: var(--app-size-control-compact);
   }
@@ -588,7 +592,8 @@ a:hover {
 }
 
 @keyframes pulse {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 1;
   }
   50% {
@@ -624,7 +629,12 @@ a:hover {
 
 /* 骨架屏动画 */
 .skeleton-loading {
-  background: linear-gradient(90deg, var(--md-sys-color-surface-container-low) 25%, var(--md-sys-color-surface-container-high) 50%, var(--md-sys-color-surface-container-low) 75%);
+  background: linear-gradient(
+    90deg,
+    var(--md-sys-color-surface-container-low) 25%,
+    var(--md-sys-color-surface-container-high) 50%,
+    var(--md-sys-color-surface-container-low) 75%
+  );
   background-size: 200% 100%;
   animation: shimmer 1.5s ease-in-out infinite;
 }
@@ -716,22 +726,28 @@ a:hover {
 }
 
 .theme-dark .status-metric.modified {
-  background: linear-gradient(135deg, var(--app-color-status-modified-bg), var(--md-sys-color-surface-container));
+  background: linear-gradient(
+    135deg,
+    var(--app-color-status-modified-bg),
+    var(--md-sys-color-surface-container)
+  );
 }
 
 .theme-dark .status-metric.added {
-  background: linear-gradient(135deg, var(--app-color-status-added-bg), var(--md-sys-color-surface-container));
+  background: linear-gradient(
+    135deg,
+    var(--app-color-status-added-bg),
+    var(--md-sys-color-surface-container)
+  );
 }
 
 .theme-dark .status-metric.deleted {
-  background: linear-gradient(135deg, var(--app-color-status-error-bg), var(--md-sys-color-surface-container));
+  background: linear-gradient(
+    135deg,
+    var(--app-color-status-error-bg),
+    var(--md-sys-color-surface-container)
+  );
 }
-
-
-
-
-
-
 
 .theme-dark .diff-lines {
   background: var(--md-sys-color-surface-container-lowest);
@@ -837,40 +853,23 @@ a:hover {
 }
 
 .theme-dark .el-skeleton__item {
-  background: linear-gradient(90deg, var(--md-sys-color-surface-container-low) 25%, var(--md-sys-color-surface-container-high) 50%, var(--md-sys-color-surface-container-low) 75%);
+  background: linear-gradient(
+    90deg,
+    var(--md-sys-color-surface-container-low) 25%,
+    var(--md-sys-color-surface-container-high) 50%,
+    var(--md-sys-color-surface-container-low) 75%
+  );
   background-size: 200% 100%;
 }
 
 /* Shared colors and component surfaces. */
-.app-material-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1em;
-  height: 1em;
-  overflow: hidden;
-  font-size: 1em;
-  line-height: 1;
-  font-variation-settings:
-    "FILL" 0,
-    "wght" 400,
-    "GRAD" 0,
-    "opsz" 24;
+/* All product icons use local SVG outlines and inherit text color. */
+.app-icon {
+  display: inline-block;
+  flex-shrink: 0;
+  vertical-align: -0.125em;
   user-select: none;
 }
-
-.tool-button.active .app-material-icon,
-.sidebar-section button.active .app-material-icon,
-.sidebar-row.active .app-material-icon,
-.el-button--primary .app-material-icon {
-  font-variation-settings:
-    "FILL" 1,
-    "wght" 500,
-    "GRAD" 0,
-    "opsz" 24;
-}
-
-
 
 body,
 .fork-shell,
@@ -886,7 +885,7 @@ body,
   border-radius: var(--app-radius-sm);
   font-size: var(--app-font-size-label);
   font-weight: var(--app-font-weight-semibold);
-  letter-spacing: .01em;
+  letter-spacing: 0.01em;
 }
 
 .el-button--primary,
@@ -960,7 +959,7 @@ body,
   min-height: 24px;
   border-radius: var(--app-radius-full);
   font-size: var(--app-font-size-xs);
-  letter-spacing: .01em;
+  letter-spacing: 0.01em;
 }
 
 .el-dialog {
@@ -1048,14 +1047,18 @@ body,
 
 /* Respect operating-system motion preferences, including library overlays. */
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  *,
+  *::before,
+  *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     transition-delay: 0ms !important;
     scroll-behavior: auto !important;
   }
-  .el-button:not(.is-disabled):active { transform: none; }
+  .el-button:not(.is-disabled):active {
+    transform: none;
+  }
 }
 
 .el-button--danger:not(.is-plain):not(.is-text):not(.is-link):not(.is-disabled) {
@@ -1069,7 +1072,10 @@ body,
 .el-dialog__header.show-close {
   padding-right: calc(var(--app-spacing-lg) + 32px);
 }
-.el-dialog__headerbtn { top: 8px; right: 8px; }
+.el-dialog__headerbtn {
+  top: 8px;
+  right: 8px;
+}
 .theme-dark .el-input__wrapper,
 .theme-dark .el-select__wrapper,
 .theme-dark .el-textarea__inner {

@@ -1,22 +1,22 @@
 <template>
   <el-dropdown popper-class="language-dropdown" @command="handleLanguageChange">
-    <el-button text class="language-switcher-button">
+    <el-button
+      text
+      class="language-switcher-button"
+      :title="currentLanguageLabel"
+      :aria-label="currentLanguageLabel"
+    >
       <svg class="language-icon" viewBox="0 0 24 24" aria-hidden="true">
         <circle cx="12" cy="12" r="9" />
         <path d="M3 12h18" />
         <path d="M12 3c2.4 2.5 3.6 5.5 3.6 9s-1.2 6.5-3.6 9" />
         <path d="M12 3c-2.4 2.5-3.6 5.5-3.6 9s1.2 6.5 3.6 9" />
       </svg>
-      {{ currentLanguageLabel }}
       <el-icon class="el-icon--right"><ArrowDown /></el-icon>
     </el-button>
     <template #dropdown>
       <el-dropdown-menu>
-        <el-dropdown-item
-          v-for="lang in languages"
-          :key="lang.value"
-          :command="lang.value"
-        >
+        <el-dropdown-item v-for="lang in languages" :key="lang.value" :command="lang.value">
           {{ lang.label }}
         </el-dropdown-item>
       </el-dropdown-menu>

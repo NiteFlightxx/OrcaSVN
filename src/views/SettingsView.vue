@@ -1,6 +1,5 @@
 <template>
   <div class="settings-view">
-    <ToolSettings />
     <el-card class="settings-card animate-fade-in">
       <el-form :model="settings" label-width="180px" class="settings-form" label-position="left">
         <div class="settings-section">
@@ -26,19 +25,19 @@
 
           <el-form-item :label="$t('settings.theme')" class="form-item">
             <el-radio-group v-model="settings.theme" @change="applyTheme" class="theme-group">
-              <el-radio label="light" class="theme-radio">
+              <el-radio value="light" class="theme-radio">
                 <div class="theme-option">
                   <el-icon><Sunny /></el-icon>
                   <span>{{ $t('settings.themeLight') }}</span>
                 </div>
               </el-radio>
-              <el-radio label="dark" class="theme-radio">
+              <el-radio value="dark" class="theme-radio">
                 <div class="theme-option">
                   <el-icon><Moon /></el-icon>
                   <span>{{ $t('settings.themeDark') }}</span>
                 </div>
               </el-radio>
-              <el-radio label="auto" class="theme-radio">
+              <el-radio value="auto" class="theme-radio">
                 <div class="theme-option">
                   <el-icon><Monitor /></el-icon>
                   <span>{{ $t('settings.themeAuto') }}</span>
@@ -96,6 +95,12 @@
 
       <el-divider />
 
+      <details class="external-tool-options">
+        <summary>
+          <el-icon><Terminal /></el-icon>{{ $t('experience.tools') }}
+        </summary>
+        <ToolSettings />
+      </details>
       <div class="about-section">
         <h3 class="section-title">
           <el-icon><InfoFilled /></el-icon>

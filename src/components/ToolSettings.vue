@@ -1,6 +1,5 @@
 <template>
   <section class="tool-settings">
-    <h3>{{ $t('experience.tools') }}</h3>
     <p>{{ $t('experience.toolHint') }}</p>
     <template v-for="kind in ['diff', 'merge'] as const" :key="kind"
       ><strong>{{

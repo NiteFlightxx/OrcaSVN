@@ -5,8 +5,19 @@
         <option value="unified">{{ $t('experience.unified') }}</option>
         <option value="split">{{ $t('experience.sideBySide') }}</option>
       </select>
-      <button :title="$t('experience.previousChange')" @click="jumpChange(-1)">⇡</button
-      ><button :title="$t('experience.nextChange')" @click="jumpChange(1)">⇣</button>
+      <button
+        :title="$t('experience.previousChange')"
+        @click="jumpChange(-1)"
+        :aria-label="$t('experience.previousChange')"
+      >
+        <el-icon><ArrowUp /></el-icon></button
+      ><button
+        :title="$t('experience.nextChange')"
+        @click="jumpChange(1)"
+        :aria-label="$t('experience.nextChange')"
+      >
+        <el-icon><ArrowDownToLine /></el-icon>
+      </button>
       <input
         ref="searchInput"
         v-model="query"

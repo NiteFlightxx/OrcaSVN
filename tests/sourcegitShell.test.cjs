@@ -23,7 +23,7 @@ function shellHarness() {
     '@/composables/useWorkspace': { useWorkspace: () => ({ loadWorkspace: async path => { calls.push(['load', path]); if (fail) return false; workspace.currentPath = path; workspace.svnInfo = { url: 'file:///fixture/dev', revision: 1 }; return true } }) }, '@/composables/useWorkspaceErrorToast': { useWorkspaceErrorToast() {} }, '@/composables/useUpdateCheck': { useUpdateCheck: () => ({}) },
     '@/components/BranchSidebar.vue': {}, '@/components/OperationDialog.vue': {}, '@/components/ActivityPanel.vue': {}, '@/components/LanguageSwitcher.vue': {}, '@/components/icons/materialIcons': {},
   }
-  const h = setup('src/layouts/MainLayout.vue', 'openTabs, selectRepositoryTab, closeRepositoryTab, handleShellKeydown', mocks, { document: { dispatchEvent() {} }, Event: class Event {}, localStorage: { getItem: key => storage.get(key) || null, setItem: (key, value) => storage.set(key, value) } })
+  const h = setup('src/layouts/MainLayout.vue', 'openTabs, selectRepositoryTab, closeRepositoryTab, handleShellKeydown, showSidebar, toggleSidebar', mocks, { document: { dispatchEvent() {} }, Event: class Event {}, localStorage: { getItem: key => storage.get(key) || null, setItem: (key, value) => storage.set(key, value) } })
   return { ...h, workspace, storage, calls, fail: value => { fail = value } }
 }
 test('repository tabs switch and close adjacent tabs without removing recent repositories', async () => {
@@ -100,5 +100,15 @@ test('branch right-click opens choices and only an explicit switch action prepar
   workspace.currentPath = '/fixture/other'
   await h.runBranchAction('branch-switch')
   assert.equal(flow.switchRequest, request)
+  h.stop()
+})
+
+test('workspace starts without a redundant branch column and can reveal it on demand', () => {
+  const h=shellHarness()
+  assert.equal(h.showSidebar.value,false)
+  h.toggleSidebar()
+  assert.equal(h.showSidebar.value,true)
+  h.toggleSidebar()
+  assert.equal(h.showSidebar.value,false)
   h.stop()
 })

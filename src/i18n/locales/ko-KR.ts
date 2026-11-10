@@ -55,9 +55,10 @@ export default {
     svnPathInvalid: '이 SVN 실행 파일을 사용할 수 없습니다: {error}',
     encoding: '기본 인코딩',
     gitignore: '무시 파일 (.gitignore)',
-    gitignoreHint: '활성화하면 .gitignore와 일치하는 파일이 필터링됩니다',
+    gitignoreHint: '일치하는 버전 관리 외 파일만 숨깁니다. SVN 관리 파일 변경은 계속 표시됩니다',
     autoDeleteMissingOnCommit: '누락 파일 자동 삭제',
-    autoDeleteMissingOnCommitHint: '기본값은 꺼짐입니다. 켜면 선택한 누락 파일에 대해 커밋 전에 svn delete --force를 실행합니다.',
+    autoDeleteMissingOnCommitHint:
+      '기본값은 꺼짐입니다. 켜면 선택한 누락 파일에 대해 커밋 전에 svn delete --force를 실행합니다.',
     logLimit: '기본 로그 로드 개수',
     theme: '테마',
     themeLight: '라이트',
@@ -112,8 +113,10 @@ export default {
     markDeleted: '삭제 표시',
     viewDiff: '파일 비교 보기',
     cachedStatus: '이전 상태 표시 중 · 확인 대기 중',
-    revertFileConfirm: '이 대상의 SVN 변경 사항을 되돌리시겠습니까? 커밋하지 않은 내용 또는 속성 변경이 손실될 수 있으며 SVN으로 복구할 수 없습니다.',
-    deleteUnversionedConfirm: '이 버전 관리되지 않은 파일 또는 디렉터리를 영구 삭제하시겠습니까? 디렉터리의 모든 내용도 삭제됩니다. 휴지통으로 이동하지 않으며 되돌릴 수 없습니다.',
+    revertFileConfirm:
+      '이 대상의 SVN 변경 사항을 되돌리시겠습니까? 커밋하지 않은 내용 또는 속성 변경이 손실될 수 있으며 SVN으로 복구할 수 없습니다.',
+    deleteUnversionedConfirm:
+      '이 버전 관리되지 않은 파일 또는 디렉터리를 영구 삭제하시겠습니까? 디렉터리의 모든 내용도 삭제됩니다. 휴지통으로 이동하지 않으며 되돌릴 수 없습니다.',
     revertFile: '이 파일 되돌리기',
     deleteUnversioned: '버전 관리 안 된 파일 삭제',
     openInExplorer: '파일 탐색기에서 열기',
@@ -161,12 +164,13 @@ export default {
     actionUnknown: '알 수 없음',
   },
   commit: {
-    scope: "커밋 범위",
-    allDirectories: "모든 디렉터리",
-    selectedCount: "{count}개 선택됨",
-    selectedCountWithHidden: "{count}개 선택됨, 필터로 {hidden}개 숨겨짐",
-    addAndReview: "추가 후 검토",
-    reviewAdded: "버전 관리에 추가했습니다. 펼쳐진 목록을 확인하고 불필요한 항목을 해제한 후 커밋하세요.",
+    scope: '커밋 범위',
+    allDirectories: '모든 디렉터리',
+    selectedCount: '{count}개 선택됨',
+    selectedCountWithHidden: '{count}개 선택됨, 필터로 {hidden}개 숨겨짐',
+    addAndReview: '추가 후 검토',
+    reviewAdded:
+      '버전 관리에 추가했습니다. 펼쳐진 목록을 확인하고 불필요한 항목을 해제한 후 커밋하세요.',
 
     title: '변경 사항 커밋',
     output: '커밋 출력',
@@ -246,8 +250,10 @@ export default {
     subtitle: 'git stash처럼 작업 사본 변경 사항 저장',
     create: '스태시 만들기',
     createTitle: '스태시 만들기',
-    workingCopyHint: '작업 사본에 변경된 파일이 {count}개 있습니다. 원하는 헝크를 선택할 수 있습니다.',
-    unsupportedChanges: '현재 변경 사항은 스태시할 수 없습니다. 충돌, 속성 전용 및 비텍스트 변경은 지원하지 않습니다.',
+    workingCopyHint:
+      '작업 사본에 변경된 파일이 {count}개 있습니다. 원하는 헝크를 선택할 수 있습니다.',
+    unsupportedChanges:
+      '현재 변경 사항은 스태시할 수 없습니다. 충돌, 속성 전용 및 비텍스트 변경은 지원하지 않습니다.',
     empty: '현재 작업 공간에 스태시가 없습니다',
     selectHunks: '스태시할 헝크 선택',
     selectHunksHint: '선택하지 않은 변경 사항은 작업 사본에 남습니다',

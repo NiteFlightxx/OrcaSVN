@@ -1,24 +1,38 @@
 <template>
   <section class="asset-stashes">
-    <header>
-      <div>
-        <strong>{{ $t('flow.fullStash') }}</strong>
-        <p>{{ $t('experience.legacyHint') }}</p>
-      </div>
+    <header class="stash-toolbar">
+      <strong
+        >{{ $t('menu.stash') }} <small>{{ records.length }}</small></strong
+      >
       <div class="actions">
-        <el-button :disabled="flow.busy" @click="legacyOpen = true">{{
-          $t('experience.legacy')
-        }}</el-button
-        ><el-button :disabled="flow.busy" @click="openCreate">{{
-          $t('flow.createStash')
-        }}</el-button
-        ><el-button :disabled="flow.busy" @click="importStash">{{ $t('flow.import') }}</el-button>
+        <el-button :disabled="flow.busy" @click="openCreate"
+          ><el-icon><Plus /></el-icon>{{ $t('flow.createStash') }}</el-button
+        ><el-dropdown trigger="click"
+          ><button
+            class="quiet-icon"
+            :title="$t('common.action')"
+            :aria-label="$t('common.action')"
+          >
+            <el-icon><MoreFilled /></el-icon></button
+          ><template #dropdown
+            ><el-dropdown-menu
+              ><el-dropdown-item :disabled="flow.busy" @click="importStash"
+                ><el-icon><Download /></el-icon>{{ $t('flow.import') }}</el-dropdown-item
+              ><el-dropdown-item :disabled="flow.busy" @click="legacyOpen = true">{{
+                $t('experience.legacy')
+              }}</el-dropdown-item
+              ><el-dropdown-item
+                v-if="legacyStore.entries.length"
+                :disabled="flow.busy"
+                @click="migrate"
+                >{{ $t('experience.migrate') }}</el-dropdown-item
+              ></el-dropdown-menu
+            ></template
+          ></el-dropdown
+        >
       </div>
     </header>
     <p v-if="flow.error" class="error">{{ flow.error }}</p>
-    <el-button v-if="legacyStore.entries.length" :disabled="flow.busy" @click="migrate"
-      >{{ $t('flow.migrate') }} ({{ legacyStore.entries.length }})</el-button
-    >
     <div
       class="stash-workbench"
       :style="{ gridTemplateColumns: `${stashWidth}px 4px minmax(0,1fr)` }"
@@ -212,15 +226,13 @@ const records = computed(() =>
       count: entry.nodes.length,
       branch: entry.identity.url,
     })),
-    ...legacyStore
-      .currentEntries(workspace.currentPath)
-      .map((entry) => ({
-        key: 'legacy:' + entry.id,
-        name: entry.name,
-        kind: 'legacy',
-        count: entry.files.length,
-        branch: entry.workspacePath,
-      })),
+    ...legacyStore.currentEntries(workspace.currentPath).map((entry) => ({
+      key: 'legacy:' + entry.id,
+      name: entry.name,
+      kind: 'legacy',
+      count: entry.files.length,
+      branch: entry.workspacePath,
+    })),
   ].filter((entry) =>
     `${entry.name} ${entry.branch}`.toLowerCase().includes(search.value.toLowerCase())
   )

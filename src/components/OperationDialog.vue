@@ -13,13 +13,15 @@
       <div class="switch-route">
         <article>
           <small>{{ $t('branchUI.current') }}</small
-          ><strong>⑂ {{ branchName(currentUrl) }}</strong
+          ><strong
+            ><el-icon><GitBranch /></el-icon> {{ branchName(currentUrl) }}</strong
           ><code>{{ currentUrl }}</code>
         </article>
-        <span class="route-arrow">→</span>
+        <el-icon class="route-arrow"><ArrowRight /></el-icon>
         <article class="switch-target">
           <small>{{ $t('flow.target') }}</small
-          ><strong>⑂ {{ branchName(targetUrl) }}</strong
+          ><strong
+            ><el-icon><GitBranch /></el-icon> {{ branchName(targetUrl) }}</strong
           ><code>{{ targetUrl }}</code
           ><small v-if="flow.plan">r{{ flow.plan.sourceRevision }}</small>
         </article>
