@@ -1,227 +1,67 @@
 <template>
-  <div class="fork-shell">
-    <header class="fork-toolbar">
+  <div class="source-shell" @keydown="handleShellKeydown">
+    <div class="repository-tabs">
+      <button class="app-mark" :title="$t('workspace.openWorkspace')" @click="handleWorkspaceCommand('__open__')">◈ <strong>OrcaSVN</strong></button>
+      <div class="repository-tab-list" role="tablist" :aria-label="$t('sourceUI.repositories')">
+        <div v-for="path in openTabs" :key="path" class="repository-tab" :class="{ active: path === workspaceStore.currentPath }">
+          <button role="tab" :aria-selected="path === workspaceStore.currentPath" :title="path" :disabled="loadingTab" @click="selectRepositoryTab(path)"><el-icon><Folder/></el-icon><span>{{ workspaceNameFromPath(path) }}</span></button>
+          <button class="tab-close" :title="$t('common.close')" :aria-label="$t('common.close') + ': ' + workspaceNameFromPath(path)" :disabled="loadingTab" @click="closeRepositoryTab(path)">×</button>
+        </div>
+      </div>
+      <el-dropdown trigger="click" @command="handleWorkspaceCommand"><button class="add-repository" :title="$t('sourceUI.recentRepositories')" :aria-label="$t('sourceUI.recentRepositories')">＋</button><template #dropdown><el-dropdown-menu><el-dropdown-item command="__open__">{{ $t('workspace.openWorkspace') }}…</el-dropdown-item><el-dropdown-item v-for="path in workspaceStore.recentWorkspaces" :key="path" :command="path"><span :title="path">{{ workspaceNameFromPath(path) }}<small class="recent-path">{{ path }}</small></span><button class="recent-remove" :title="$t('workspace.removeWorkspace')" :aria-label="$t('workspace.removeWorkspace')" @click.stop="removeWorkspace(path)">×</button></el-dropdown-item></el-dropdown-menu></template></el-dropdown>
+    </div>
+    <header class="repository-toolbar">
       <div class="toolbar-group">
-        <button class="brand-button" aria-label="OrcaSVN" @click="navigateTo('workspace')">
-          <span class="brand-mark">
-            <svg viewBox="0 0 512 512" aria-hidden="true">
-              <path d="M91 297C132 217 214 170 345 166C322 187 309 211 306 237C347 241 385 258 420 289C358 288 315 305 288 340C221 361 155 347 91 297Z" />
-              <path d="M153 288C188 238 233 209 290 201C270 232 269 263 286 294C235 310 191 308 153 288Z" class="brand-cut" />
-              <path d="M326 207V143M326 143L374 114M326 143L281 112" class="brand-branch" />
-              <circle cx="326" cy="207" r="18" class="brand-node" />
-              <circle cx="374" cy="114" r="18" class="brand-node" />
-              <circle cx="281" cy="112" r="18" class="brand-node" />
-            </svg>
-          </span>
-          <span class="brand-name">OrcaSVN</span>
-        </button>
+        <button class="tool-button icon-only" :title="$t('sourceUI.toggleSidebar')" :aria-label="$t('sourceUI.toggleSidebar')" :aria-pressed="!sidebarCollapsed" @click="sidebarCollapsed = !sidebarCollapsed"><el-icon><FolderOpened/></el-icon></button>
+        <el-dropdown trigger="click" :disabled="!workspaceStore.currentPath" @command="openCurrentWorkspaceIn"><button class="tool-button" :disabled="!workspaceStore.currentPath" :title="$t('menu.openIn')"><el-icon><component :is="selectedOpenTargetIcon"/></el-icon><el-icon class="chevron"><ArrowDown/></el-icon></button><template #dropdown><el-dropdown-menu><el-dropdown-item v-for="target in (['explorer', 'vscode', 'terminal'] as const)" :key="target" :command="target"><el-icon><component :is="openTargetIcons[target]"/></el-icon>{{ $t('openIn.' + target) }}</el-dropdown-item></el-dropdown-menu></template></el-dropdown>
         <span class="toolbar-divider"></span>
-        <button
-          class="tool-button"
-          :class="{ 'is-refreshing': workspaceStore.isLoading }"
-          :aria-busy="workspaceStore.isLoading"
-          :aria-label="$t('menu.refresh')"
-          :title="$t('menu.refresh')"
-          @click="refreshStatus"
-          :disabled="workspaceStore.isLoading"
-        >
-          <el-icon><Refresh /></el-icon>
-          <span>{{ $t('menu.refresh') }}</span>
-        </button>
-        <el-dropdown
-          trigger="click"
-          popper-class="toolbar-dropdown"
-          :disabled="!workspaceStore.currentPath"
-          @command="openCurrentWorkspaceIn"
-        >
-          <button
-            class="open-in-trigger"
-            :disabled="!workspaceStore.currentPath"
-            :aria-label="$t('menu.openIn')"
-            :title="$t('menu.openIn')"
-          >
-            <span class="open-in-icons">
-              <el-icon class="open-in-app-icon"><component :is="selectedOpenTargetIcon" /></el-icon>
-              <el-icon class="open-in-chevron"><ArrowDown /></el-icon>
-            </span>
-            <span class="open-in-label">{{ $t('menu.openIn') }}</span>
-          </button>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item command="explorer" :class="{ 'is-current-target': selectedOpenTarget === 'explorer' }">
-                <el-icon><component :is="openTargetIcons.explorer" /></el-icon>
-                {{ $t('openIn.explorer') }}
-              </el-dropdown-item>
-              <el-dropdown-item command="vscode" :class="{ 'is-current-target': selectedOpenTarget === 'vscode' }">
-                <el-icon><component :is="openTargetIcons.vscode" /></el-icon>
-                {{ $t('openIn.vscode') }}
-              </el-dropdown-item>
-              <el-dropdown-item command="terminal" :class="{ 'is-current-target': selectedOpenTarget === 'terminal' }">
-                <el-icon><component :is="openTargetIcons.terminal" /></el-icon>
-                {{ $t('openIn.terminal') }}
-              </el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
+        <span class="repository-name" :title="workspaceStore.currentPath || ''">{{ repositoryName }}</span>
       </div>
-
-      <el-dropdown class="workspace-switcher" trigger="click" popper-class="workspace-switcher-dropdown" @command="handleWorkspaceCommand">
-        <button class="repository-title" :title="`${repositoryName} · ${repositoryRevision}\n${$t('workspace.switchWorkspace')}`" :aria-label="`${$t('workspace.switchWorkspace')}: ${repositoryName} · ${repositoryRevision}`">
-          <strong>{{ repositoryName }}</strong>
-          <span class="repository-revision">
-            {{ repositoryRevision }}
-          </span>
-          <el-icon class="repository-chevron"><ArrowDown /></el-icon>
-        </button>
-        <template #dropdown>
-          <el-dropdown-menu>
-            <el-dropdown-item
-              v-for="path in workspaceStore.recentWorkspaces"
-              :key="path"
-              :command="path"
-              :class="{ 'is-current-workspace': path === workspaceStore.currentPath }"
-            >
-              <span class="workspace-option">
-                <span class="workspace-option-copy">
-                  <strong>{{ workspaceNameFromPath(path) }}</strong>
-                  <small>{{ path }}</small>
-                </span>
-                <button
-                  type="button"
-                  class="workspace-remove"
-                  :title="$t('workspace.removeWorkspace')"
-                  :aria-label="$t('workspace.removeWorkspace')"
-                  @click.stop="removeWorkspace(path)"
-                ><el-icon><Close /></el-icon></button>
-              </span>
-            </el-dropdown-item>
-            <el-dropdown-item divided command="__open__">
-              <el-icon><FolderOpened /></el-icon>
-              {{ $t('workspace.addWorkspace') }}
-            </el-dropdown-item>
-          </el-dropdown-menu>
-        </template>
-      </el-dropdown>
-
-      <div class="toolbar-group toolbar-group-right">
-        <button class="tool-button" :class="{ active: routeName === 'commit' }" @click="navigateTo('commit')">
-          <el-icon><Upload /></el-icon>
-          <span>{{ $t('menu.commit') }}</span>
-        </button>
-        <button class="tool-button" :class="{ active: routeName === 'update' }" @click="navigateTo('update')">
-          <el-icon><RefreshRight /></el-icon>
-          <span>{{ $t('menu.update') }}</span>
-        </button>
-        <span class="toolbar-divider"></span>
-        <button class="tool-button" :class="{ active: routeName === 'settings' }" @click="navigateTo('settings')">
-          <el-icon><Setting /></el-icon>
-          <span>{{ $t('menu.settings') }}</span>
-        </button>
-        <LanguageSwitcher />
+      <div class="toolbar-group toolbar-primary">
+        <button class="tool-button" :disabled="!workspaceStore.currentPath || workspaceStore.isLoading" @click="refreshStatus"><el-icon :class="{ 'is-loading': workspaceStore.isLoading }"><Refresh/></el-icon><span>{{ $t('menu.refresh') }}</span></button>
+        <button class="tool-button" :disabled="!workspaceStore.currentPath" @click="navigateTo('update')"><el-icon><RefreshRight/></el-icon><span>{{ $t('menu.update') }}</span></button>
+        <button class="tool-button" :disabled="!workspaceStore.currentPath" @click="navigateTo('commit')"><el-icon><Upload/></el-icon><span>{{ $t('menu.commit') }}</span></button>
+        <button class="tool-button" :disabled="!workspaceStore.currentPath" @click="navigateTo('stash')"><el-icon><Archive/></el-icon><span>{{ $t('menu.stash') }}</span></button>
       </div>
+      <div class="toolbar-group toolbar-right"><button class="tool-button current-branch" :disabled="!workspaceStore.currentPath" :title="workflow.identity?.url" @click="sidebarCollapsed = false; branchSidebar?.focus()"><el-icon><GitBranch/></el-icon><span>{{ workflow.branchName || repositoryRevision }}</span><el-icon class="chevron"><ArrowDown/></el-icon></button><LanguageSwitcher/></div>
     </header>
-
-    <main class="fork-content">
-      <aside class="shell-sidebar">
-        <div class="shell-repository">
-          <span class="repository-icon"><el-icon><Folder /></el-icon></span>
-          <span class="repository-copy">
-            <strong>{{ repositoryName }}</strong>
-            <small v-if="workspaceStore.svnInfo">r{{ workspaceStore.svnInfo.revision }}</small>
-            <small v-else>{{ $t('workspace.svnClient') }}</small>
-          </span>
-        </div>
-        <div class="sidebar-section">
-          <div class="sidebar-heading">{{ $t('workspace.workingCopy') }}</div>
-          <button :class="{ active: routeName === 'workspace' }" @click="navigateTo('workspace')">
-            <el-icon><FolderOpened /></el-icon>
-            <span>{{ $t('menu.workspace') }}</span>
-            <b>{{ workspaceStore.statusList.length }}</b>
-          </button>
-          <button :class="{ active: routeName === 'log' }" @click="navigateTo('log')">
-            <el-icon><List /></el-icon>
-            <span>{{ $t('menu.log') }}</span>
-          </button>
-        </div>
-        <div class="sidebar-section">
-          <div class="sidebar-heading">{{ $t('workspace.repository') }}</div>
-          <button :class="{ active: routeName === 'commit' }" @click="navigateTo('commit')">
-            <el-icon><Upload /></el-icon>
-            <span>{{ $t('menu.commit') }}</span>
-          </button>
-          <button :class="{ active: routeName === 'update' }" @click="navigateTo('update')">
-            <el-icon><RefreshRight /></el-icon>
-            <span>{{ $t('menu.update') }}</span>
-          </button>
-          <button :class="{ active: routeName === 'diff' }" @click="navigateTo('diff')">
-            <el-icon><Connection /></el-icon>
-            <span>{{ $t('menu.diff') }}</span>
-          </button>
-          <button :class="{ active: routeName === 'stash' }" @click="navigateTo('stash')">
-            <el-icon><Archive /></el-icon>
-            <span>{{ $t('menu.stash') }}</span>
-            <b v-if="workspaceStore.currentPath">{{ stashCount }}</b>
-          </button>
-          <button :class="{ active: routeName === 'blame' }" @click="navigateTo('blame')">
-            <el-icon><Edit /></el-icon>
-            <span>{{ $t('menu.blame') }}</span>
-          </button>
-        </div>
-        <div class="sidebar-section">
-          <div class="sidebar-heading">{{ $t('workspace.application') }}</div>
-          <button :class="{ active: routeName === 'checkout' }" @click="navigateTo('checkout')">
-            <el-icon><Download /></el-icon>
-            <span>{{ $t('menu.checkout') }}</span>
-          </button>
-          <button :class="{ active: routeName === 'settings' }" @click="navigateTo('settings')">
-            <el-icon><Setting /></el-icon>
-            <span>{{ $t('menu.settings') }}</span>
-          </button>
-        </div>
+    <main class="source-body" :class="{ 'sidebar-hidden': sidebarCollapsed || !workspaceStore.currentPath }" :style="{ '--sidebar-width': `${sidebarWidth}px` }">
+      <nav class="page-switcher" :aria-label="$t('workspace.quickActions')">
+        <button :class="{ active: routeName === 'log' }" :title="$t('menu.log') + ' · Ctrl+1'" :aria-label="$t('menu.log')" @click="navigateTo('log')"><el-icon><List/></el-icon></button>
+        <button :class="{ active: routeName === 'workspace' || routeName === 'commit' }" :title="$t('menu.workspace') + ' · Ctrl+2'" :aria-label="$t('menu.workspace')" @click="navigateTo('workspace')"><el-icon><Document/></el-icon><b v-if="workspaceStore.statusList.length">{{ workspaceStore.statusList.length > 99 ? '99+' : workspaceStore.statusList.length }}</b></button>
+        <button :class="{ active: routeName === 'stash' }" :title="$t('menu.stash') + ' · Ctrl+3'" :aria-label="$t('menu.stash')" @click="navigateTo('stash')"><el-icon><Archive/></el-icon><b v-if="stashCount">{{ stashCount }}</b></button>
+        <button v-if="workspaceStore.conflictedCount" :class="{ active: routeName === 'conflicts' }" :title="$t('flow.conflicts')" :aria-label="$t('flow.conflicts')" @click="navigateTo('conflicts')"><el-icon><Warning/></el-icon></button>
+        <div class="rail-spacer"></div>
+        <button :class="{ active: routeName === 'diff' }" :title="$t('menu.diff')" :aria-label="$t('menu.diff')" @click="navigateTo('diff')"><el-icon><Connection/></el-icon></button>
+        <button :class="{ active: routeName === 'blame' }" :title="$t('menu.blame')" :aria-label="$t('menu.blame')" @click="navigateTo('blame')"><el-icon><Edit/></el-icon></button>
+        <button :class="{ active: routeName === 'checkout' }" :title="$t('menu.checkout')" :aria-label="$t('menu.checkout')" @click="navigateTo('checkout')"><el-icon><Download/></el-icon></button>
+        <button :class="{ active: routeName === 'settings' }" :title="$t('menu.settings')" :aria-label="$t('menu.settings')" @click="navigateTo('settings')"><el-icon><Setting/></el-icon></button>
+      </nav>
+      <aside v-show="!sidebarCollapsed && workspaceStore.currentPath" class="source-sidebar">
+        <div class="sidebar-repository"><strong :title="workspaceStore.currentPath || ''">{{ repositoryName }}</strong><small>{{ repositoryRevision }}</small></div>
+        <BranchSidebar ref="branchSidebar"/>
+        <details class="sidebar-stashes" open><summary>{{ $t('menu.stash') }} <span>({{ stashCount }})</span></summary><button v-for="entry in workflow.stashes" :key="entry.id" :title="entry.identity.url" @click="router.push({ name: 'stash', query: { id: entry.id } })"><el-icon><Archive/></el-icon>{{ entry.name }}</button><button @click="navigateTo('stash')">{{ $t('sourceUI.manageStashes') }}</button></details>
+        <details class="repository-details"><summary>{{ $t('workspace.repository') }}</summary><small>{{ workspaceStore.svnInfo?.url }}</small><small>{{ workspaceStore.currentPath }}</small></details>
       </aside>
-
+      <div v-show="!sidebarCollapsed && workspaceStore.currentPath" class="sidebar-resizer" role="separator" aria-orientation="vertical" :aria-label="$t('flow.branches')" tabindex="0" @pointerdown="startResize" @pointermove="resizeSidebar" @pointerup="finishResize" @lostpointercapture="finishResize" @keydown.left.prevent="setSidebarWidth(sidebarWidth - 16)" @keydown.right.prevent="setSidebarWidth(sidebarWidth + 16)"></div>
       <section class="route-workbench">
-        <header class="route-header">
-          <div class="route-title">
-            <span class="route-accent"></span>
-            <strong>{{ currentRouteTitle }}</strong>
-          </div>
-          <span class="route-repository">{{ repositoryName }}</span>
-        </header>
-        <div class="route-content">
-          <router-view v-slot="{ Component, route }">
-            <keep-alive :include="cachedViews">
-              <component :is="Component" :key="route.path" />
-            </keep-alive>
-          </router-view>
-        </div>
+        <header v-if="!['workspace', 'log'].includes(routeName)" class="route-header"><strong>{{ currentRouteTitle }}</strong><small>{{ repositoryName }}</small></header>
+        <div class="route-content"><router-view v-slot="{ Component }"><keep-alive :include="cachedViews"><component :is="Component"/></keep-alive></router-view></div>
       </section>
     </main>
-
-    <footer class="fork-status">
-      <span>{{ workspaceStore.currentPath || $t('workspace.noWorkspace') }}</span>
-      <div>
-        <span v-if="workspaceStore.hasChanges">{{ $t('workspace.changeCount', { count: workspaceStore.statusList.length }) }}</span>
-        <span v-if="workspaceStore.svnInfo">r{{ workspaceStore.svnInfo.revision }}</span>
-        <button
-          v-if="updateState === 'available'"
-          type="button"
-          class="version-update"
-          :title="$t('appUpdate.viewRelease')"
-          @click="openReleasePage"
-        >
-          v{{ appVersion }}
-          <span class="update-dot" aria-hidden="true"></span>
-          {{ $t('appUpdate.available', { version: latestVersion }) }}
-        </button>
-        <span v-else>v{{ appVersion }}</span>
-      </div>
-    </footer>
+    <OperationDialog />
+    <div class="shell-bottom">
+      <ActivityPanel />
+      <footer class="fork-status">
+        <span>{{ workspaceStore.currentPath || $t('workspace.noWorkspace') }}</span>
+        <div><span v-if="workspaceStore.hasChanges">{{ $t('workspace.changeCount', { count: workspaceStore.statusList.length }) }}</span><span v-if="workspaceStore.svnInfo">r{{ workspaceStore.svnInfo.revision }}</span><button v-if="updateState === 'available'" class="version-update" :title="$t('appUpdate.viewRelease')" @click="openReleasePage">v{{ appVersion }}<span class="update-dot"></span>{{ $t('appUpdate.available', { version: latestVersion }) }}</button><span v-else>v{{ appVersion }}</span></div>
+      </footer>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus/es/components/message/index'
@@ -231,9 +71,15 @@ import { useStashStore } from '@/stores/stash'
 import { useWorkspace } from '@/composables/useWorkspace'
 import { useWorkspaceErrorToast } from '@/composables/useWorkspaceErrorToast'
 import { useUpdateCheck } from '@/composables/useUpdateCheck'
+import BranchSidebar from '@/components/BranchSidebar.vue'
+import OperationDialog from '@/components/OperationDialog.vue'
+import ActivityPanel from '@/components/ActivityPanel.vue'
+import { useWorkflowStore } from '@/stores/workflows'
 import LanguageSwitcher from '@/components/LanguageSwitcher.vue'
 import {
   Archive,
+  GitBranch,
+  Warning,
   Code,
   FolderOpened as FolderOpenedIcon,
   Terminal,
@@ -244,7 +90,50 @@ const route = useRoute()
 const { t } = useI18n()
 const workspaceStore = useWorkspaceStore()
 const stashStore = useStashStore()
+const workflow = useWorkflowStore()
 const { loadWorkspace, openWorkspace, refreshStatus, refreshStatusIfStale, openStartupWorkspace } = useWorkspace()
+const branchSidebar = ref<InstanceType<typeof BranchSidebar> | null>(null)
+const sidebarCollapsed = ref(localStorage.getItem('orcasvn-sidebar-hidden') === 'true')
+const openTabs = ref<string[]>((() => { try { const saved: unknown = JSON.parse(localStorage.getItem('orcasvn-open-workspaces') || '[]'); return Array.isArray(saved) ? [...new Set(saved.filter((p): p is string => typeof p === 'string' && p.length > 0))] : [] } catch { return [] } })())
+const loadingTab = ref(false)
+watch([() => workspaceStore.currentPath, () => workspaceStore.svnInfo?.url, () => workspaceStore.isLoading], ([path, url, loading]) => { if (path && url && !loading && !openTabs.value.includes(path)) openTabs.value = [...openTabs.value, path] }, { immediate: true })
+watch(openTabs, paths => { try { localStorage.setItem('orcasvn-open-workspaces', JSON.stringify(paths)) } catch { /* Retain the open tabs in memory. */ } })
+watch(sidebarCollapsed, hidden => { try { localStorage.setItem('orcasvn-sidebar-hidden', String(hidden)) } catch { /* Retain the current layout. */ } })
+async function selectRepositoryTab(path: string) {
+  if (loadingTab.value || path === workspaceStore.currentPath) return
+  loadingTab.value = true
+  try { if (await loadWorkspace(path)) await router.push({ name: 'workspace' }) } finally { loadingTab.value = false }
+}
+async function closeRepositoryTab(path: string) {
+  if (loadingTab.value) return
+  const index = openTabs.value.indexOf(path)
+  if (workspaceStore.currentPath === path) {
+    const next = openTabs.value[index + 1] || openTabs.value[index - 1]
+    if (next) {
+      loadingTab.value = true
+      try { if (!await loadWorkspace(next)) return } finally { loadingTab.value = false }
+    } else workspaceStore.clearWorkspace()
+    await router.push({ name: 'workspace' })
+  }
+  openTabs.value = openTabs.value.filter(tab => tab !== path)
+}
+function handleShellKeydown(event: KeyboardEvent) {
+  if (!(event.ctrlKey || event.metaKey) || event.altKey) return
+  const pages = { '1': 'log', '2': 'workspace', '3': 'stash' } as Record<string, string>
+  if (pages[event.key]) { event.preventDefault(); void navigateTo(pages[event.key]) }
+  if (event.key === 'Tab' && openTabs.value.length > 1) {
+    event.preventDefault()
+    const index = openTabs.value.indexOf(workspaceStore.currentPath || '')
+    void selectRepositoryTab(openTabs.value[(index + (event.shiftKey ? -1 : 1) + openTabs.value.length) % openTabs.value.length])
+  }
+}
+const savedSidebarWidth = Number(localStorage.getItem('orcasvn-sidebar-width'))
+const sidebarWidth = ref(savedSidebarWidth >= 200 && savedSidebarWidth <= 420 ? savedSidebarWidth : 240)
+let resizing = false
+function setSidebarWidth(value: number) { sidebarWidth.value = Math.max(200, Math.min(420, value)); localStorage.setItem('orcasvn-sidebar-width', String(sidebarWidth.value)) }
+function startResize(event: PointerEvent) { resizing = true; (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId); event.preventDefault() }
+function resizeSidebar(event: PointerEvent) { if (resizing) { const rail = event.currentTarget as HTMLElement; setSidebarWidth(event.clientX - (rail.parentElement?.getBoundingClientRect().left || 0) - 49) } }
+function finishResize() { resizing = false }
 const {
   currentVersion: appVersion,
   state: updateState,
@@ -264,7 +153,7 @@ const openTargetIcons = {
   terminal: Terminal,
 } satisfies Record<OpenWorkspaceTarget, typeof FolderOpenedIcon>
 const selectedOpenTargetIcon = computed(() => openTargetIcons[selectedOpenTarget.value])
-const stashCount = computed(() => stashStore.currentEntries(workspaceStore.currentPath).length)
+const stashCount = computed(() => stashStore.currentEntries(workspaceStore.currentPath).length + workflow.stashes.length)
 
 const repositoryName = computed(() => {
   const path = workspaceStore.currentPath
@@ -293,7 +182,7 @@ const handleWorkspaceCommand = async (command: string) => {
   await router.push({ name: 'workspace' })
 }
 
-const removeWorkspace = (path: string) => workspaceStore.removeRecentWorkspace(path)
+const removeWorkspace = (path: string) => workspaceStore.removeRecentWorkspace(path, false)
 
 const openCurrentWorkspaceIn = async (target: OpenWorkspaceTarget) => {
   if (!workspaceStore.currentPath) return
@@ -325,801 +214,5 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.fork-shell {
-  display: grid;
-  grid-template-rows: var(--app-size-toolbar) minmax(0, 1fr) var(--app-size-statusbar);
-  height: 100vh;
-  overflow: hidden;
-  color: var(--md-sys-color-on-surface);
-  background: var(--md-sys-color-surface);
-}
-
-.fork-toolbar {
-  position: relative;
-  display: flex;
-  align-items: stretch;
-  justify-content: space-between;
-  padding: 0 18px;
-  background: var(--md-sys-color-surface-container-lowest);
-  border-bottom: 1px solid var(--md-sys-color-outline-variant);
-  box-shadow: none;
-}
-
-.toolbar-group {
-  align-items: center;
-  display: flex;
-  min-width: 260px;
-  gap: 6px;
-}
-
-.toolbar-group-right {
-  justify-content: flex-end;
-}
-
-.brand-button {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  min-width: 112px;
-  padding: 0 10px 0 0;
-  border: 0;
-  border-radius: var(--app-radius-full);
-  color: var(--md-sys-color-on-surface);
-  background: transparent;
-  cursor: pointer;
-  transition:
-    color var(--app-transition-fast),
-    background-color var(--app-transition-fast);
-}
-
-.brand-button:hover {
-  background: var(--md-sys-state-hover);
-}
-
-.brand-mark {
-  display: grid;
-  place-items: center;
-  width: var(--app-size-control-compact);
-  height: var(--app-size-control-compact);
-  border-radius: 11px;
-  color: var(--md-sys-color-on-primary);
-  background: var(--md-sys-color-primary);
-  box-shadow: none;
-}
-
-.brand-mark svg {
-  width: var(--app-size-icon-lg);
-  fill: currentColor;
-}
-
-.brand-mark .brand-cut {
-  fill: var(--md-sys-color-primary-active);
-}
-
-.brand-mark .brand-branch {
-  fill: none;
-  stroke: #73d6c9;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 20px;
-}
-
-.brand-mark .brand-node {
-  fill: #fff;
-  stroke: #73d6c9;
-  stroke-width: 13px;
-}
-
-.brand-name {
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: -.01em;
-}
-
-:global(.theme-dark .fork-toolbar .brand-button),
-:global(.dark .fork-toolbar .brand-button),
-:global(.theme-dark .fork-toolbar .brand-button .brand-name),
-:global(.dark .fork-toolbar .brand-button .brand-name) {
-  color: var(--md-sys-color-on-surface) !important;
-}
-
-:global(.theme-dark .fork-toolbar .brand-button:hover),
-:global(.dark .fork-toolbar .brand-button:hover),
-:global(.theme-dark .fork-toolbar .brand-button:focus-visible),
-:global(.dark .fork-toolbar .brand-button:focus-visible) {
-  color: var(--md-sys-color-on-surface) !important;
-  background: var(--md-sys-state-hover) !important;
-}
-
-.toolbar-divider {
-  width: 1px;
-  height: 32px;
-  align-self: center;
-  margin: 0 5px;
-  background: var(--md-sys-color-outline-variant);
-}
-
-.tool-button {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: center;
-  min-width: var(--app-size-control);
-  height: var(--app-size-control);
-  gap: 8px;
-  padding: 0 10px;
-  border: 0;
-  border-radius: var(--app-radius-md);
-  color: var(--md-sys-color-on-surface-variant);
-  background: transparent;
-  font-size: var(--app-font-size-label);
-  cursor: pointer;
-  transition:
-    color var(--app-transition-fast),
-    background-color var(--app-transition-fast);
-}
-
-.tool-button:hover {
-  background: var(--md-sys-state-hover);
-  color: var(--md-sys-color-on-surface);
-}
-
-.tool-button:disabled {
-  opacity: .45;
-  cursor: not-allowed;
-}
-
-.tool-button:disabled:hover {
-  color: var(--md-sys-color-on-surface-variant);
-  background: transparent;
-}
-
-:global(.theme-dark) .tool-button:disabled,
-:global(.dark) .tool-button:disabled {
-  opacity: .5;
-  color: var(--md-sys-color-on-surface-variant);
-}
-
-:global(.theme-dark) .tool-button:disabled:hover,
-:global(.dark) .tool-button:disabled:hover {
-  color: var(--md-sys-color-on-surface-variant);
-  background: transparent;
-}
-
-.tool-button.is-refreshing:disabled {
-  opacity: .82;
-  color: var(--md-sys-color-on-primary-container);
-  background: var(--md-sys-color-primary-container);
-}
-
-:global(.theme-dark) .tool-button.is-refreshing:disabled,
-:global(.dark) .tool-button.is-refreshing:disabled {
-  opacity: 1;
-  color: var(--md-sys-color-on-primary-container);
-  background: var(--md-sys-color-primary-container);
-}
-
-.tool-button.is-refreshing .el-icon {
-  animation: toolbar-refresh-spin .8s linear infinite;
-}
-
-.tool-button.active {
-  color: var(--md-sys-color-on-primary-container);
-  background: var(--md-sys-color-primary-container);
-}
-
-.tool-button .el-icon {
-  font-size: var(--app-font-size-title);
-}
-
-.open-in-trigger {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  align-self: center;
-  width: auto;
-  height: var(--app-size-control);
-  flex-direction: row;
-  gap: 6px;
-  padding: 0 10px;
-  border: 0;
-  border-radius: var(--app-radius-md);
-  color: var(--md-sys-color-on-surface-variant);
-  background: transparent;
-  cursor: pointer;
-  transition:
-    color var(--app-transition-fast),
-    background-color var(--app-transition-fast),
-    border-color var(--app-transition-fast);
-}
-
-.open-in-trigger:hover,
-.open-in-trigger:focus-visible {
-  color: var(--md-sys-color-on-surface);
-  background: var(--md-sys-state-hover);
-}
-
-.open-in-trigger[aria-expanded="true"] {
-  color: var(--md-sys-color-on-primary-container);
-  background: var(--md-sys-color-primary-container);
-}
-
-.open-in-trigger:disabled {
-  opacity: .45;
-  cursor: not-allowed;
-}
-
-.open-in-trigger:disabled:hover {
-  color: var(--md-sys-color-on-surface-variant);
-  background: transparent;
-}
-
-.open-in-app-icon {
-  font-size: 20px;
-}
-
-.open-in-icons {
-  display: flex;
-  align-items: center;
-}
-
-.open-in-label {
-  max-width: 90px;
-  overflow: hidden;
-  font-size: var(--app-font-size-label);
-  line-height: 14px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.open-in-chevron {
-  margin-left: -1px;
-  font-size: 15px;
-}
-
-:global(.toolbar-dropdown .el-dropdown-menu__item .el-icon) {
-  margin-right: 10px;
-  color: inherit;
-  font-size: 19px;
-}
-
-:global(.toolbar-dropdown .el-dropdown-menu__item.is-current-target) {
-  color: var(--md-sys-color-on-primary-container);
-  background: var(--md-sys-color-primary-container);
-  font-weight: 600;
-}
-
-:global(.toolbar-dropdown .el-dropdown-menu__item.is-current-target .app-material-icon) {
-  font-variation-settings:
-    "FILL" 1,
-    "wght" 500,
-    "GRAD" 0,
-    "opsz" 24;
-}
-
-@keyframes toolbar-refresh-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.workspace-switcher {
-  position: absolute;
-  top: 13px;
-  left: 50%;
-  transform: translateX(-50%);
-}
-
-.repository-title {
-  position: relative;
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: center;
-  width: 220px;
-  min-width: 0;
-  min-height: var(--app-size-control);
-  gap: 8px;
-  padding: 5px 42px 5px 14px;
-  border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: var(--app-radius-sm);
-  background: var(--md-sys-color-surface-container-low);
-  color: var(--md-sys-color-on-surface-variant);
-  font-size: var(--app-font-size-sm);
-  line-height: 1.5;
-  cursor: pointer;
-  transition:
-    border-color var(--app-transition-fast),
-    background-color var(--app-transition-fast),
-    color var(--app-transition-fast);
-}
-
-.repository-title:hover {
-  border-color: var(--md-sys-color-outline);
-  background: var(--md-sys-color-surface-container-high);
-}
-
-.repository-title strong {
-  display: block;
-  min-width: 0;
-  max-width: 150px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--md-sys-color-on-surface);
-  font-size: var(--app-font-size-label);
-  line-height: 1.5;
-  padding-block: 2px;
-}
-
-.repository-revision {
-  flex: 0 1 auto;
-  min-width: 0;
-  max-width: 45%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  line-height: 1.5;
-  padding-block: 2px;
-}
-
-.repository-chevron {
-  position: absolute;
-  top: 50%;
-  right: 14px;
-  width: 24px;
-  height: 24px;
-  transform: translateY(-50%);
-  border-radius: 50%;
-  color: var(--md-sys-color-on-surface-variant);
-  font-size: 17px;
-  transition: background-color var(--app-transition-fast);
-}
-
-.repository-title:hover .repository-chevron {
-  background: var(--md-sys-color-surface-container-highest);
-}
-
-:global(.workspace-switcher-dropdown .el-dropdown-menu) {
-  min-width: 330px;
-  max-width: min(520px, 90vw);
-}
-
-:global(.workspace-switcher-dropdown .el-dropdown-menu__item) {
-  padding: 7px 12px;
-}
-
-:global(.workspace-switcher-dropdown .el-dropdown-menu__item.is-current-workspace) {
-  color: var(--md-sys-color-on-primary-container);
-  background: var(--md-sys-color-primary-container);
-}
-
-.workspace-option {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  min-width: 0;
-  gap: 12px;
-}
-
-.workspace-option-copy {
-  display: flex;
-  flex: 1;
-  min-width: 0;
-  flex-direction: column;
-  line-height: 1.35;
-}
-
-.workspace-option-copy small {
-  overflow: hidden;
-  color: var(--md-sys-color-on-surface-variant);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.workspace-remove {
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: 0;
-  border-radius: var(--app-radius-full);
-  color: inherit;
-  background: transparent;
-  cursor: pointer;
-}
-
-.workspace-remove:hover {
-  background: var(--md-sys-state-hover);
-}
-
-:global(.theme-dark) .repository-title {
-  color: var(--md-sys-color-on-surface-variant);
-}
-
-:global(.theme-dark) .repository-title strong {
-  color: var(--md-sys-color-on-surface);
-}
-
-:global(.theme-dark) .repository-title:hover,
-:global(.dark) .repository-title:hover,
-:global(.theme-dark) .repository-title:focus-visible,
-:global(.dark) .repository-title:focus-visible {
-  color: var(--md-sys-color-on-surface);
-  border-color: var(--md-sys-color-outline);
-  background: var(--md-sys-color-surface-container-high);
-}
-
-.fork-content {
-  display: grid;
-  grid-template-columns: var(--app-size-sidebar) minmax(0, 1fr);
-  min-height: 0;
-  overflow: hidden;
-  background: var(--md-sys-color-surface);
-}
-
-.shell-sidebar {
-  min-height: 0;
-  overflow: auto;
-  padding: 14px 10px;
-  background: var(--md-sys-color-surface-container-lowest);
-  border-right: 1px solid var(--md-sys-color-outline-variant);
-}
-
-.shell-repository {
-  display: flex;
-  align-items: center;
-  min-height: 72px;
-  gap: 12px;
-  padding: 8px 10px 12px;
-  border-bottom: 1px solid var(--md-sys-color-outline-variant);
-  color: var(--md-sys-color-on-surface);
-  font-size: var(--app-font-size-label);
-}
-
-.repository-icon {
-  display: grid;
-  place-items: center;
-  flex: 0 0 36px;
-  width: 36px;
-  height: 36px;
-  border-radius: var(--app-radius-md);
-  color: var(--md-sys-color-on-primary-container);
-  background: var(--md-sys-color-primary-container);
-}
-
-.repository-copy {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-}
-
-.repository-copy strong,
-.repository-copy small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.repository-copy small {
-  color: var(--md-sys-color-on-surface-variant);
-  font-size: var(--app-font-size-xs);
-}
-
-.sidebar-section {
-  padding: 18px 2px 2px;
-}
-
-.sidebar-heading {
-  padding: 3px 12px 8px;
-  color: var(--md-sys-color-on-surface-variant);
-  font-size: var(--app-font-size-2xs);
-  font-weight: 700;
-  letter-spacing: .06em;
-}
-
-.sidebar-section button {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  height: var(--app-size-field);
-  gap: 10px;
-  padding: 0 12px;
-  border: 0;
-  border-radius: var(--app-radius-sm);
-  background: transparent;
-  color: var(--md-sys-color-on-surface-variant);
-  font-size: var(--app-font-size-label);
-  text-align: left;
-}
-
-.sidebar-section button:hover {
-  color: var(--md-sys-color-on-surface);
-  background: var(--md-sys-state-hover);
-}
-
-.sidebar-section button.active {
-  color: var(--md-sys-color-on-primary-container);
-  background: var(--md-sys-color-primary-container);
-  box-shadow: none;
-}
-
-.sidebar-section button span {
-  flex: 1;
-}
-
-.sidebar-section button b {
-  font-size: var(--app-font-size-xs);
-}
-
-.route-workbench {
-  display: grid;
-  grid-template-rows: var(--app-size-page-header) minmax(0, 1fr);
-  min-width: 0;
-  min-height: 0;
-  margin: 6px;
-  overflow: hidden;
-  border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: var(--app-radius-sm);
-  background: var(--md-sys-color-surface-container-lowest);
-  box-shadow: var(--md-sys-elevation-2);
-}
-
-.route-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 24px;
-  background: var(--md-sys-color-surface-container-lowest);
-  border-bottom: 1px solid var(--md-sys-color-outline-variant);
-  color: var(--md-sys-color-on-surface);
-  font-size: var(--app-font-size-title);
-}
-
-.route-title {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.route-accent {
-  display: none;
-}
-
-.route-repository {
-  color: var(--md-sys-color-on-surface-variant);
-  font-size: var(--app-font-size-sm);
-}
-
-.route-content {
-  min-width: 0;
-  min-height: 0;
-  overflow: auto;
-  background: var(--md-sys-color-surface-container-lowest);
-}
-
-.route-content :deep(.left-panel),
-.route-content :deep(.welcome-sidebar) {
-  display: none;
-}
-
-.route-content :deep(.workspace-layout) {
-  height: 100%;
-}
-
-.route-content :deep(.empty-state) {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  min-height: 0;
-  padding: var(--app-spacing-2xl);
-}
-
-.route-content :deep(.empty-content) {
-  margin: 0;
-  width: min(100%, 570px);
-}
-
-.route-content :deep(.checkout-view),
-.route-content :deep(.commit-view),
-.route-content :deep(.update-view),
-.route-content :deep(.settings-view),
-.route-content :deep(.log-view),
-.route-content :deep(.diff-view),
-.route-content :deep(.blame-view) {
-  width: 100%;
-  max-width: none;
-  min-height: 100%;
-  margin: 0;
-  padding: 0;
-}
-
-.route-content :deep(.el-card) {
-  min-height: 100%;
-  border: 0;
-  border-radius: 0;
-}
-
-.route-content :deep(.el-card__header) {
-  padding: 14px 24px;
-  background: var(--md-sys-color-surface-container-lowest);
-}
-
-.route-content :deep(.el-card__body) {
-  padding: 24px;
-}
-
-.route-content :deep(.checkout-view),
-.route-content :deep(.commit-view),
-.route-content :deep(.update-view),
-.route-content :deep(.settings-view) {
-  display: flex;
-  min-height: 100%;
-  background: transparent;
-}
-
-.route-content :deep(.checkout-card),
-.route-content :deep(.commit-card),
-.route-content :deep(.update-card),
-.route-content :deep(.settings-card) {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-height: 100%;
-  background: var(--md-sys-color-surface-container-lowest);
-}
-
-.route-content :deep(.checkout-card > .el-card__body),
-.route-content :deep(.commit-card > .el-card__body),
-.route-content :deep(.update-card > .el-card__body),
-.route-content :deep(.settings-card > .el-card__body) {
-  flex: 1;
-  background: var(--md-sys-color-surface-container-lowest);
-}
-
-.fork-status {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 12px;
-  border-top: 1px solid var(--md-sys-color-outline-variant);
-  background: var(--md-sys-color-surface-container);
-  color: var(--md-sys-color-on-surface-variant);
-  font-size: var(--app-font-size-xs);
-}
-
-.fork-status div {
-  display: flex;
-  gap: 14px;
-  flex-shrink: 0;
-}
-
-.version-update {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--md-sys-color-primary);
-  font: inherit;
-  cursor: pointer;
-}
-
-.version-update:hover {
-  text-decoration: underline;
-}
-
-.update-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--md-sys-color-primary);
-}
-
-.fork-status > span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-@media (max-width: 900px) {
-  .tool-button > span:not(.el-icon),
-  .open-in-label,
-  .brand-name {
-    display: none;
-  }
-  .brand-button {
-    min-width: 0;
-    padding-right: 0;
-  }
-  .toolbar-group {
-    min-width: 0;
-  }
-  .tool-button {
-    min-width: 38px;
-  }
-  .fork-content {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: 44px minmax(0, 1fr);
-  }
-  .shell-sidebar {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    overflow-x: auto;
-    overflow-y: hidden;
-    padding: 4px 8px;
-    border-right: 0;
-    border-bottom: 1px solid var(--md-sys-color-outline-variant);
-  }
-  .shell-sidebar::-webkit-scrollbar {
-    height: 4px;
-  }
-  .shell-repository,
-  .shell-sidebar .sidebar-heading {
-    display: none;
-  }
-  .shell-sidebar .sidebar-section {
-    display: flex;
-    flex: 0 0 auto;
-    gap: 2px;
-    padding: 0 5px 0 0;
-    border-right: 1px solid var(--md-sys-color-outline-variant);
-  }
-  .shell-sidebar .sidebar-section:last-child {
-    border-right: 0;
-  }
-  .shell-sidebar .sidebar-section button {
-    width: auto;
-    height: 34px;
-    padding: 0 10px;
-    white-space: nowrap;
-  }
-}
-
-@media (max-width: 650px) {
-  .fork-shell {
-    grid-template-rows: var(--app-size-toolbar-stacked) minmax(0, 1fr) var(--app-size-statusbar);
-  }
-  .fork-toolbar {
-    align-items: flex-start;
-    padding-right: 12px;
-    padding-left: 12px;
-    padding-bottom: 48px;
-  }
-  .toolbar-group-right .tool-button,
-  .toolbar-group-right .toolbar-divider {
-    display: none;
-  }
-  .workspace-switcher {
-    top: 52px;
-    left: 12px;
-    right: 12px;
-    transform: none;
-  }
-  .repository-title {
-    width: 100%;
-    min-height: 38px;
-    padding: 4px 32px;
-  }
-  .repository-title strong {
-    max-width: calc(100vw - 90px);
-  }
-  .route-repository {
-    max-width: 42%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .route-content :deep(.empty-state) {
-    padding: var(--app-spacing-xl) var(--app-spacing-lg);
-  }
-  .route-content :deep(.empty-actions) {
-    flex-wrap: wrap;
-  }
-}
+.source-shell{display:grid;grid-template-rows:35px 45px minmax(0,1fr) auto;height:100vh;overflow:hidden;background:var(--md-sys-color-surface);color:var(--md-sys-color-on-surface)}button{cursor:pointer}button:disabled{opacity:.35;cursor:default}.repository-tabs{display:flex;align-items:stretch;background:var(--source-titlebar);border-bottom:1px solid var(--md-sys-color-outline-variant);min-width:0}.app-mark{display:flex;gap:8px;align-items:center;flex-shrink:0;padding:0 14px;background:none;border:0;font-size:13px;color:var(--md-sys-color-primary)}.app-mark strong{color:var(--md-sys-color-on-surface);font-size:12px}.repository-tab-list{display:flex;align-items:stretch;overflow:auto;min-width:0;scrollbar-width:thin}.repository-tab{display:flex;align-items:stretch;min-width:120px;max-width:220px;border-right:1px solid var(--md-sys-color-outline-variant);border-top:2px solid transparent;font-size:12px}.repository-tab.active{border-top-color:var(--md-sys-color-primary);background:var(--md-sys-color-surface-container)}.repository-tab>button[role=tab]{display:flex;align-items:center;gap:7px;min-width:0;flex:1;background:none;border:0;padding:0 10px}.repository-tab span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.tab-close,.add-repository{border:0;background:none;padding:0 9px;font-size:19px}.tab-close:hover,.add-repository:hover{background:var(--md-sys-state-hover)}.recent-path{display:block;max-width:450px;overflow:hidden;text-overflow:ellipsis;font-size:10px;opacity:.65}.repository-toolbar{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 8px;background:var(--source-toolbar);border-bottom:1px solid var(--md-sys-color-outline-variant);min-width:0}.toolbar-group{display:flex;align-items:center;gap:3px;min-width:0}.toolbar-primary{justify-content:center;flex:1}.toolbar-right{justify-content:flex-end}.tool-button{display:flex;align-items:center;gap:6px;height:32px;padding:4px 9px;border:0;border-radius:3px;background:none;font-size:12px;white-space:nowrap}.tool-button:hover:not(:disabled){background:var(--md-sys-state-hover)}.tool-button .el-icon{font-size:17px}.tool-button .chevron{font-size:10px}.toolbar-divider{height:20px;width:1px;background:var(--md-sys-color-outline-variant);margin:0 5px}.repository-name{font-size:12px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.current-branch{max-width:220px}.current-branch span{overflow:hidden;text-overflow:ellipsis}.source-body{display:grid;grid-template-columns:49px var(--sidebar-width) 4px minmax(0,1fr);min-height:0;overflow:hidden}.source-body.sidebar-hidden{grid-template-columns:49px minmax(0,1fr)}.page-switcher{display:flex;flex-direction:column;gap:5px;align-items:center;padding:6px 0;border-right:1px solid var(--md-sys-color-outline-variant);background:var(--md-sys-color-surface-container)}.page-switcher>button{position:relative;display:grid;place-items:center;width:40px;height:38px;min-height:38px;border:0;border-radius:4px;background:none;color:var(--md-sys-color-on-surface-variant)}.page-switcher>button .el-icon{font-size:19px}.page-switcher>button.active{color:var(--md-sys-color-on-primary-container);background:var(--md-sys-color-primary-container)}.page-switcher>button:hover{background:var(--md-sys-state-hover)}.page-switcher b{position:absolute;right:1px;top:1px;font-size:9px;line-height:13px;padding:0 3px;border-radius:7px;background:var(--md-sys-color-primary);color:var(--md-sys-color-on-primary)}.rail-spacer{flex:1}.source-sidebar{min-width:0;min-height:0;overflow:auto;background:var(--md-sys-color-surface-container-low)}.sidebar-repository{display:flex;align-items:center;justify-content:space-between;gap:8px;height:34px;padding:0 10px;font-size:12px;border-bottom:1px solid var(--md-sys-color-outline-variant)}.sidebar-repository strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.sidebar-repository small{font-size:10px;opacity:.65}.sidebar-resizer{background:var(--md-sys-color-outline-variant);touch-action:none;cursor:col-resize}.sidebar-resizer:hover,.sidebar-resizer:focus-visible{background:var(--md-sys-color-primary)}.sidebar-stashes,.repository-details{font-size:11px;padding:7px;border-top:1px solid var(--md-sys-color-outline-variant)}summary{cursor:pointer;font-weight:600;padding:4px}.sidebar-stashes button{display:flex;align-items:center;gap:6px;width:100%;padding:5px 8px;background:none;border:0;text-align:left;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.sidebar-stashes button:hover{background:var(--md-sys-state-hover)}.repository-details small{display:block;overflow-wrap:anywhere;padding:5px;font-size:10px;color:var(--md-sys-color-on-surface-variant)}.route-workbench{display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden;background:var(--md-sys-color-surface-container-lowest)}.route-header{height:32px;min-height:32px;display:flex;justify-content:space-between;align-items:center;padding:0 12px;border-bottom:1px solid var(--md-sys-color-outline-variant);font-size:12px}.route-header small{font-size:11px;opacity:.6}.route-content{flex:1;min-width:0;min-height:0;overflow:auto}.route-content :deep(.left-panel),.route-content :deep(.welcome-sidebar){display:none}.route-content :deep(.workspace-layout){height:100%}.route-content :deep(.checkout-view),.route-content :deep(.commit-view),.route-content :deep(.update-view),.route-content :deep(.settings-view),.route-content :deep(.log-view),.route-content :deep(.diff-view),.route-content :deep(.blame-view){width:100%;max-width:none;margin:0;padding:0;min-height:100%}.route-content :deep(.el-card){border:0;border-radius:0;box-shadow:none}.route-content :deep(.el-card__header){padding:8px 12px}.route-content :deep(.el-card__body){padding:12px}.shell-bottom{min-width:0}.fork-status{display:flex;align-items:center;justify-content:space-between;gap:12px;height:24px;padding:0 9px;border-top:1px solid var(--md-sys-color-outline-variant);background:var(--md-sys-color-surface-container);font-size:10px;color:var(--md-sys-color-on-surface-variant)}.fork-status>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.fork-status>div{display:flex;gap:12px;align-items:center;flex-shrink:0}.version-update{display:flex;gap:4px;align-items:center;border:0;background:none;color:var(--md-sys-color-primary);font-size:10px}.update-dot{width:5px;height:5px;border-radius:50%;background:var(--md-sys-color-primary)}@media(max-width:1000px){.toolbar-primary .tool-button{padding:4px 6px}.repository-name{max-width:90px}.source-body{grid-template-columns:49px min(var(--sidebar-width),210px) 4px minmax(0,1fr)}}@media(max-width:850px){.toolbar-primary .tool-button span{display:none}.repository-name{display:none}.app-mark strong{display:none}.current-branch{max-width:140px}}
 </style>

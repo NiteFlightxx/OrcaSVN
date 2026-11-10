@@ -171,7 +171,7 @@ const visibleConflicts = computed(() => {
 const formatDate = (date: string) => date ? new Date(date).toLocaleString(locale.value) : ''
 
 const applyCachedState = (path: string) => {
-  const cached = updateStateCache.get(path)
+  const cached = updateStateCache.get(`${path}|${workspaceStore.svnInfo?.url}|${workspaceStore.epoch}`)
   if (!cached) return false
 
   remoteRevision.value = cached.remoteRevision
@@ -211,7 +211,7 @@ const loadUpdateState = async (force = false, background = false) => {
     } else {
       incomingLogs.value = []
     }
-    updateStateCache.set(requestedPath, {
+    updateStateCache.set(`${requestedPath}|${workspaceStore.svnInfo?.url}|${workspaceStore.epoch}`, {
       remoteRevision: remoteRevision.value,
       incomingLogs: incomingLogs.value.map(entry => ({
         ...entry,

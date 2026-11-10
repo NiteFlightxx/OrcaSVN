@@ -4,6 +4,7 @@ use super::status_snapshot::{self, Inventory};
 use crate::SvnStatus;
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -15,7 +16,16 @@ const PARALLEL_QUERY_MARGIN: Duration = Duration::from_secs(3);
 #[cfg(all(windows, test))]
 const PARALLEL_QUERY_MARGIN: Duration = Duration::ZERO;
 
-type Workspace = Arc<tokio::sync::Mutex<WorkspaceStatus>>;
+type Workspace = Arc<WorkspaceCache>;
+struct WorkspaceCache {
+    state: tokio::sync::Mutex<WorkspaceStatus>,
+    invalidated: AtomicBool,
+}
+impl WorkspaceCache {
+    async fn lock(&self) -> tokio::sync::MutexGuard<'_, WorkspaceStatus> {
+        self.state.lock().await
+    }
+}
 static WORKSPACES: OnceLock<Mutex<VecDeque<(PathBuf, Workspace)>>> = OnceLock::new();
 
 #[cfg(test)]
@@ -67,12 +77,34 @@ fn get_workspace(root: &Path) -> Result<Workspace, SvnError> {
         workspaces.push_back(item);
         return Ok(workspace);
     }
-    let workspace = Arc::new(tokio::sync::Mutex::new(WorkspaceStatus::new()));
+    let workspace = Arc::new(WorkspaceCache {
+        state: tokio::sync::Mutex::new(WorkspaceStatus::new()),
+        invalidated: AtomicBool::new(false),
+    });
     workspaces.push_back((root.to_path_buf(), workspace.clone()));
     while workspaces.len() > MAX_WORKSPACES {
         workspaces.pop_front();
     }
     Ok(workspace)
+}
+
+/// Do not wait for an older full scan while completing a scoped mutation.
+/// Its result must not become the next poll's trusted baseline.
+pub(crate) fn invalidate_status(root: &Path) -> Result<(), SvnError> {
+    let root =
+        std::fs::canonicalize(root).map_err(|error| SvnError::CommandFailed(error.to_string()))?;
+    get_workspace(&root)?;
+    let workspaces = WORKSPACES
+        .get()
+        .unwrap()
+        .lock()
+        .map_err(|_| SvnError::CommandFailed("文件状态缓存锁已损坏".into()))?;
+    for (path, workspace) in workspaces.iter() {
+        if path.starts_with(&root) {
+            workspace.invalidated.store(true, Ordering::Release);
+        }
+    }
+    Ok(())
 }
 
 fn merge_status(previous: &[SvnStatus], fresh: Vec<SvnStatus>, paths: &[String]) -> Vec<SvnStatus> {
@@ -191,8 +223,20 @@ pub async fn cached_status(
         .await
         .map_err(|error| SvnError::CommandFailed(error.to_string()))?
         .map_err(|error| SvnError::CommandFailed(format!("无法访问工作副本：{error}")))?;
-    let workspace = get_workspace(&root)?;
-    let mut workspace = workspace.lock().await;
+    let cache = get_workspace(&root)?;
+    let mut workspace = cache.lock().await;
+    let invalidated = cache.invalidated.swap(false, Ordering::AcqRel);
+    if invalidated {
+        workspace.entries = None;
+        workspace.inventory = None;
+        workspace.last_full_check = None;
+        #[cfg(windows)]
+        {
+            workspace.watcher = None;
+            workspace.watcher_ready = false;
+        }
+    }
+    let force = force || invalidated;
     #[cfg(windows)]
     let mut force = force;
     #[cfg(windows)]
@@ -515,6 +559,28 @@ mod tests {
     async fn assert_query_mode(root: &Path, expected: QueryMode) {
         let workspace = get_workspace(&fs::canonicalize(root).unwrap()).unwrap();
         assert_eq!(workspace.lock().await.last_query.as_ref(), Some(&expected));
+    }
+
+    #[test]
+    fn discard_invalidation_does_not_wait_for_an_in_flight_scan_or_reuse_its_result() {
+        let fixture = Fixture::new().expect("svn and svnadmin are required");
+        fixture.init();
+        runtime().block_on(async {
+            let root = fs::canonicalize(&fixture.wc).unwrap();
+            let cache = get_workspace(&root).unwrap();
+            let mut scan = cache.lock().await;
+            // Model a complete scan that is still holding its async lock.
+            // Invalidation must complete now, and survive that scan's publish.
+            invalidate_status(&root).unwrap();
+            scan.entries = Some(vec![entry("obsolete.txt", "modified")]);
+            assert!(cache.invalidated.load(Ordering::Acquire));
+            drop(scan);
+            let entries = cached_status(fixture.wc.to_str().unwrap(), false)
+                .await
+                .unwrap();
+            assert!(entries.is_empty());
+            assert!(!cache.invalidated.load(Ordering::Acquire));
+        });
     }
 
     #[test]

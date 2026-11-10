@@ -1,3 +1,10 @@
+import { branchUiLocales } from './branchUi'
+import { conflictDialogLocales } from './conflictDialog'
+import { sourceUiLocales } from './sourceUi'
+import { workflowLocales } from './workflows'
+import { changeLocales } from './changes'
+import { commitDetailLocales } from './commitDetails'
+import { fileMenuLocales } from './fileMenu'
 import { watch } from 'vue'
 import { createI18n } from 'vue-i18n'
 import zhCN from './locales/zh-CN'
@@ -46,11 +53,11 @@ const i18n = createI18n({
   locale: getStoredLocale(),
   fallbackLocale: 'en-US',
   messages: {
-    'zh-CN': zhCN,
-    'zh-TW': zhTW,
-    'ja-JP': jaJP,
-    'ko-KR': koKR,
-    'en-US': enUS,
+    'zh-CN': { branchUI: branchUiLocales['zh-CN'], conflictDialog: conflictDialogLocales['zh-CN'], sourceUI: sourceUiLocales['zh-CN'], ...zhCN, flow: workflowLocales['zh-CN'], changes: changeLocales['zh-CN'], commitDetails: commitDetailLocales['zh-CN'], fileMenu: fileMenuLocales['zh-CN'] },
+    'zh-TW': { branchUI: branchUiLocales['zh-TW'], conflictDialog: conflictDialogLocales['zh-TW'], sourceUI: sourceUiLocales['zh-TW'], ...zhTW, flow: workflowLocales['zh-TW'], changes: changeLocales['zh-TW'], commitDetails: commitDetailLocales['zh-TW'], fileMenu: fileMenuLocales['zh-TW'] },
+    'ja-JP': { branchUI: branchUiLocales['ja-JP'], conflictDialog: conflictDialogLocales['ja-JP'], sourceUI: sourceUiLocales['ja-JP'], ...jaJP, flow: workflowLocales['ja-JP'], changes: changeLocales['ja-JP'], commitDetails: commitDetailLocales['ja-JP'], fileMenu: fileMenuLocales['ja-JP'] },
+    'ko-KR': { branchUI: branchUiLocales['ko-KR'], conflictDialog: conflictDialogLocales['ko-KR'], sourceUI: sourceUiLocales['ko-KR'], ...koKR, flow: workflowLocales['ko-KR'], changes: changeLocales['ko-KR'], commitDetails: commitDetailLocales['ko-KR'], fileMenu: fileMenuLocales['ko-KR'] },
+    'en-US': { branchUI: branchUiLocales['en-US'], conflictDialog: conflictDialogLocales['en-US'], sourceUI: sourceUiLocales['en-US'], ...enUS, flow: workflowLocales['en-US'], changes: changeLocales['en-US'], commitDetails: commitDetailLocales['en-US'], fileMenu: fileMenuLocales['en-US'] },
   },
 })
 

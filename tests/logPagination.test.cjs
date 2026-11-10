@@ -7,20 +7,27 @@ const vue = require('vue')
 
 function harness(fetch) {
   const calls = []
-  const store = { currentPath: '/wc', setError(error) { this.error = error } }
+  const flow = vue.reactive({ browsingUrl: '', identity: null })
+  const store = vue.reactive({ currentPath: '/wc', epoch: 0, setError(error) { this.error = error } })
+  const route = vue.reactive({ query: {} })
   const mocks = {
     vue: { ...vue, watch() {}, onActivated() {}, onUnmounted() {} },
+    '@/stores/workflows': { useWorkflowStore: () => flow },
+    '@/api/workflows': {},
+    '@/components/DiffViewer.vue': {},
+    '@/utils/clipboard': {},
+    'element-plus': {},
     '@/stores/workspace': { useWorkspaceStore: () => store },
     '@/api/svn': { svnLog: async (...args) => { calls.push(args); return fetch(...args) } },
     'vue-i18n': { useI18n: () => ({ t: key => key, locale: vue.ref('en-US') }) },
     '@/composables/useWorkspace': { useWorkspace: () => ({}) },
-    'vue-router': { useRouter: () => ({}) },
+    'vue-router': { useRouter: () => ({}), useRoute: () => route },
   }
   const script = fs.readFileSync('src/views/LogView.vue', 'utf8').match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1]
   const context = { exports: {}, require: name => { assert.ok(name in mocks, name); return mocks[name] } }
   const code = ts.transpileModule(script + '\nexports.state = { reloadLogs, fetchLogPage, logs, pageIndex, pageCursors, hasMore, loading, filters };', { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText
   vm.runInNewContext(code, context)
-  return { ...context.exports.state, calls, store }
+  return { ...context.exports.state, calls, store, flow, route }
 }
 const entries = Array.from({ length: 50 }, (_, index) => ({
   revision: 300 - index * 2, author: index % 2 ? 'alice' : 'bob', message: 'change', date: '', changed_paths: [],
@@ -83,4 +90,30 @@ test('late response from a superseded query cannot replace the new page', async 
   await old
   assert.equal(h.logs.value[0].revision, entries[1].revision)
   assert.equal(h.loading.value, false)
+})
+
+test('branch browsing in the same working copy rejects late replies from the old source', async () => {
+  let finish
+  const h = harness((path) => path.endsWith('/dev') ? new Promise(resolve => { finish = resolve }) : [entries[1]])
+  h.flow.browsingUrl = 'file:///repo/dev'
+  const old = h.reloadLogs()
+  h.flow.browsingUrl = 'file:///repo/publish'
+  await h.reloadLogs(true, true)
+  finish([entries[0]])
+  await old
+  assert.equal(h.logs.value[0].revision, entries[1].revision)
+  assert.equal(h.calls[0][0], 'file:///repo/dev')
+  assert.equal(h.store.currentPath, '/wc')
+})
+
+test('file history reads its selected URL and drops the scope after a branch or workspace change', async () => {
+  const h = harness(() => [entries[0]])
+  h.store.svnInfo = { url: 'file:///repo/dev' }
+  h.flow.browsingUrl = 'file:///repo/other'
+  h.route.query = { target: 'file:///repo/dev/Content/Map.umap', workspace: '/wc', branch: 'file:///repo/dev' }
+  await h.reloadLogs(true, true)
+  assert.equal(h.calls.at(-1)[0], 'file:///repo/dev/Content/Map.umap')
+  h.store.svnInfo = { url: 'file:///repo/publish' }
+  await h.reloadLogs(true, true)
+  assert.equal(h.calls.at(-1)[0], 'file:///repo/other')
 })

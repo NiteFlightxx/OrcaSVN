@@ -1,4 +1,5 @@
 @import './design-tokens.css';
+@import './sourcegit-theme.css';
 
 * {
   box-sizing: border-box;
@@ -218,6 +219,22 @@ a:hover {
   max-width: min(var(--el-messagebox-width), calc(100vw - 32px));
 }
 
+.el-dialog.branch-operation-dialog,
+.el-dialog.branch-manager-dialog {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 32px);
+}
+.branch-operation-dialog .el-dialog__body,
+.branch-manager-dialog .el-dialog__body {
+  min-height: 0;
+  overflow: auto;
+}
+.branch-operation-dialog .el-dialog__header,
+.branch-operation-dialog .el-dialog__footer,
+.branch-manager-dialog .el-dialog__header,
+.branch-manager-dialog .el-dialog__footer { flex-shrink: 0; }
+
 .el-message-box.workspace-file-confirm {
   --el-messagebox-width: 480px;
   max-width: min(var(--el-messagebox-width), calc(100vw - 32px));
@@ -250,6 +267,65 @@ a:hover {
   max-height: 160px;
   overflow-y: auto;
   user-select: text;
+}
+
+/* MessageBox content is created outside WorkspaceView's scoped template. */
+.el-message-box.workspace-discard-confirm {
+  --el-messagebox-width: 720px;
+  max-height: calc(100dvh - 32px);
+  display: inline-flex;
+  flex-direction: column;
+}
+
+.workspace-discard-confirm .el-message-box__content {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.workspace-discard-confirm .el-message-box__header,
+.workspace-discard-confirm .el-message-box__btns {
+  flex-shrink: 0;
+}
+
+.workspace-discard-confirm .el-message-box__container,
+.workspace-discard-confirm .el-message-box__message {
+  min-width: 0;
+  width: 100%;
+}
+
+.workspace-discard-confirm .workspace-discard-targets {
+  max-height: min(280px, 40dvh);
+  overflow: auto;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 4px;
+  margin: 10px 0;
+  padding: 4px 0;
+  font-size: 12px;
+  line-height: 24px;
+  user-select: text;
+}
+
+.workspace-discard-confirm .workspace-discard-target {
+  display: flex;
+  gap: 8px;
+  width: max-content;
+  min-width: 100%;
+  padding: 0 8px;
+  white-space: pre;
+}
+
+.workspace-discard-target > strong {
+  flex-shrink: 0;
+}
+
+.workspace-discard-target > code {
+  font-family: var(--app-font-family-mono);
+  font-size: inherit;
+  line-height: inherit;
+  color: inherit;
+  margin: 0;
+  padding: 0;
+  background: none;
 }
 
 .el-notification {

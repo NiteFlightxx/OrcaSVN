@@ -10,11 +10,13 @@ function deferred() {
   return { promise, resolve, reject }
 }
 function harness() {
-  const requests = [], snapshots = new Map(), writes = [], invalidations = []
+  const requests = [], snapshots = new Map(), writes = [], invalidations = [], publications = [], revisionReads = []
   const store = {
-    currentPath: '/a', statusList: [], svnInfo: null, gitignorePatterns: [],
+    currentPath: '/a', statusList: [], rawStatusList: null, svnInfo: null, gitignorePatterns: [], epoch: 0,
+    advanceEpoch() { this.epoch++ },
     setCurrentPath(path) { this.currentPath = path },
-    setStatusList(list) { this.statusList = list },
+    setStatusList(list) { publications.push(list); this.statusList = list },
+    setRawStatusList(list) { this.rawStatusList = list },
     setSvnInfo(info) { this.svnInfo = info },
     setStatusIsStale(value) { this.statusIsStale = value },
     setLoading(value) { this.isLoading = value },
@@ -33,20 +35,21 @@ function harness() {
     '@/stores/workspace': { useWorkspaceStore: () => store },
     '@/api/svn': {
       svnStatus: (path, force = false) => { const request = { path, force, ...deferred() }; requests.push(request); return request.promise },
-      svnLocalRevision: () => localRevision(),
+      svnLocalRevision: () => { revisionReads.push(true); return localRevision() },
     },
     '@tauri-apps/plugin-dialog': {},
     '@/composables/useSettings': { useSettings: () => ({ settings: { gitignoreEnabled: false } }) },
     '@/i18n': { default: { global: { t: key => key } } },
     '@/utils/gitignore': {},
+    '@/utils/statusPatch': (() => { const context = { exports: {} }; vm.runInNewContext(ts.transpileModule(fs.readFileSync('src/utils/statusPatch.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText, context); return context.exports })(),
     '@/utils/gitignoreWorker': { filterByGitignoreAsync: list => filter(list) },
     '@/utils/workspaceSnapshot': { getWorkspaceSnapshot: path => snapshots.get(path) || null, cacheWorkspaceSnapshot: (...args) => writes.push(args), invalidateWorkspaceSnapshot: path => { invalidations.push(path); snapshots.delete(path) } },
-    '@/utils/svnInfoCache': { getCachedSvnInfoMetadata: () => ({ url: 'file:///repo' }) },
+    '@/utils/svnInfoCache': { getCachedSvnInfoMetadata: () => ({ url: 'file:///repo' }), invalidateSvnInfoMetadata() {} },
   }
   const context = { exports: {}, require: name => { assert.ok(name in mocks, name); return mocks[name] } }
   const code = ts.transpileModule(fs.readFileSync('src/composables/useWorkspace.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText
   vm.runInNewContext(code, context)
-  return { store, requests, snapshots, writes, invalidations, useWorkspace: context.exports.useWorkspace, setFilter: value => { filter = value }, setLocalRevision: value => { localRevision = value } }
+  return { store, requests, snapshots, writes, invalidations, publications, revisionReads, useWorkspace: context.exports.useWorkspace, setFilter: value => { filter = value }, setLocalRevision: value => { localRevision = value } }
 }
 
 test('separate consumers share an in-flight refresh and background polls reuse fresh state', async () => {
@@ -73,6 +76,128 @@ test('failed refresh is retried rather than treated as fresh', async () => {
   assert.equal(h.requests.length, 2)
   h.requests[1].resolve([])
   assert.equal(await retry, true)
+})
+
+test('display filtering retains fresh unfiltered SVN status for commit selection', async () => {
+  const h = harness(), workspace = h.useWorkspace()
+  h.setFilter(async () => [])
+  const refresh = workspace.refreshStatus()
+  h.requests[0].resolve([{ path: 'Content/Map.umap', status_code: 'modified' }])
+  assert.equal(await refresh, true)
+  assert.equal(h.store.statusList.length, 0)
+  assert.equal(h.store.rawStatusList[0].path, 'Content/Map.umap')
+})
+
+const changed = (path, code = 'modified') => ({ path, status_code: code, prop_status: 'none' })
+function prepareDiscard(h) {
+  h.store.svnInfo = { url: 'file:///repo/dev', revision: 12 }
+  h.store.rawStatusList = [changed('folder/a.txt'), changed('folder/hidden.txt'), changed('other.txt')]
+  h.store.statusList = h.store.rawStatusList
+  return { workspace: '/a', expectedUrl: 'file:///repo/dev', paths: ['.', 'folder', 'folder/a.txt'], subtrees: [], entries: [] }
+}
+
+test('discard updates verified paths once without a global scan, revision query or repository reload', async () => {
+  const h = harness(), patch = prepareDiscard(h)
+  h.store.error = 'File retained: locked.uasset'
+  h.setFilter(async list => list.filter(file => !file.path.includes('hidden')))
+  assert.equal(await h.useWorkspace().refreshStatusAfterDiscard(patch), true)
+  assert.equal(h.requests.length, 0)
+  assert.equal(h.revisionReads.length, 0)
+  assert.equal(h.store.epoch, 0)
+  assert.deepEqual(h.invalidations, ['/a'])
+  assert.deepEqual(Array.from(h.store.rawStatusList, file => file.path), ['folder/hidden.txt', 'other.txt'])
+  assert.deepEqual(Array.from(h.store.statusList, file => file.path), ['other.txt'])
+  assert.equal(h.publications.length, 1)
+  assert.equal(h.store.error, 'File retained: locked.uasset')
+  assert.equal(h.store.statusIsStale, false)
+  assert.equal(h.store.isLoading, false)
+})
+
+test('structural discard replaces only the queried subtree and retains partial failures', async () => {
+  const h = harness(), patch = prepareDiscard(h)
+  h.store.rawStatusList.push(changed('folder2/keep.txt'))
+  patch.subtrees = ['folder']
+  patch.entries = [changed('folder/locked.uasset', 'unversioned')]
+  assert.equal(await h.useWorkspace().refreshStatusAfterDiscard(patch), true)
+  assert.deepEqual(Array.from(h.store.rawStatusList, file => file.path), ['folder/locked.uasset', 'folder2/keep.txt', 'other.txt'])
+})
+
+test('a collapsed unversioned parent removes obsolete child statuses', async () => {
+  const h = harness(), patch = prepareDiscard(h)
+  patch.entries = [changed('folder', 'unversioned')]
+  assert.equal(await h.useWorkspace().refreshStatusAfterDiscard(patch), true)
+  assert.deepEqual(Array.from(h.store.rawStatusList, file => file.path), ['folder', 'other.txt'])
+})
+
+test('an older background reply cannot resurrect discarded paths', async () => {
+  const h = harness(), patch = prepareDiscard(h), workspace = h.useWorkspace()
+  const old = workspace.refreshStatusIfStale(0)
+  assert.equal(await workspace.refreshStatusAfterDiscard(patch), true)
+  h.requests[0].resolve([changed('folder/a.txt')])
+  assert.equal(await old, false)
+  assert.equal(h.store.statusList.some(file => file.path === 'folder/a.txt'), false)
+  await workspace.refreshStatusIfStale(60_000)
+  assert.equal(h.requests.length, 1)
+})
+
+test('a manual refresh supersedes a pending discard filter', async () => {
+  const h = harness(), patch = prepareDiscard(h), workspace = h.useWorkspace(), worker = deferred()
+  h.setFilter(() => worker.promise)
+  const discard = workspace.refreshStatusAfterDiscard(patch)
+  for (let i = 0; i < 10; i++) await Promise.resolve()
+  h.setFilter(async list => list)
+  const manual = workspace.refreshStatus()
+  h.requests[0].resolve([changed('external.txt')])
+  assert.equal(await manual, true)
+  worker.resolve([])
+  assert.equal(await discard, false)
+  assert.equal(h.store.statusList[0].path, 'external.txt')
+  assert.equal(h.store.isLoading, false)
+})
+
+test('missing or mismatched discard status falls back to an authoritative complete scan', async () => {
+  for (const mismatch of ['missing', 'workspace', 'branch', 'baseline']) {
+    const h = harness(), patch = prepareDiscard(h)
+    if (mismatch === 'workspace') patch.workspace = '/other'
+    if (mismatch === 'branch') patch.expectedUrl = 'file:///repo/publish'
+    if (mismatch === 'baseline') h.store.rawStatusList = null
+    const pending = h.useWorkspace().refreshStatusAfterDiscard(mismatch === 'missing' ? null : patch)
+    assert.equal(h.requests.length, 1)
+    assert.equal(h.requests[0].force, true)
+    h.requests[0].resolve([changed('verified.txt')])
+    assert.equal(await pending, true)
+    assert.equal(h.store.statusList[0].path, 'verified.txt')
+  }
+})
+
+test('refresh keeps the visible list until filtering finishes and publishes only once', async () => {
+  const h = harness(), workspace = h.useWorkspace(), worker = deferred()
+  h.store.statusList = [changed('old.txt')]
+  h.setFilter(() => worker.promise)
+  const pending = workspace.refreshStatus()
+  h.requests[0].resolve([changed('visible.txt'), changed('hidden.txt')])
+  for (let i = 0; i < 10; i++) await Promise.resolve()
+  assert.equal(h.publications.length, 0)
+  assert.equal(h.store.statusList[0].path, 'old.txt')
+  worker.resolve([changed('visible.txt')])
+  assert.equal(await pending, true)
+  assert.equal(h.publications.length, 1)
+  assert.equal(h.store.statusList.length, 1)
+  assert.equal(h.store.rawStatusList.length, 2)
+})
+
+test('background verification does not replace a clean view with a loading skeleton', async () => {
+  const h = harness(), workspace = h.useWorkspace(), metadata = deferred()
+  h.store.isLoading = false
+  h.setLocalRevision(() => metadata.promise)
+  const pending = workspace.refreshStatusIfStale(0)
+  assert.equal(h.store.isLoading, false)
+  h.requests[0].resolve([])
+  for (let i = 0; i < 10; i++) await Promise.resolve()
+  assert.equal(h.store.isLoading, false)
+  metadata.resolve(12)
+  assert.equal(await pending, true)
+  assert.equal(h.store.isLoading, false)
 })
 
 test('post-mutation scan supersedes an earlier background scan', async () => {

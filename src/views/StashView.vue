@@ -1,12 +1,13 @@
 <template>
   <div class="stash-view">
+    <AssetStashPanel />
     <el-card class="stash-card animate-fade-in">
       <template #header>
         <div class="card-header">
           <div class="card-title-wrap">
             <span class="card-title">
               <el-icon><Archive /></el-icon>
-              {{ $t('stash.title') }}
+              {{ $t('flow.legacy') }}
             </span>
             <span class="card-subtitle">{{ $t('stash.subtitle') }}</span>
           </div>
@@ -173,6 +174,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import AssetStashPanel from '@/components/AssetStashPanel.vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { save } from '@tauri-apps/plugin-dialog'
@@ -458,9 +460,13 @@ watch(() => workspaceStore.currentPath, () => {
 </script>
 
 <style scoped>
-.stash-view,
-.stash-card {
+.stash-view {
   height: 100%;
+  overflow: auto;
+}
+.stash-card {
+  height: auto;
+  min-height: 300px;
 }
 
 .stash-card {
@@ -468,7 +474,6 @@ watch(() => workspaceStore.currentPath, () => {
 }
 
 :deep(.stash-card > .el-card__body) {
-  height: calc(100% - 57px);
   min-height: 0;
   overflow: auto;
 }

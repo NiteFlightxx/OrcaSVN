@@ -8,6 +8,7 @@ const router = createRouter({
       path: '/',
       component: MainLayout,
       children: [
+        { path: 'conflicts', name: 'conflicts', component: () => import('@/views/ConflictsView.vue'), meta: { title: 'flow.conflicts' } },
         {
           path: '',
           name: 'workspace',

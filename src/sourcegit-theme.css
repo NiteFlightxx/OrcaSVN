@@ -1,0 +1,59 @@
+/* SourceGit Resources/Themes.axaml: separate window, contents and subpanel surfaces. */
+:root {
+  --app-font-family: "Segoe UI", "Microsoft YaHei UI", "PingFang SC", sans-serif;
+  --app-font-size-body: 13px;
+  --app-radius-xs: 2px;
+  --app-radius-sm: 3px;
+  --app-radius: 4px;
+  --app-radius-md: 5px;
+  --app-radius-lg: 6px;
+  --app-size-control-sm: 26px;
+  --app-size-control-compact: 28px;
+  --app-size-control: 30px;
+  --app-size-field: 30px;
+  --app-size-table-row: 30px;
+  --app-size-list-row: 28px;
+  --app-size-panel-header: 30px;
+  --app-size-page-header: 34px;
+  --source-titlebar: #f2f0f0;
+  --source-toolbar: #f0f3f5;
+  --el-font-size-base: 12px;
+}
+html:root {
+  --md-sys-color-surface: #fbfbfb;
+  --md-sys-color-surface-container-lowest: #ffffff;
+  --md-sys-color-surface-container-low: #f4f4f4;
+  --md-sys-color-surface-container: #f0f3f5;
+  --md-sys-color-surface-container-high: #eaeaea;
+  --md-sys-color-surface-container-highest: #dedede;
+  --md-sys-color-on-surface: #1f1f1f;
+  --md-sys-color-on-surface-variant: #6f6f6f;
+  --md-sys-color-outline: #898989;
+  --md-sys-color-outline-variant: #cfcfcf;
+  --md-sys-color-primary: #0078d7;
+  --md-sys-color-primary-container: #d6eaff;
+  --md-sys-color-on-primary-container: #172b43;
+}
+html:root.theme-dark, html:root.dark {
+  --source-titlebar: #1f1f1f;
+  --source-toolbar: #2f2f2f;
+  --md-sys-color-surface: #272727;
+  --md-sys-color-surface-dim: #1c1c1c;
+  --md-sys-color-surface-container-lowest: #1c1c1c;
+  --md-sys-color-surface-container-low: #252525;
+  --md-sys-color-surface-container: #2f2f2f;
+  --md-sys-color-surface-container-high: #333333;
+  --md-sys-color-surface-container-highest: #404040;
+  --md-sys-color-on-surface: #dfdfdf;
+  --md-sys-color-on-surface-variant: #9f9f9f;
+  --md-sys-color-outline: #7c7c7c;
+  --md-sys-color-outline-variant: #181818;
+  --md-sys-color-primary: #4daafc;
+  --md-sys-color-primary-container: #264f78;
+  --md-sys-color-on-primary-container: #f0f0f0;
+  --el-text-color-secondary: #9f9f9f;
+  --el-text-color-placeholder: #8b8b8b;
+}
+button, select, input { color-scheme: inherit; }
+html.theme-dark, html.dark { color-scheme: dark; }
+html:not(.theme-dark):not(.dark) { color-scheme: light; }

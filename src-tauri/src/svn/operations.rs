@@ -557,9 +557,15 @@ async fn fetch_log_batch(
     date_from: Option<&str>,
     date_to: Option<&str>,
 ) -> Result<Vec<SvnLogEntry>, SvnError> {
-    let args = build_log_args(limit, start_rev, end_rev, date_from, date_to);
+    let mut args = build_log_args(limit, start_rev, end_rev, date_from, date_to);
+    let remote = path.contains("://");
+    if remote {
+        crate::workflows::valid_url(path).map_err(SvnError::InvalidArguments)?;
+        args.push("--".into());
+        args.push(crate::workflows::target(path));
+    }
     let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    let output = execute_svn(&args_refs, Some(path)).await?;
+    let output = execute_svn(&args_refs, if remote { None } else { Some(path) }).await?;
     let entries = parse_log_xml(&output)?;
     Ok(entries
         .into_iter()
@@ -1283,11 +1289,13 @@ pub async fn merge(
 #[cfg(test)]
 mod tests {
     use super::{
-        add, append_targets, append_unique_log_matches, blame, build_diff_args, build_log_args,
-        build_unversioned_file_diff, commit, diff, is_conservative_utf8_text, log_entry_matches,
+        add, append_targets, append_unique_log_matches, build_diff_args, build_log_args,
+        build_unversioned_file_diff, commit, is_conservative_utf8_text, log_entry_matches,
         log_entry_matches_dates, normalize_diff_target, normalize_svn_path, parse_update_conflicts,
         patch_output_has_conflicts, percent_decode,
     };
+    #[cfg(unix)]
+    use super::{blame, diff};
     use crate::svn::executor::SvnError;
     use crate::{SvnLogEntry, SvnLogPath};
     use std::collections::HashSet;

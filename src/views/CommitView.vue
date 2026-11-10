@@ -46,6 +46,7 @@
         </el-alert>
 
         <el-form class="commit-form" label-position="top" :disabled="loading">
+          <p class="staging-selection-hint">{{ $t('changes.selectionHint') }}</p>
           <div class="commit-toolbar">
             <el-input
               v-model="searchQuery"
@@ -128,18 +129,7 @@
           </el-form-item>
 
           <el-form-item :label="$t('commit.commitMessage')" required class="message-input">
-            <el-input
-              v-model="commitMessage"
-              type="textarea"
-              :rows="5"
-              :placeholder="$t('commit.enterCommitMessage')"
-              resize="vertical"
-              class="commit-textarea"
-            />
-            <div class="char-count">
-              <span :class="{ 'warning': commitMessage.length > 500 }">{{ commitMessage.length }}</span>
-              <span>/ 500</span>
-            </div>
+            <CommitMessageEditor :disabled="loading" />
             <div v-if="recentMessages.length > 0" class="recent-messages">
               <div class="recent-messages-header">
                 <span class="recent-messages-title">
@@ -220,11 +210,16 @@ import { getStatusClass, getStatusLabelKey } from '@/composables/useSvnStatus'
 import { useWorkspace } from '@/composables/useWorkspace'
 import { useSettings } from '@/composables/useSettings'
 import { buildChangeTree, isWithinDirectory, type ChangeNode } from '@/utils/changeTree'
+import { useStagingStore } from '@/stores/staging'
+import { useCommitDraftStore } from '@/stores/commitDraft'
+import CommitMessageEditor from '@/components/CommitMessageEditor.vue'
 
 const { t } = useI18n()
 const router = useRouter()
 const route = useRoute()
 const workspaceStore = useWorkspaceStore()
+const staging = useStagingStore()
+const draft = useCommitDraftStore()
 const { openWorkspace: openWorkspaceDialog, refreshStatusAfterMutation } = useWorkspace()
 const { settings } = useSettings()
 
@@ -235,8 +230,7 @@ interface RecentCommitMessage {
 }
 
 const commitTree = ref()
-const selectedFiles = ref<string[]>([])
-const commitMessage = ref('')
+const commitMessage = computed({ get: () => draft.message, set: (value: string) => draft.loadMessage(value) })
 const loading = ref(false)
 const output = ref('')
 const recentMessages = ref<RecentCommitMessage[]>([])
@@ -255,6 +249,10 @@ const allChangedFiles = computed(() => {
   return workspaceStore.statusList.filter(
     s => isWithinDirectory(s.path, scope.value) && s.status_code !== 'conflicted' && s.prop_status !== 'conflicted' && (committableStatuses.value.has(s.status_code) || s.prop_status === 'modified')
   )
+})
+const selectedFiles = computed({
+  get: () => { const selected = new Set(staging.paths); return allChangedFiles.value.filter(entry => selected.has(entry.path)).map(entry => entry.path) },
+  set: (paths: string[]) => staging.replaceInScope(paths, allChangedFiles.value.map(entry => entry.path)),
 })
 
 const changedFiles = computed(() => {
@@ -311,35 +309,44 @@ const routeSelectedFiles = computed(() => {
   return typeof files === 'string' ? [files] : []
 })
 
+let appliedRouteSelection = ''
 const applyRouteSelection = () => {
+  if (!scope.value && route.query.files === undefined) return
+  if (!staging.ready) return
+  const requestKey = JSON.stringify([staging.key, scope.value, route.query.files])
+  if (requestKey === appliedRouteSelection) return
+  appliedRouteSelection = requestKey
   const requested = new Set(routeSelectedFiles.value)
   selectedFiles.value = allChangedFiles.value
     .filter(file => scope.value ? file.status_code !== 'unversioned' : requested.has(file.path))
     .map(file => file.path)
 }
-watch([scope, () => route.query.files], applyRouteSelection, { immediate: true })
-watch(allChangedFiles, () => {
-  const available = new Set(allChangedFiles.value.map(file => file.path))
-  selectedFiles.value = selectedFiles.value.filter(path => available.has(path))
-})
+watch([scope, () => route.query.files, () => staging.ready, () => staging.key], applyRouteSelection, { immediate: true })
 watch(() => workspaceStore.currentPath, () => {
-  selectedFiles.value = []
-  commitMessage.value = ''
   recentMessages.value = []
   sessionStorage.removeItem('orca_commit_form')
   setScope('')
   void loadRecentMessages()
 })
 onMounted(() => {
+  const mergeDraft = sessionStorage.getItem('orca_merge_message')
+  if (mergeDraft) {
+    try {
+      const mergeData = JSON.parse(mergeDraft)
+      const normalize = (path: string) => path.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+      if (!commitMessage.value && typeof mergeData.root === 'string' && normalize(mergeData.root) === normalize(workspaceStore.currentPath || '') && typeof mergeData.message === 'string') commitMessage.value = mergeData.message
+    } catch { /* invalid draft */ }
+    sessionStorage.removeItem('orca_merge_message')
+  }
   const saved = sessionStorage.getItem('orca_commit_form')
   if (saved) {
     try {
       const data = JSON.parse(saved)
-      if (data.workspace === workspaceStore.currentPath && data.scope === scope.value) {
+      if (data.workspace === workspaceStore.currentPath && data.scope === scope.value && (data.draftKey === draft.key || (data.draftKey === undefined && !commitMessage.value))) {
         const available = new Set(allChangedFiles.value.map(file => file.path))
         selectedFiles.value = Array.isArray(data.selectedFiles)
           ? data.selectedFiles.filter((path: string) => available.has(path)) : []
-        commitMessage.value = typeof data.commitMessage === 'string' ? data.commitMessage : ''
+        if (!commitMessage.value && typeof data.commitMessage === 'string') commitMessage.value = data.commitMessage
       }
     } catch { /* ignore invalid saved state */ }
     sessionStorage.removeItem('orca_commit_form')
@@ -367,6 +374,10 @@ const doCommit = async () => {
   output.value = ''
 
   try {
+    const selectionKey = staging.key
+    const workspacePath = workspaceStore.currentPath
+    const draftKey = draft.key
+    const submittedMessage = commitMessage.value
     const availablePaths = new Set(allChangedFiles.value.map(file => file.path))
     const files = selectedFiles.value.filter(path => availablePaths.has(path))
     if (files.length === 0) return
@@ -387,12 +398,16 @@ const doCommit = async () => {
     }
 
     const result = await svnCommit(
-      workspaceStore.currentPath,
-      commitMessage.value,
+      workspacePath,
+      submittedMessage,
       files,
       settings.autoDeleteMissingOnCommit,
     )
-    if (result.success) recordRecentMessage(workspaceStore.currentPath, commitMessage.value)
+    if (result.success) staging.unstage(files, selectionKey)
+    if (result.success) {
+      recordRecentMessage(workspacePath, submittedMessage)
+      draft.clearIfUnchanged(draftKey, submittedMessage)
+    }
     output.value = result.output
     await refreshStatusAfterMutation()
 
@@ -414,6 +429,7 @@ const viewDiff = (path: string) => {
   sessionStorage.setItem('orca_commit_form', JSON.stringify({
     workspace: workspaceStore.currentPath,
     scope: scope.value,
+    draftKey: draft.key,
     selectedFiles: selectedFiles.value,
     commitMessage: commitMessage.value,
   }))
@@ -429,7 +445,7 @@ const viewDiff = (path: string) => {
 
 const resetForm = () => {
   selectedFiles.value = []
-  commitMessage.value = ''
+  draft.clear()
   output.value = ''
 
 }

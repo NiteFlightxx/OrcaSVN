@@ -24,7 +24,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const currentPath = ref<string | null>(null)
   const recentWorkspaces = ref<string[]>(readRecentWorkspaces())
   const svnInfo = ref<SvnInfo | null>(null)
+  const epoch = ref(0)
+  function advanceEpoch() { epoch.value++ }
   const statusList = ref<SvnStatus[]>([])
+  const rawStatusList = ref<SvnStatus[] | null>(null)
   const isLoading = ref(false)
   const statusIsStale = ref(false)
   const error = ref<string | null>(null)
@@ -73,6 +76,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
 
   function setCurrentPath(path: string, remember = true) {
+    if (currentPath.value !== path) advanceEpoch()
     currentPath.value = path
     if (remember) rememberWorkspace(path)
   }
@@ -84,6 +88,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   function setStatusList(list: SvnStatus[]) {
     statusList.value = list
   }
+  function setRawStatusList(list: SvnStatus[] | null) { rawStatusList.value = list }
 
   function setSvnInfo(info: SvnInfo | null) {
     svnInfo.value = info
@@ -123,6 +128,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     currentPath.value = null
     svnInfo.value = null
     statusList.value = []
+    rawStatusList.value = null
     statusIsStale.value = false
     error.value = null
     gitignorePatterns.value = []
@@ -130,18 +136,22 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     gitignoreWorkspacePath.value = null
   }
 
-  function removeRecentWorkspace(path: string) {
+  function removeRecentWorkspace(path: string, closeActive = true) {
     invalidateWorkspaceSnapshot(path)
     recentWorkspaces.value = recentWorkspaces.value.filter(item => item !== path)
     localStorage.setItem(RECENT_WORKSPACES_KEY, JSON.stringify(recentWorkspaces.value))
-    if (currentPath.value === path) clearWorkspace()
+    if (closeActive && currentPath.value === path) clearWorkspace()
   }
 
   return {
     currentPath,
+    epoch,
+    advanceEpoch,
     recentWorkspaces,
     svnInfo,
     statusList,
+    rawStatusList,
+    setRawStatusList,
     isLoading,
     statusIsStale,
     setStatusIsStale,

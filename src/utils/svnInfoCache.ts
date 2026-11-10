@@ -44,3 +44,7 @@ export function cacheSvnInfoMetadata(path: string, metadata: SvnInfoMetadata): v
     // Caching is an optimization; a storage failure must not block SVN operations.
   }
 }
+
+export function invalidateSvnInfoMetadata(path: string): void {
+  try { const cache = readCache(); delete cache[path]; localStorage.setItem(SVN_INFO_CACHE_KEY, JSON.stringify(cache)) } catch { /* optional cache */ }
+}

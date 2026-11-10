@@ -37,3 +37,26 @@ export function buildChangeTree(entries: SvnStatus[], scope = ''): ChangeNode[] 
   finish(root)
   return root.targets.length ? [root] : []
 }
+
+export interface VisibleChangeRow {
+  node: ChangeNode
+  depth: number
+  parent: string | null
+  position: number
+  siblings: number
+}
+export function flattenChangeTree(roots: ChangeNode[], collapsed: Set<string>): VisibleChangeRow[] {
+  const rows: VisibleChangeRow[] = []
+  const visit = (nodes: ChangeNode[], depth: number, parent: string | null) => {
+    nodes.forEach((node, index) => {
+      rows.push({ node, depth, parent, position: index + 1, siblings: nodes.length })
+      if (!collapsed.has(node.path)) visit(node.children, depth + 1, node.path)
+    })
+  }
+  // The implicit workspace root is omitted, except when it has its own property changes.
+  for (const root of roots) {
+    if (root.entry) visit([root], 0, null)
+    else visit(root.children, 0, null)
+  }
+  return rows
+}

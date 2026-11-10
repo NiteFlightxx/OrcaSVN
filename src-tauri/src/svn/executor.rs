@@ -102,7 +102,18 @@ async fn execute_svn_inner(
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
 
-    let output = collect_command_output(&mut cmd, SVN_TIMEOUT).await?;
+    let output = collect_command_output(
+        &mut cmd,
+        if args
+            .iter()
+            .any(|arg| matches!(*arg, "switch" | "merge" | "export" | "checkout"))
+        {
+            Duration::from_secs(1800)
+        } else {
+            SVN_TIMEOUT
+        },
+    )
+    .await?;
     if output.trim().is_empty() && always_prints_output(&args_vec) {
         return Err(SvnError::CommandFailed(format!(
             "SVN 命令成功退出但没有任何输出：svn {}\n{} 的输出未能送达 OrcaSVN，可能是透明加密或数据防泄漏软件的进程策略所致。请联系管理员，将 OrcaSVN 及其启动的 SVN 程序加入策略。",

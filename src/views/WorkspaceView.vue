@@ -1,5 +1,5 @@
 <template>
-  <div class="workspace-view">
+  <div class="workspace-view" @keydown="handleWorkspaceKeydown">
     <!-- 未打开工作区时的空状态 -->
     <div v-if="!workspaceStore.currentPath" class="empty-state">
       <aside class="welcome-sidebar">
@@ -34,7 +34,7 @@
     </div>
 
     <!-- 工作区主界面 -->
-    <div v-else class="workspace-layout">
+    <div v-else class="workspace-layout" :style="{ '--changes-width': `${changeWidth}px`, '--composer-height': `${composerHeight}px` }">
       <!-- 左侧面板：工作区信息 -->
       <aside class="left-panel">
         <div class="repository-name">
@@ -75,131 +75,38 @@
 
       <!-- 中间面板：文件列表 -->
       <main class="center-panel">
-        <div class="panel-header">
-          <span class="panel-title">
-            <el-icon><List /></el-icon>
-            {{ $t('workspace.fileStatus') }}
-          </span>
-          <div class="header-actions">
-            <el-button text size="small" :aria-label="$t('menu.refresh')" :title="$t('menu.refresh')" @click="refreshStatus" :loading="workspaceStore.isLoading">
-              <el-icon><Refresh /></el-icon>
-            </el-button>
-          </div>
+        <div class="changes-filterbar">
+          <input ref="changeSearchInput" v-model="fileQuery" type="search" :placeholder="$t('sourceUI.filterChanges')" :aria-label="$t('sourceUI.filterChanges')" :title="workspaceName" />
+          <button :title="$t('menu.refresh')" :aria-label="$t('menu.refresh')" :disabled="workspaceStore.isLoading" @click="refreshStatus"><el-icon :class="{ 'is-loading': workspaceStore.isLoading }"><Refresh/></el-icon></button>
+          <button :title="$t('sourceUI.discardVisible')" :aria-label="$t('sourceUI.discardVisible')" :disabled="!filteredFiles.length || !staging.ready || flow.busy || pendingFileAction !== null" @click="discardTargets(filteredFiles.map(file => file.path))"><el-icon><RefreshLeft/></el-icon></button>
+          <select v-model="viewMode" :aria-label="$t('sourceUI.viewMode')"><option value="tree">{{ $t('sourceUI.tree') }}</option><option value="compact">{{ $t('sourceUI.compact') }}</option><option value="list">{{ $t('sourceUI.list') }}</option></select>
         </div>
-
-        <!-- 文件状态统计 -->
-        <div class="status-summary">
-          <button type="button" class="status-badge modified" :class="{ active: filter === 'modified' }" :aria-pressed="filter === 'modified'" @click="setFilter('modified')">
-            <span class="badge-count">{{ workspaceStore.changedCount }}</span>
-            <span class="badge-label">{{ $t('workspace.statusChanged') }}</span>
-          </button>
-          <button type="button" class="status-badge unversioned" :class="{ active: filter === 'added' }" :aria-pressed="filter === 'added'" @click="setFilter('added')">
-            <span class="badge-count">{{ workspaceStore.unversionedCount }}</span>
-            <span class="badge-label">{{ $t('workspace.statusUnversioned') }}</span>
-          </button>
-          <button type="button" class="status-badge conflicted" :class="{ active: filter === 'conflicted' }" :aria-pressed="filter === 'conflicted'" @click="setFilter('conflicted')">
-            <span class="badge-count">{{ workspaceStore.conflictedCount }}</span>
-            <span class="badge-label">{{ $t('status.conflicted') }}</span>
-          </button>
-          <button type="button" class="status-badge missing" :class="{ active: filter === 'missing' }" :aria-pressed="filter === 'missing'" @click="setFilter('missing')">
-            <span class="badge-count">{{ workspaceStore.missingCount }}</span>
-            <span class="badge-label">{{ $t('status.missing') }}</span>
-          </button>
-          <button type="button" class="status-badge all" :class="{ active: filter === 'all' }" :aria-pressed="filter === 'all'" @click="setFilter('all')">
-            <span class="badge-count">{{ workspaceStore.statusList.length }}</span>
-            <span class="badge-label">{{ $t('common.all') }}</span>
-          </button>
+        <div class="changes-status-filter">
+          <select v-model="filter" :aria-label="$t('workspace.fileStatus')"><option value="all">{{ $t('common.all') }} ({{ workspaceStore.statusList.length }})</option><option value="modified">{{ $t('workspace.statusChanged') }} ({{ workspaceStore.changedCount }})</option><option value="added">{{ $t('workspace.statusUnversioned') }} ({{ workspaceStore.unversionedCount }})</option><option value="conflicted">{{ $t('status.conflicted') }} ({{ workspaceStore.conflictedCount }})</option><option value="missing">{{ $t('status.missing') }} ({{ workspaceStore.missingCount }})</option></select>
+          <span>{{ filteredFiles.length }} / {{ workspaceStore.statusList.length }}</span>
         </div>
-
         <div v-if="workspaceStore.statusIsStale" class="cached-status-notice" role="status">
           {{ $t('workspace.cachedStatus') }}<span v-if="workspaceStore.isLoading"> · {{ $t('common.loading') }}</span>
         </div>
 
+        <p v-if="flow.busy || pendingFileAction !== null" class="staging-notice" role="status">{{ actionBlockReason }}</p>
         <!-- 文件列表 -->
         <div class="file-list" :aria-busy="workspaceStore.isLoading">
           <GlassLoading :active="workspaceStore.isLoading && !workspaceStore.statusIsStale && workspaceStore.statusList.length === 0" :label="$t('common.loading')" />
           <div v-if="workspaceStore.isLoading && !workspaceStore.statusIsStale && workspaceStore.statusList.length === 0" class="loading-files">
             <el-skeleton :rows="6" />
           </div>
-          <VirtualViewport v-else-if="filteredFiles.length" ref="fileViewport" class="workspace-files"
-            :item-count="filteredFiles.length" :row-height="fileRowHeight"
-            :reset-key="`${workspaceStore.currentPath}|${filter}`" role="list" :aria-label="$t('diff.fileList')">
-            <template #default="{ start, end }">
-              <div
-                v-for="(file, index) in filteredFiles.slice(start, end)"
-                :key="file.path"
-                class="file-item"
-                :data-index="start + index"
-                role="listitem"
-                :aria-posinset="start + index + 1"
-                :aria-setsize="filteredFiles.length"
-                :style="{ height: `${fileRowHeight}px` }"
-                :class="{ selected: selectedFile === file.path }"
-                @click="selectFile(file)"
-                @contextmenu.prevent.stop="openFileContextMenu($event, file)"
-              >
-                <span class="file-status" :class="getStatusClass(file.status_code)">
-                  {{ getStatusLabel(file.status_code) }}
-                </span>
-                <button
-                  type="button"
-                  class="file-path"
-                  :title="file.path"
-                  :aria-label="`${file.path}, ${getStatusLabel(file.status_code)}`"
-                  :aria-pressed="selectedFile === file.path"
-                  @click.stop="selectFile(file)"
-                  @keydown.down.prevent="focusFile(start + index + 1)"
-                  @keydown.up.prevent="focusFile(start + index - 1)"
-                  @keydown.home.prevent="focusFile(0)"
-                  @keydown.end.prevent="focusFile(filteredFiles.length - 1)"
-                >{{ file.path }}</button>
-                <div class="file-actions">
-                  <el-tooltip :content="$t('common.diff')" placement="top" :show-after="150">
-                    <span class="file-action-trigger" :title="$t('common.diff')" @click.stop>
-                      <el-button text size="small" :aria-label="$t('common.diff')" @click="viewDiff(file.path)">
-                        <el-icon><Connection /></el-icon>
-                      </el-button>
-                    </span>
-                  </el-tooltip>
-                  <el-tooltip :content="fileActionLabel(file)" placement="top" :show-after="150">
-                    <span class="file-action-trigger" :title="fileActionLabel(file)" @click.stop>
-                      <el-button text size="small" type="danger" :aria-label="fileActionLabel(file)"
-                        :disabled="pendingFileAction !== null || workspaceStore.statusIsStale" @click="handleFileAction(file)">
-                        <el-icon><Delete v-if="file.status_code === 'unversioned'" /><RefreshLeft v-else /></el-icon>
-                      </el-button>
-                    </span>
-                  </el-tooltip>
-                </div>
-              </div>
-            </template>
-          </VirtualViewport>
-          <div v-if="!workspaceStore.isLoading && filteredFiles.length === 0" class="empty-files">
-            <el-icon><CircleCheck /></el-icon>
-            <span>{{ workspaceStore.statusList.length === 0 ? $t('workspace.noChanges') : $t('workspace.noMatchingFiles') }}</span>
+          <div v-else class="workspace-change-groups" :style="{ gridTemplateRows: `${groupSplit}fr 4px ${100 - groupSplit}fr` }">
+            <WorkspaceChangeTree :title="$t('changes.unstaged')" :entries="unstagedFiles" :selectable="selectablePaths" :staged="false" :active="activePanel === false" :workspace-key="staging.key" :filter-key="`${filter}|${fileQuery}`" :view-mode="viewMode" :selected-file="selectedFile" :disabled="!staging.ready || flow.busy || pendingFileAction !== null" :action-pending="pendingFileAction !== null" :empty-text="$t(workspaceStore.statusList.length === 0 ? 'workspace.noChanges' : 'changes.noUnstaged')" @select="selectFile" @selection-change="handleChangeSelection" @copy-paths="copySelectionPaths" @context="openFileContextMenu" @discard-targets="discardTargets" @toggle-selection="staging.stage" />
+            <PanelSplitter axis="y" v-model:value="groupSplit" :min="20" :max="80" percent :label="$t('sourceUI.resizeGroups')" />
+            <WorkspaceChangeTree :title="$t('changes.staged')" :entries="stagedFiles" :selectable="selectablePaths" :staged="true" :active="activePanel === true" :workspace-key="staging.key" :filter-key="`${filter}|${fileQuery}`" :view-mode="viewMode" :selected-file="selectedFile" :disabled="!staging.ready || flow.busy || pendingFileAction !== null" :action-pending="pendingFileAction !== null" :empty-text="$t('changes.noStaged')" @select="selectFile" @selection-change="handleChangeSelection" @copy-paths="copySelectionPaths" @context="openFileContextMenu" @discard-targets="discardTargets" @toggle-selection="staging.unstage" />
           </div>
         </div>
-        <div
-          v-if="fileContextMenu.visible"
-          class="file-context-menu"
-          :style="{ left: `${fileContextMenu.x}px`, top: `${fileContextMenu.y}px` }"
-          @click.stop
-          @contextmenu.prevent.stop
-        >
-          <button type="button" class="context-menu-item" @click="revealSelectedFile">
-            <el-icon><FolderOpened /></el-icon>
-            <span>{{ $t('workspace.openInExplorer') }}</span>
-          </button>
-          <button type="button" class="context-menu-item" @click="copySelectedFilePath('relative')">
-            <el-icon><CopyDocument /></el-icon>
-            <span>{{ $t('workspace.copyPath') }}</span>
-          </button>
-          <button type="button" class="context-menu-item" @click="copySelectedFilePath('absolute')">
-            <el-icon><CopyDocument /></el-icon>
-            <span>{{ $t('workspace.copyAbsolutePath') }}</span>
-          </button>
-        </div>
+        <p v-if="hiddenStagedCount" class="staging-notice">{{ $t('changes.hiddenStaged', { count: hiddenStagedCount }) }} <button @click="staging.clear()">{{ $t('changes.clearSelection') }}</button></p>
+        <FileContextMenu v-if="fileContextMenu.visible" :x="fileContextMenu.x" :y="fileContextMenu.y" :items="contextItems" :notice="actionBlockReason" @action="runContextAction" @close="hideFileContextMenu" />
       </main>
 
+      <PanelSplitter axis="x" v-model:value="changeWidth" :min="240" :max="700" :label="$t('sourceUI.resizeChanges')" />
       <!-- 右侧面板：差异预览 -->
       <aside class="right-panel">
         <div class="panel-header">
@@ -232,22 +139,39 @@
             <span>{{ $t('diff.noDiff') }}</span>
           </div>
         </div>
+        <PanelSplitter axis="y" v-model:value="composerHeight" :min="160" :max="420" reverse :label="$t('sourceUI.resizeCommit')" />
+        <div class="workspace-commit-composer">
+          <CommitMessageEditor compact />
+          <div class="commit-action-row"><small :title="$t('changes.selectionHint')">{{ $t('sourceUI.selectedForCommit', { count: staging.paths.length }) }}</small><el-button type="primary" size="small" :disabled="!draft.message || !staging.paths.length || !staging.ready || flow.busy" @click="doCommit">{{ $t('changes.reviewCommit') }}</el-button></div>
+        </div>
       </aside>
     </div>
+    <ConflictResolutionDialog v-if="conflictRequest" :request="conflictRequest" @close="conflictRequest = null" @resolved="conflictRequest = null" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { h, ref, computed, nextTick, onBeforeUnmount, onMounted, reactive, watch } from 'vue'
+import { h, ref, computed, onBeforeUnmount, onDeactivated, onMounted, reactive, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
-import { deleteUnversioned, revealWorkspaceFile, svnCleanup, svnRevert, svnDiff } from '@/api/svn'
+import { previewWorkspaceDiscard, executeWorkspaceDiscard, cancelWorkspaceDiscard, revealWorkspaceFile, svnCleanup, svnDiff, workspaceItemDetails, openWorkspaceItem, ignoreWorkspaceItem, exportWorkspacePatch, type WorkspaceItemDetails, type DiscardStatusPatch } from '@/api/svn'
+import { save } from '@tauri-apps/plugin-dialog'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus/es/components/message/index'
 import { ElMessageBox } from 'element-plus/es/components/message-box/index'
-import { getStatusClass, getStatusLabelKey } from '@/composables/useSvnStatus'
 import { useWorkspace } from '@/composables/useWorkspace'
-import VirtualViewport from '@/components/VirtualViewport.vue'
+import WorkspaceChangeTree from '@/components/WorkspaceChangeTree.vue'
+import PanelSplitter from '@/components/PanelSplitter.vue'
+import ConflictResolutionDialog from '@/components/ConflictResolutionDialog.vue'
+import type { ConflictRequest } from '@/utils/conflictResolution'
+import { readPanelSize } from '@/utils/changeSelection'
+import { useStagingStore } from '@/stores/staging'
+import { useCommitDraftStore } from '@/stores/commitDraft'
+import { useWorkflowStore } from '@/stores/workflows'
+import CommitMessageEditor from '@/components/CommitMessageEditor.vue'
+import FileContextMenu from '@/components/FileContextMenu.vue'
+import { normalizePath, type ChangeNode } from '@/utils/changeTree'
+import type { FileMenuItem } from '@/utils/fileMenu'
 import DiffViewer from '@/components/DiffViewer.vue'
 import GlassLoading from '@/components/GlassLoading.vue'
 import { writeClipboardText } from '@/utils/clipboard'
@@ -257,34 +181,94 @@ import type { SvnStatus, DiffResult } from '@/types'
 const { t } = useI18n()
 const router = useRouter()
 const workspaceStore = useWorkspaceStore()
-const { openWorkspace: openWorkspaceDialog, refreshStatus, refreshStatusAfterMutation } = useWorkspace()
+const staging = useStagingStore()
+const draft = useCommitDraftStore()
+const flow = useWorkflowStore()
+const { openWorkspace: openWorkspaceDialog, refreshStatus, refreshStatusAfterMutation, refreshStatusAfterDiscard } = useWorkspace()
 
 const filter = ref<'all' | 'modified' | 'added' | 'conflicted' | 'missing'>('all')
+const fileQuery = ref('')
+const conflictRequest = ref<ConflictRequest | null>(null)
+const changeSearchInput = ref<HTMLInputElement | null>(null)
+const activePanel = ref<boolean | null>(null)
+const changeWidth = ref(readPanelSize('orcasvn-changes-width', 340, 240, 700))
+const groupSplit = ref(readPanelSize('orcasvn-changes-split', 50, 20, 80))
+const composerHeight = ref(readPanelSize('orcasvn-composer-height', 200, 160, 420))
+const viewMode = ref<'tree' | 'list' | 'compact'>((() => { try { const value = localStorage.getItem('orcasvn-changes-mode'); return value === 'list' || value === 'compact' ? value : 'tree' } catch { return 'tree' } })())
+watch([changeWidth, groupSplit, composerHeight, viewMode], () => { try {
+  localStorage.setItem('orcasvn-changes-width', String(changeWidth.value))
+  localStorage.setItem('orcasvn-changes-split', String(groupSplit.value))
+  localStorage.setItem('orcasvn-composer-height', String(composerHeight.value))
+  localStorage.setItem('orcasvn-changes-mode', viewMode.value)
+} catch { /* Keep current panel sizes in memory. */ } })
 const selectedFile = ref<string | null>(null)
 const isLoadingDiff = ref(false)
 const diffResult = ref<DiffResult | null>(null)
 let diffRequestGeneration = 0
 let fileActionWorkspaceGeneration = 0
 const pendingFileAction = ref<string | null>(null)
+const fileActionPhase = ref<'preview' | 'confirm' | 'execute' | 'refresh'>('preview')
+const actionBlockReason = computed(() => {
+  if (pendingFileAction.value !== null) return t(`fileMenu.discardPhase_${fileActionPhase.value}`)
+  if (flow.busy) return t('fileMenu.operationBusy', { operation: flow.title || t('common.loading') })
+  if (!staging.ready) return t('fileMenu.verifyFirst')
+  return ''
+})
 const fileContextMenu = reactive({
   visible: false,
   x: 0,
   y: 0,
   file: null as SvnStatus | null,
+  path: '',
+  targets: [] as string[],
+  staged: false,
+  multiple: false,
+  workspace: '',
+  branch: '',
+  key: '',
+  details: null as WorkspaceItemDetails | null,
+})
+let contextRequest = 0
+const contextItems = computed<FileMenuItem[]>(() => {
+  const details = fileContextMenu.details, file = fileContextMenu.file
+  const current = fileContextMenu.workspace === workspaceStore.currentPath && fileContextMenu.key === staging.key
+  const ready = current && staging.ready && !flow.busy && pendingFileAction.value === null
+  const blockedReason = !current ? t('fileMenu.changed') : actionBlockReason.value || undefined
+  const canIgnore = ready && file?.status_code === 'unversioned'
+  const history = Boolean(details?.historyUrl) && file?.status_code !== 'added'
+  const conflicts = (workspaceStore.rawStatusList || workspaceStore.statusList).filter(entry => fileContextMenu.targets.includes(entry.path) && (entry.status_code === 'conflicted' || entry.prop_status === 'conflicted'))
+  return [
+    { id: 'open', label: t('fileMenu.open'), disabled: !current || fileContextMenu.multiple || !details?.exists },
+    { id: 'diff', label: t('common.diff'), disabled: !current || fileContextMenu.multiple || !file },
+    { id: 'reveal', label: t('workspace.openInExplorer'), disabled: !current || fileContextMenu.multiple },
+    { id: 'blame', label: t('fileMenu.blame'), separator: true, disabled: !current || !history || details?.kind !== 'file' || details.binary },
+    { id: 'history', label: t('fileMenu.history'), disabled: !current || !history },
+    { id: 'stage', label: t(fileContextMenu.multiple ? fileContextMenu.staged ? 'sourceUI.unstageSelected' : 'sourceUI.stageSelected' : fileContextMenu.staged ? 'changes.unstage' : 'changes.stage', { count: fileContextMenu.targets.length }), separator: true, disabled: !ready || !fileContextMenu.targets.some(path => selectableSet.value.has(path)) },
+    { id: 'discard', label: t('fileMenu.discard'), danger: true, disabled: !ready || !fileContextMenu.targets.length, title: blockedReason || t('fileMenu.discardFolderHint'), shortcut: 'Delete' },
+    ...(conflicts.length ? [{ id: 'resolve-conflicts', label: t('conflictDialog.menu', { count: conflicts.length }), disabled: !ready }] : []),
+    { id: 'stage-all', label: t(fileContextMenu.staged ? 'changes.unstageAll' : 'changes.stageAll'), separator: true, disabled: !ready || !(fileContextMenu.staged ? stagedFiles.value : unstagedFiles.value).some(entry => selectableSet.value.has(entry.path)) },
+    { id: 'ignore', label: t('fileMenu.ignore'), disabled: !canIgnore, title: t('fileMenu.ignoreHint'), children: [
+      { id: 'ignore-exact', label: t('fileMenu.ignoreExact') },
+      { id: 'ignore-extension', label: t('fileMenu.ignoreExtension'), disabled: details?.kind !== 'file' || !/\.[^/.]+$/.test(fileContextMenu.path) },
+    ] },
+    { id: 'stash', label: t('fileMenu.stash', { count: fileContextMenu.targets.length }), separator: true, disabled: !ready },
+    { id: 'patch', label: t('fileMenu.patch'), disabled: !ready || (!fileContextMenu.multiple && (!details || details.binary || (details.kind === 'dir' && file?.status_code === 'unversioned'))), title: t('fileMenu.patchHint') },
+    { id: 'copy-relative', label: t('workspace.copyPath'), separator: true, shortcut: 'Ctrl+C' },
+    { id: 'copy-absolute', label: t('workspace.copyAbsolutePath'), shortcut: 'Ctrl+Alt+C' },
+    ...(!staging.ready ? [{ id: 'refresh-status', label: t('fileMenu.verifyFirst'), separator: true, disabled: !current || flow.busy || pendingFileAction.value !== null }] : []),
+  ].map(item => ['stage', 'stage-all', 'stash', 'patch'].includes(item.id) && !ready ? { ...item, title: blockedReason } : item)
 })
 const workspaceName = computed(() => {
   const path = workspaceStore.currentPath || ''
   return path.split(/[\\/]/).filter(Boolean).pop() || path
 })
 
-const fileViewport = ref<InstanceType<typeof VirtualViewport> | null>(null)
-const fileRowHeight = 48
 const diffStats = ref({ added: 0, removed: 0 })
 
 const filteredFiles = computed(() => {
-  if (filter.value === 'all') return workspaceStore.statusList
-  return workspaceStore.statusList.filter(f => {
-    if (filter.value === 'modified') return ['modified', 'added', 'deleted', 'replaced'].includes(f.status_code)
+  const query = fileQuery.value.trim().toLocaleLowerCase()
+  return workspaceStore.statusList.filter(file => !query || normalizePath(file.path).toLocaleLowerCase().includes(query)).filter(f => {
+    if (filter.value === 'modified') return ['modified', 'added', 'deleted', 'replaced'].includes(f.status_code) || f.prop_status === 'modified'
     if (filter.value === 'added') return f.status_code === 'unversioned'
     if (filter.value === 'conflicted') return f.status_code === 'conflicted' || f.prop_status === 'conflicted'
     if (filter.value === 'missing') return f.status_code === 'missing'
@@ -292,14 +276,12 @@ const filteredFiles = computed(() => {
   })
 })
 
-const focusFile = async (index: number) => {
-  const file = filteredFiles.value[index]
-  if (!file) return
-  void selectFile(file)
-  fileViewport.value?.scrollToIndex(index)
-  await nextTick()
-  fileViewport.value?.element?.querySelector<HTMLButtonElement>(`.file-item[data-index="${index}"] .file-path`)?.focus()
-}
+const selectedSet = computed(() => new Set(staging.paths))
+const selectablePaths = computed(() => staging.eligible.map(entry => entry.path))
+const selectableSet = computed(() => new Set(selectablePaths.value))
+const stagedFiles = computed(() => filteredFiles.value.filter(file => selectedSet.value.has(file.path)))
+const unstagedFiles = computed(() => filteredFiles.value.filter(file => !selectedSet.value.has(file.path)))
+const hiddenStagedCount = computed(() => staging.paths.length - stagedFiles.value.length)
 
 const setFilter = (f: typeof filter.value) => {
   filter.value = f
@@ -328,10 +310,6 @@ const loadDiff = async (path: string) => {
   } finally {
     if (isCurrent()) isLoadingDiff.value = false
   }
-}
-
-const getStatusLabel = (code: string) => {
-  return t(getStatusLabelKey(code))
 }
 
 const openWorkspace = () => openWorkspaceDialog(t('dialog.selectSVNWorkspaceDirectory'))
@@ -364,17 +342,33 @@ const viewDiff = (path: string) => {
 }
 
 const hideFileContextMenu = () => {
+  contextRequest++
   fileContextMenu.visible = false
   fileContextMenu.file = null
 }
 
-const openFileContextMenu = (event: MouseEvent, file: SvnStatus) => {
-  selectedFile.value = file.path
-  fileContextMenu.file = file
-  fileContextMenu.x = Math.max(8, Math.min(event.clientX, window.innerWidth - 184))
-  fileContextMenu.y = Math.max(8, Math.min(event.clientY, window.innerHeight - 110))
+const openFileContextMenu = async (event: MouseEvent, target: ChangeNode, staged: boolean, selection?: { targets: string[]; count: number }) => {
+  const request = ++contextRequest
+  const path = workspaceStore.currentPath
+  if (!path) return
+  fileContextMenu.multiple = Boolean(selection && selection.count > 1)
+  fileContextMenu.file = fileContextMenu.multiple ? null : target.entry || null
+  fileContextMenu.path = target.path
+  fileContextMenu.targets = [...(selection?.targets || target.targets)]
+  fileContextMenu.staged = staged
+  fileContextMenu.workspace = path
+  fileContextMenu.branch = workspaceStore.svnInfo?.url || ''
+  fileContextMenu.key = staging.key
+  fileContextMenu.details = null
+  fileContextMenu.x = event.clientX
+  fileContextMenu.y = event.clientY
   fileContextMenu.visible = true
-  void loadDiff(file.path)
+  if (fileContextMenu.multiple) return
+  if (target.entry && !target.children.length) { selectedFile.value = target.entry.path; void loadDiff(target.entry.path) }
+  try {
+    const details = await workspaceItemDetails(path, target.path)
+    if (request === contextRequest && path === workspaceStore.currentPath && fileContextMenu.visible) fileContextMenu.details = details
+  } catch (error) { if (request === contextRequest && fileContextMenu.visible) ElMessage.error(String(error)) }
 }
 
 const isAbsolutePath = (path: string) => {
@@ -389,35 +383,86 @@ const joinWorkspacePath = (workspacePath: string, filePath: string) => {
   return `${base}${separator}${relative}`
 }
 
-const copySelectedFilePath = async (mode: 'relative' | 'absolute') => {
-  const file = fileContextMenu.file
-  if (!file || !workspaceStore.currentPath) return
-
-  const path = mode === 'absolute'
-    ? joinWorkspacePath(workspaceStore.currentPath, file.path)
-    : file.path
-
+const runContextAction = async (action: string) => {
+  const menu = contextItems.value.flatMap(item => [item, ...(item.disabled ? [] : item.children || [])]).find(item => item.id === action)
+  if (!menu || menu.disabled || fileContextMenu.workspace !== workspaceStore.currentPath || fileContextMenu.key !== staging.key) return
+  const context = { ...fileContextMenu, targets: [...fileContextMenu.targets] }
+  hideFileContextMenu()
   try {
-    await writeClipboardText(path)
-    ElMessage.success(t('workspace.pathCopied'))
-  } catch {
-    ElMessage.error(t('workspace.copyFailed'))
-  } finally {
-    hideFileContextMenu()
+    if (action === 'open') await openWorkspaceItem(context.workspace, context.path)
+    else if (action === 'reveal') await revealWorkspaceFile(context.workspace, context.path)
+    else if (action === 'diff') viewDiff(context.path)
+    else if (action === 'copy-relative' || action === 'copy-absolute') {
+      const paths = context.multiple ? context.targets : [context.path]
+      const target = paths.map(path => action === 'copy-relative' ? path : path === '.' ? context.workspace : joinWorkspacePath(context.workspace, path)).join('\n')
+      await writeClipboardText(target)
+      ElMessage.success(t('workspace.pathCopied'))
+    } else if (action === 'stage' || action === 'stage-all') {
+      const entries = context.staged ? stagedFiles.value : unstagedFiles.value
+      const targets = action === 'stage-all' ? entries.map(file => file.path) : context.targets
+      if (context.staged) staging.unstage(targets)
+      else staging.stage(targets)
+    } else if (action === 'discard') await discardTargets(context.targets)
+    else if (action === 'resolve-conflicts') openConflictDialog(context.targets)
+    else if (action === 'refresh-status') await refreshStatus()
+    else if (action === 'history' && context.details?.historyUrl) {
+      await router.push({ name: 'log', query: { target: context.details.historyUrl, workspace: context.workspace, branch: context.branch } })
+    } else if (action === 'blame') await router.push({ name: 'blame', query: { path: context.path } })
+    else if (action === 'stash') await router.push({ name: 'stash', query: { files: context.targets } })
+    else if (action === 'patch') {
+      const destination = await save({ title: t('fileMenu.patch'), defaultPath: `${context.path.split('/').pop() || 'changes'}.patch`, filters: [{ name: 'Patch', extensions: ['patch', 'diff'] }] })
+      if (!destination || context.workspace !== workspaceStore.currentPath || context.key !== staging.key) return
+      await flow.perform(t('fileMenu.patch'), async () => {
+        await exportWorkspacePatch(context.workspace, context.targets.map(normalizePath), destination, context.branch)
+        return { path: context.path, destination }
+      }, false)
+      ElMessage.success(t('fileMenu.patchSaved'))
+    } else if (action === 'ignore-exact' || action === 'ignore-extension') {
+      await flow.perform(t('fileMenu.ignore'), async () => {
+        await ignoreWorkspaceItem(context.workspace, context.path, action === 'ignore-extension', context.branch)
+        return { path: context.path, extension: action === 'ignore-extension' }
+      })
+    }
+  } catch (err) {
+    ElMessage.error(`${t('common.error')}: ${err}`)
   }
 }
 
-const revealSelectedFile = async () => {
-  const file = fileContextMenu.file
-  if (!file || !workspaceStore.currentPath) return
-
-  try {
-    await revealWorkspaceFile(workspaceStore.currentPath, file.path)
-  } catch (err) {
-    ElMessage.error(`${t('common.error')}: ${err}`)
-  } finally {
-    hideFileContextMenu()
+const handleChangeSelection = (_paths: string[], singleFile: boolean, staged: boolean) => {
+  activePanel.value = staged
+  if (!singleFile) {
+    diffRequestGeneration += 1
+    selectedFile.value = null
+    diffResult.value = null
+    isLoadingDiff.value = false
   }
+}
+const openConflictDialog = (targets: string[], inspectFresh = false) => {
+  const path = workspaceStore.currentPath, branch = workspaceStore.svnInfo?.url
+  if (!path || !branch || !staging.ready || flow.busy) return
+  const conflicts = (workspaceStore.rawStatusList || workspaceStore.statusList).filter(entry => targets.includes(entry.path) && (entry.status_code === 'conflicted' || entry.prop_status === 'conflicted')).map(entry => entry.path)
+  const files = inspectFresh ? targets : conflicts
+  if (!files.length) return
+  conflictRequest.value = { workspace: path, branch, files: [...files], otherCount: inspectFresh ? 0 : targets.length - conflicts.length }
+}
+const copySelectionPaths = async (paths: string[], absolute: boolean) => {
+  const workspace = workspaceStore.currentPath
+  if (!workspace || !paths.length) return
+  try { await writeClipboardText(paths.map(path => absolute ? path === '.' ? workspace : joinWorkspacePath(workspace, path) : path).join('\n')); ElMessage.success(t('workspace.pathCopied')) } catch (error) { ElMessage.error(String(error)) }
+}
+const handleWorkspaceKeydown = (event: KeyboardEvent) => {
+  if (!(event.ctrlKey || event.metaKey)) return
+  if (event.key.toLowerCase() === 'f' && !(event.target as HTMLElement)?.closest?.('.diff-viewer')) { event.preventDefault(); changeSearchInput.value?.focus() }
+  if (event.shiftKey && ['s', 'u'].includes(event.key.toLowerCase()) && staging.ready && !flow.busy && pendingFileAction.value === null) {
+    event.preventDefault()
+    if (event.key.toLowerCase() === 's') staging.stage(unstagedFiles.value.map(file => file.path))
+    else staging.unstage(stagedFiles.value.map(file => file.path))
+  }
+}
+
+const handleDocumentScroll = (event: Event) => {
+  const target = event.target as HTMLElement | null
+  if (!target?.closest?.('.file-context-menu')) hideFileContextMenu()
 }
 
 const handleDocumentKeydown = (event: KeyboardEvent) => {
@@ -432,19 +477,27 @@ watch(() => workspaceStore.statusList.map(file => file.path), (paths) => {
   isLoadingDiff.value = false
 })
 
-watch(() => workspaceStore.currentPath, () => {
+watch(() => [workspaceStore.currentPath, workspaceStore.svnInfo?.url], () => {
   fileActionWorkspaceGeneration += 1
   diffRequestGeneration += 1
   selectedFile.value = null
   diffResult.value = null
   isLoadingDiff.value = false
+  activePanel.value = null
+  conflictRequest.value = null
+  fileQuery.value = ''
+  hideFileContextMenu()
+}, { flush: 'sync' })
+
+watch(() => [staging.key, [...staging.paths].sort().join('\n'), filter.value, fileQuery.value], () => {
+  fileActionWorkspaceGeneration += 1
   hideFileContextMenu()
 }, { flush: 'sync' })
 
 onMounted(() => {
   document.addEventListener('click', hideFileContextMenu)
   document.addEventListener('contextmenu', hideFileContextMenu)
-  document.addEventListener('scroll', hideFileContextMenu, true)
+  document.addEventListener('scroll', handleDocumentScroll, true)
   document.addEventListener('keydown', handleDocumentKeydown)
 })
 
@@ -452,35 +505,60 @@ onBeforeUnmount(() => {
   fileActionWorkspaceGeneration += 1
   document.removeEventListener('click', hideFileContextMenu)
   document.removeEventListener('contextmenu', hideFileContextMenu)
-  document.removeEventListener('scroll', hideFileContextMenu, true)
+  document.removeEventListener('scroll', handleDocumentScroll, true)
   document.removeEventListener('keydown', handleDocumentKeydown)
 })
+onDeactivated(() => {
+  fileActionWorkspaceGeneration += 1
+  hideFileContextMenu()
+  conflictRequest.value = null
+})
 
-const fileActionLabel = (file: SvnStatus) => t(file.status_code === 'unversioned' ? 'common.delete' : 'common.revert')
-
-const handleFileAction = async (file: SvnStatus) => {
+const discardTargets = async (targets: string[]) => {
   hideFileContextMenu()
   const workspacePath = workspaceStore.currentPath
-  if (!workspacePath || pendingFileAction.value !== null || workspaceStore.statusIsStale) return
-  const path = file.path
-  const statusCode = file.status_code
-  const propStatus = file.prop_status
-  const isUnversioned = statusCode === 'unversioned'
+  if (!workspacePath || !targets.length || !staging.ready || flow.busy || pendingFileAction.value !== null || workspaceStore.statusIsStale) return
+  const selectionKey = staging.key
+  const branch = workspaceStore.svnInfo?.url || ''
+  const original = targets.map(path => workspaceStore.statusList.find(entry => entry.path === path)).map(entry => entry ? { ...entry } : null)
+  if (original.some(entry => !entry)) return
+  if (original.some(entry => entry!.status_code === 'conflicted' || entry!.prop_status === 'conflicted')) {
+    openConflictDialog(targets)
+    return
+  }
   const generation = fileActionWorkspaceGeneration
-  const isCurrent = () => generation === fileActionWorkspaceGeneration && workspaceStore.currentPath === workspacePath
-  pendingFileAction.value = path
+  const isCurrent = () => generation === fileActionWorkspaceGeneration && workspaceStore.currentPath === workspacePath && staging.key === selectionKey
+  const stillSelected = () => isCurrent() && staging.ready && !flow.busy && !workspaceStore.statusIsStale && original.every(entry => {
+    const current = workspaceStore.statusList.find(file => file.path === entry!.path)
+    return current && current.status_code === entry!.status_code && current.prop_status === entry!.prop_status
+  })
+  pendingFileAction.value = targets[0]
+  fileActionPhase.value = 'preview'
+  let planId: string | null = null
+  let executionStarted = false
+  let statusPatch: DiscardStatusPatch | null = null
+  let operationError: string | null = null
+  let executionEpoch = workspaceStore.epoch
   try {
+    const protectedPaths = [...new Set([...(workspaceStore.rawStatusList || workspaceStore.statusList).map(file => file.path), ...staging.paths])].filter(path => !targets.includes(path))
+    const preview = await previewWorkspaceDiscard(workspacePath, targets.map(normalizePath), branch, protectedPaths.map(normalizePath))
+    planId = preview.id
+    if (!stillSelected()) return
+    fileActionPhase.value = 'confirm'
     try {
       await ElMessageBox.confirm(
         h('div', [
-          h('p', t(isUnversioned ? 'workspace.deleteUnversionedConfirm' : 'workspace.revertFileConfirm')),
-          h('code', { class: 'workspace-file-confirm__path' }, joinWorkspacePath(workspacePath, path)),
+          h('p', t('fileMenu.discardConfirm', { count: preview.nodes.length })),
+          h('div', { class: 'workspace-discard-targets', tabindex: 0, role: 'region', 'aria-label': t('flow.files') }, preview.nodes.map(node => h('div', { class: 'workspace-discard-target' }, [
+            h('strong', t(node.remove ? 'common.delete' : 'common.revert') + ': '),
+            h('code', { title: node.path }, node.path),
+          ]))),
         ]),
-        t(isUnversioned ? 'common.delete' : 'common.revert'),
+        t('fileMenu.discard'),
         {
           type: 'warning',
-          customClass: 'workspace-file-confirm',
-          confirmButtonText: t(isUnversioned ? 'common.delete' : 'common.revert'),
+          customClass: 'workspace-file-confirm workspace-discard-confirm',
+          confirmButtonText: t('fileMenu.discard'),
           confirmButtonType: 'danger',
           cancelButtonText: t('common.cancel'),
           closeOnClickModal: false,
@@ -492,977 +570,50 @@ const handleFileAction = async (file: SvnStatus) => {
       if (action === 'cancel' || action === 'close') return
       throw action
     }
-    if (!isCurrent() || workspaceStore.statusIsStale) return
-    // A background refresh can remove the target or change its SVN state while
-    // the dialog is open. Such a target requires a new confirmation.
-    const currentFile = workspaceStore.statusList.find(entry => entry.path === path)
-    if (!currentFile || currentFile.status_code !== statusCode || currentFile.prop_status !== propStatus) return
-    if (isUnversioned) await deleteUnversioned(workspacePath, [path])
-    else await svnRevert(workspacePath, [path])
-    if (!isCurrent()) return
-    await refreshStatusAfterMutation()
-    if (isCurrent() && selectedFile.value === path) {
-      diffRequestGeneration += 1
-      selectedFile.value = null
-      diffResult.value = null
-      isLoadingDiff.value = false
+    if (!stillSelected()) return
+    executionStarted = true
+    executionEpoch = workspaceStore.epoch
+    fileActionPhase.value = 'execute'
+    const result = await executeWorkspaceDiscard(preview.id)
+    statusPatch = result.status
+    operationError = result.error
+    planId = null
+    if (isCurrent()) {
+      if (!result.error) ElMessage.success(t('fileMenu.discardCompleted'))
+      if (result.error) workspaceStore.setError(result.error)
     }
   } catch (err) {
-    if (isCurrent()) workspaceStore.setError(String(err))
+    if (executionStarted) operationError = String(err)
+    if (isCurrent()) {
+      if (!executionStarted && /\(conflicted\)/.test(String(err))) openConflictDialog(targets, true)
+      else workspaceStore.setError(String(err))
+    }
   } finally {
-    pendingFileAction.value = null
+    if (planId) { try { await cancelWorkspaceDiscard(planId) } catch { /* Expiry also releases abandoned previews. */ } }
+    // Even partial execution returns fresh status for its original scope.
+    // Only an unavailable scoped result requires a complete rescan.
+    try {
+      if (executionStarted && workspaceStore.currentPath === workspacePath && staging.key === selectionKey) {
+        fileActionPhase.value = 'refresh'
+        await refreshStatusAfterDiscard(workspaceStore.epoch === executionEpoch ? statusPatch : null)
+        if (operationError && workspaceStore.currentPath === workspacePath && staging.key === selectionKey) workspaceStore.setError(operationError)
+        if (workspaceStore.currentPath === workspacePath && staging.key === selectionKey && selectedFile.value && targets.includes(selectedFile.value)) {
+          diffRequestGeneration += 1
+          selectedFile.value = null
+          diffResult.value = null
+          isLoadingDiff.value = false
+        }
+      }
+    } catch (err) {
+      if (workspaceStore.currentPath === workspacePath && staging.key === selectionKey) workspaceStore.setError([workspaceStore.error, String(err)].filter(Boolean).join('\n'))
+    } finally {
+      pendingFileAction.value = null
+    }
   }
 }
 
 </script>
 
 <style scoped>
-.workspace-view {
-  height: 100%;
-}
-
-/* 空状态 */
-.empty-state {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  padding: 24px;
-}
-
-.empty-content {
-  text-align: center;
-  max-width: 480px;
-}
-
-.empty-icon {
-  display: grid;
-  place-items: center;
-  width: 80px;
-  height: 80px;
-  margin: 0 auto 24px;
-  border-radius: var(--app-radius-md);
-  background: linear-gradient(135deg, var(--md-sys-color-primary-container), var(--md-sys-color-secondary-container));
-  color: var(--md-sys-color-primary);
-  font-size: 36px;
-}
-
-.empty-content h2 {
-  margin: 0 0 8px;
-  font-size: 24px;
-  font-weight: 700;
-  color: var(--el-text-color-primary);
-}
-
-.empty-content p {
-  margin: 0 0 24px;
-  color: var(--el-text-color-secondary);
-}
-
-.empty-actions {
-  display: flex;
-  justify-content: center;
-  gap: 12px;
-}
-
-/* 三栏布局 */
-.workspace-layout {
-  display: flex;
-  height: 100%;
-  overflow: hidden;
-}
-
-/* 面板通用样式 */
-.left-panel,
-.center-panel,
-.right-panel {
-  display: flex;
-  flex-direction: column;
-  border-right: 1px solid var(--md-sys-color-outline-variant);
-}
-
-.left-panel {
-  width: 280px;
-  flex-shrink: 0;
-  background: var(--md-sys-color-surface);
-}
-
-.center-panel {
-  flex: 1;
-  min-width: 0;
-  background: var(--md-sys-color-surface);
-  position: relative;
-}
-
-.right-panel {
-  width: 400px;
-  flex-shrink: 0;
-  border-right: none;
-  background: var(--md-sys-color-surface-dim);
-}
-
-.panel-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 36px;
-  padding: 0 12px;
-  background: var(--md-sys-color-surface-container);
-  border-bottom: 1px solid var(--md-sys-color-outline-variant);
-  flex-shrink: 0;
-}
-
-.panel-title {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--app-font-size-sm);
-  font-weight: 600;
-  color: var(--el-text-color-primary);
-}
-
-.panel-title .el-icon {
-  font-size: var(--app-font-size-body);
-}
-
-.panel-content {
-  position: relative;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-  padding: 12px;
-}
-
-.panel-section {
-  border-top: 1px solid var(--md-sys-color-outline-variant);
-}
-
-/* 左侧信息面板 */
-.info-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.info-item {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.info-label {
-  font-size: var(--app-font-size-xs);
-  font-weight: 600;
-  color: var(--el-text-color-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.info-value {
-  font-size: var(--app-font-size-label);
-  color: var(--el-text-color-primary);
-  word-break: break-all;
-}
-
-.path-text {
-  font-family: var(--app-font-family-mono);
-  font-size: var(--app-font-size-sm);
-}
-
-.url-text {
-  color: var(--md-sys-color-primary);
-  font-size: var(--app-font-size-sm);
-}
-
-.no-info {
-  text-align: center;
-  color: var(--el-text-color-secondary);
-  padding: 20px 0;
-}
-
-/* 快速操作 */
-.quick-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px;
-}
-
-.quick-actions .el-button {
-  justify-content: flex-start;
-}
-
-/* 状态统计 */
-.status-summary {
-  display: flex;
-  padding: 8px 12px;
-  gap: 8px;
-  border-bottom: 1px solid var(--md-sys-color-outline-variant);
-  flex-shrink: 0;
-}
-
-.status-badge {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: var(--app-radius-full);
-  background: var(--el-fill-color-light);
-  border: 1px solid transparent;
-  cursor: pointer;
-  transition: color var(--app-transition-fast), background-color var(--app-transition-fast), border-color var(--app-transition-fast);
-  font-size: var(--app-font-size-sm);
-}
-
-.status-badge:hover {
-  background: var(--el-fill-color);
-}
-
-.status-badge.active {
-  background: var(--md-sys-color-primary-container);
-  color: var(--md-sys-color-primary);
-}
-
-.badge-count {
-  font-weight: 700;
-}
-
-.badge-label {
-  color: var(--el-text-color-secondary);
-}
-
-.status-badge.modified .badge-count {
-  color: var(--app-color-status-modified-text);
-}
-
-.status-badge.unversioned .badge-count {
-  color: var(--app-color-status-unversioned-text);
-}
-
-.status-badge.deleted .badge-count {
-  color: var(--app-color-status-error-text);
-}
-
-.status-badge.conflicted .badge-count,
-.status-badge.missing .badge-count {
-  color: var(--app-color-status-error-text);
-}
-
-.cached-status-notice {
-  padding: 8px 12px;
-  color: var(--md-sys-color-on-surface-variant);
-  background: var(--md-sys-color-surface-container);
-  font-size: var(--app-font-size-sm);
-  border-bottom: 1px solid var(--md-sys-color-outline-variant);
-}
-
-/* 文件列表 */
-.file-list {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.loading-files {
-  padding: 16px 12px;
-}
-
-.file-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--md-sys-color-outline-variant);
-  cursor: pointer;
-  transition: background var(--app-transition-fast);
-}
-
-.file-item:hover {
-  background: var(--el-fill-color-lighter);
-}
-
-.file-item.selected {
-  background: var(--md-sys-color-primary-container);
-}
-
-.file-item:focus-within .file-actions {
-  opacity: 1;
-}
-
-.file-status {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 24px;
-  height: 20px;
-  padding: 0 6px;
-  border-radius: var(--app-radius-xs);
-  font-size: var(--app-font-size-2xs);
-  font-weight: 700;
-  text-transform: uppercase;
-}
-
-.file-status.status-modified,
-.file-status.status-replaced {
-  background: var(--app-color-status-modified-bg);
-  color: var(--app-color-status-modified-text);
-}
-
-.file-status.status-added {
-  background: var(--app-color-status-added-bg);
-  color: var(--app-color-status-added-text);
-}
-
-.file-status.status-deleted,
-.file-status.status-missing,
-.file-status.status-conflicted,
-.file-status.status-obstructed {
-  background: var(--app-color-status-error-bg);
-  color: var(--app-color-status-error-text);
-}
-
-.file-status.status-unversioned {
-  background: var(--app-color-status-unversioned-bg);
-  color: var(--app-color-status-unversioned-text);
-}
-
-.file-path {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--app-font-size-label);
-  font-family: var(--app-font-family-mono);
-  cursor: pointer;
-}
-
-.file-actions {
-  display: flex;
-  gap: 2px;
-  opacity: .45;
-  transition:
-    opacity var(--app-transition-fast),
-    transform var(--app-transition-fast);
-}
-
-.file-actions :deep(.el-button) {
-  width: 26px;
-  height: 24px;
-  padding: 0;
-  border: 1px solid transparent;
-  background: var(--el-fill-color-light);
-}
-
-.file-actions :deep(.el-button:hover) {
-  border-color: var(--md-sys-color-outline-variant);
-  background: var(--el-fill-color);
-}
-
-.file-actions :deep(.el-button.el-button--danger:hover) {
-  color: var(--md-sys-color-on-error);
-  border-color: var(--md-sys-color-error);
-  background: var(--md-sys-color-error);
-}
-
-.file-action-trigger {
-  display: inline-flex;
-}
-
-.file-item:hover .file-actions {
-  opacity: 1;
-  transform: translateX(-1px);
-}
-
-.empty-files {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 40px;
-  color: var(--el-text-color-secondary);
-}
-
-.empty-files .el-icon {
-  font-size: 32px;
-}
-
-.file-context-menu {
-  position: fixed;
-  z-index: 3000;
-  min-width: 168px;
-  padding: 4px;
-  border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: var(--app-radius-sm);
-  background: var(--md-sys-color-surface-container);
-  box-shadow: var(--app-shadow-floating);
-}
-
-.context-menu-item {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  height: 30px;
-  gap: 8px;
-  padding: 0 10px;
-  border: 0;
-  border-radius: var(--app-radius-xs);
-  background: transparent;
-  color: var(--el-text-color-primary);
-  cursor: pointer;
-  font-size: var(--app-font-size-label);
-  text-align: left;
-}
-
-.context-menu-item:hover {
-  background: var(--el-fill-color);
-}
-
-.context-menu-item .el-icon {
-  color: var(--el-text-color-secondary);
-}
-
-/* 差异预览 */
-.empty-diff,
-.loading-diff {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  height: 100%;
-  color: var(--el-text-color-secondary);
-}
-
-.empty-diff .el-icon {
-  font-size: 48px;
-}
-
-.diff-content {
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-}
-
-.diff-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--md-sys-color-outline-variant);
-  flex-shrink: 0;
-}
-
-.diff-stats {
-  display: flex;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-.diff-path-tag {
-  min-width: 0;
-  max-width: 100%;
-}
-
-.diff-path-tag :deep(.el-tag__content) {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* 响应式 */
-@media (max-width: 1200px) {
-  .right-panel {
-    width: 320px;
-  }
-}
-
-@media (max-width: 860px) {
-  .left-panel {
-    display: none;
-  }
-  
-  .right-panel {
-    display: flex;
-  }
-}
-</style>
-
-<style scoped>
-/* Fork-like workspace layout overrides */
-.empty-state {
-  display: grid;
-  grid-template-columns: 210px 1fr;
-  align-items: stretch;
-  justify-content: stretch;
-  padding: 0;
-  background: var(--md-sys-color-surface-container-lowest);
-}
-
-.welcome-sidebar,
-.left-panel {
-  width: 210px;
-  background: var(--md-sys-color-surface-container-low);
-  border-right: 1px solid var(--md-sys-color-outline-variant);
-  color: var(--md-sys-color-on-surface-variant);
-}
-
-.empty-content {
-  align-self: start;
-  max-width: 680px;
-  margin: var(--app-spacing-xl);
-  min-width: 0;
-  padding: 48px;
-  border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: var(--app-radius-xl);
-  background: var(--md-sys-color-surface-container-low);
-  text-align: left;
-}
-
-.welcome-mark {
-  display: grid;
-  place-items: center;
-  width: 60px;
-  height: 60px;
-  margin-bottom: 28px;
-  border-radius: 18px;
-  color: var(--md-sys-color-on-primary-container);
-  background: var(--md-sys-color-primary-container);
-  font-size: var(--app-font-size-display);
-}
-
-.welcome-eyebrow {
-  display: block;
-  margin-bottom: 10px;
-  color: var(--md-sys-color-primary);
-  font-size: var(--app-font-size-sm);
-  font-weight: 700;
-  letter-spacing: .06em;
-}
-
-.empty-content h2 {
-  margin-bottom: 12px;
-  font-size: clamp(24px, 3vw, var(--app-font-size-display));
-  font-weight: var(--app-font-weight-bold);
-  letter-spacing: -.025em;
-}
-
-.empty-content p {
-  margin-bottom: 28px;
-  color: var(--md-sys-color-on-surface-variant);
-  font-size: var(--app-font-size-body);
-  line-height: var(--app-line-height-relaxed);
-}
-
-.empty-actions {
-  justify-content: flex-start;
-}
-
-.empty-actions :deep(.el-button + .el-button) {
-  margin-left: 0;
-}
-
-.workspace-layout {
-  gap: 0;
-  padding: 0;
-  background: var(--md-sys-color-surface-container-lowest);
-}
-
-.left-panel {
-  flex-shrink: 0;
-}
-
-.repository-name {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 37px;
-  padding: 0 9px 0 12px;
-  border-bottom: 1px solid var(--md-sys-color-outline-variant);
-  color: var(--md-sys-color-on-surface);
-  font-size: var(--app-font-size-sm);
-}
-
-.repository-name button {
-  display: grid;
-  place-items: center;
-  width: 20px;
-  height: 20px;
-  border: 0;
-  border-radius: var(--app-radius-sm);
-  background: transparent;
-  color: var(--md-sys-color-on-surface-variant);
-}
-
-.repository-name button:hover,
-.sidebar-row:hover {
-  background: var(--md-sys-state-hover);
-}
-
-.sidebar-section {
-  padding: 8px 6px 3px;
-}
-
-.sidebar-heading {
-  padding: 3px 7px;
-  color: var(--md-sys-color-on-surface-variant);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: .06em;
-}
-
-.sidebar-row {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  height: 25px;
-  gap: 6px;
-  padding: 0 8px;
-  border: 0;
-  border-radius: var(--app-radius-sm);
-  background: transparent;
-  color: var(--md-sys-color-on-surface-variant);
-  font-size: var(--app-font-size-label);
-  text-align: left;
-}
-
-.sidebar-row.active {
-  color: var(--md-sys-color-on-primary-container);
-  background: var(--md-sys-color-primary-container);
-}
-
-.sidebar-row span {
-  flex: 1;
-}
-
-.sidebar-row b {
-  font-size: var(--app-font-size-2xs);
-}
-
-.repository-meta {
-  margin: 10px 12px;
-  padding-top: 8px;
-  border-top: 1px solid var(--md-sys-color-outline-variant);
-}
-
-.repository-meta div {
-  margin-bottom: 9px;
-}
-
-.repository-meta span,
-.repository-meta strong {
-  display: block;
-}
-
-.repository-meta span {
-  color: var(--md-sys-color-on-surface-variant);
-  font-size: 9px;
-  text-transform: uppercase;
-}
-
-.repository-meta strong {
-  overflow: hidden;
-  margin-top: 2px;
-  color: var(--md-sys-color-on-surface-variant);
-  font-size: var(--app-font-size-2xs);
-  font-weight: 500;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.sidebar-actions {
-  display: grid;
-  gap: 4px;
-  margin-top: auto;
-  padding: 9px;
-  border-top: 1px solid var(--md-sys-color-outline-variant);
-}
-
-.sidebar-actions button {
-  display: flex;
-  align-items: center;
-  height: 27px;
-  gap: 6px;
-  padding: 0 8px;
-  border: 1px solid var(--md-sys-color-outline);
-  border-radius: var(--app-radius-sm);
-  background: var(--md-sys-color-surface-container-low);
-  color: var(--md-sys-color-on-surface-variant);
-  font-size: var(--app-font-size-label);
-}
-
-.center-panel,
-.right-panel {
-  overflow: hidden;
-  border: 0;
-  border-radius: 0;
-  background: var(--md-sys-color-surface-container-lowest);
-}
-
-.center-panel {
-  flex: 0 0 42%;
-  width: 42%;
-  min-width: 0;
-  border-right: 1px solid var(--md-sys-color-outline-variant);
-}
-
-.right-panel {
-  flex: 1 1 auto;
-  width: auto;
-  min-width: 0;
-  background: var(--md-sys-color-surface-container-lowest);
-}
-
-.panel-header {
-  height: var(--app-size-panel-header);
-  padding: 0 18px;
-  background: var(--md-sys-color-surface-container-lowest);
-  border-bottom: 1px solid var(--md-sys-color-outline-variant);
-}
-
-.panel-title {
-  color: var(--md-sys-color-on-surface);
-  font-size: var(--app-font-size-body);
-  font-weight: var(--app-font-weight-bold);
-}
-
-.status-summary {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 12px 16px;
-  background: var(--md-sys-color-surface-container-lowest);
-  border-bottom: 1px solid var(--md-sys-color-outline-variant);
-}
-
-.status-badge {
-  justify-content: center;
-  width: auto;
-  min-width: 0;
-  gap: 6px;
-  min-height: var(--app-size-control-sm);
-  padding: 3px 10px;
-  border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: var(--app-radius-sm);
-  background: var(--md-sys-color-surface-container-low);
-  font-size: var(--app-font-size-sm);
-}
-
-.status-badge.active {
-  border-color: var(--md-sys-color-primary);
-  background: var(--md-sys-color-primary-container);
-  color: var(--md-sys-color-on-primary-container);
-}
-
-.file-item {
-  min-height: var(--app-size-list-row);
-  gap: 10px;
-  padding: 6px 16px;
-  border-bottom: 1px solid var(--md-sys-color-outline-variant);
-}
-
-.file-item.selected {
-  color: var(--md-sys-color-on-primary-container);
-  background: var(--md-sys-color-primary-container);
-}
-
-.file-status {
-  min-width: 20px;
-  height: 21px;
-  padding: 0 6px;
-  font-size: var(--app-font-size-2xs);
-}
-
-.file-path {
-  font-size: var(--app-font-size-label);
-}
-
-.file-actions {
-  opacity: .7;
-}
-
-.file-actions :deep(.el-button) {
-  width: 32px;
-  height: 32px;
-  background: transparent;
-}
-
-.diff-header {
-  min-height: 40px;
-  padding: 5px 10px;
-  background: var(--md-sys-color-surface-container-low);
-}
-
-:global(.theme-dark) .workspace-layout,
-:global(.dark) .workspace-layout {
-  background: var(--md-sys-color-surface-dim);
-}
-
-:global(.theme-dark) .center-panel,
-:global(.theme-dark) .right-panel,
-:global(.dark) .center-panel,
-:global(.dark) .right-panel {
-  background: var(--md-sys-color-surface-container-lowest) !important;
-}
-
-:global(.theme-dark) .right-panel,
-:global(.dark) .right-panel {
-  border-left-color: rgba(115, 115, 115, .18) !important;
-}
-
-:global(.theme-dark) .panel-header,
-:global(.theme-dark) .diff-header,
-:global(.dark) .panel-header,
-:global(.dark) .diff-header {
-  background: var(--md-sys-color-surface-container) !important;
-  border-color: rgba(115, 115, 115, .16) !important;
-}
-
-:global(.theme-dark) .panel-title,
-:global(.dark) .panel-title {
-  color: var(--md-sys-color-on-surface) !important;
-}
-
-:global(.theme-dark) .status-summary,
-:global(.dark) .status-summary {
-  background: var(--md-sys-color-surface-container-lowest) !important;
-  border-color: rgba(115, 115, 115, .14) !important;
-}
-
-:global(.theme-dark) .status-badge,
-:global(.dark) .status-badge {
-  color: var(--md-sys-color-on-surface-variant);
-  border-color: var(--md-sys-color-outline-variant);
-  background: var(--md-sys-color-surface-container-low) !important;
-}
-
-:global(.theme-dark) .status-badge:hover,
-:global(.dark) .status-badge:hover {
-  color: var(--md-sys-color-on-surface);
-  background: var(--md-sys-color-surface-container-high) !important;
-}
-
-:global(.theme-dark) .status-badge.active,
-:global(.dark) .status-badge.active {
-  color: var(--md-sys-color-on-primary-container) !important;
-  border-color: var(--md-sys-color-primary) !important;
-  background: var(--md-sys-color-primary-container) !important;
-}
-
-:global(.theme-dark) .status-badge.active .badge-label,
-:global(.dark) .status-badge.active .badge-label {
-  color: var(--md-sys-color-on-primary-container) !important;
-}
-
-:global(.theme-dark) .file-list,
-:global(.dark) .file-list {
-  background: var(--md-sys-color-surface-container-lowest);
-}
-
-:global(.theme-dark) .file-item,
-:global(.dark) .file-item {
-  color: var(--md-sys-color-on-surface-variant) !important;
-  background: var(--md-sys-color-surface-container-lowest) !important;
-  border-bottom-color: rgba(115, 115, 115, .12) !important;
-}
-
-:global(.theme-dark) .file-item:hover,
-:global(.dark) .file-item:hover {
-  color: var(--md-sys-color-on-surface) !important;
-  background: var(--md-sys-color-surface-container-high) !important;
-}
-
-:global(.theme-dark) .file-item.selected,
-:global(.dark) .file-item.selected {
-  color: var(--md-sys-color-on-primary-container) !important;
-  background: var(--md-sys-color-primary-container) !important;
-}
-
-:global(.theme-dark) .file-actions :deep(.el-button),
-:global(.dark) .file-actions :deep(.el-button) {
-  color: var(--md-sys-color-on-surface-variant);
-  background: var(--md-sys-color-surface-container);
-  border-color: rgba(115, 115, 115, .16);
-}
-
-:global(.theme-dark) .file-actions :deep(.el-button:hover),
-:global(.dark) .file-actions :deep(.el-button:hover) {
-  color: var(--md-sys-color-on-surface);
-  background: var(--md-sys-color-surface-container-highest);
-  border-color: rgba(143, 160, 174, .28);
-}
-
-:global(.theme-dark) .empty-diff,
-:global(.theme-dark) .empty-files,
-:global(.dark) .empty-diff,
-:global(.dark) .empty-files {
-  color: var(--md-sys-color-on-surface-variant);
-}
-
-:global(.theme-dark) .empty-diff .el-icon,
-:global(.theme-dark) .empty-files .el-icon,
-:global(.dark) .empty-diff .el-icon,
-:global(.dark) .empty-files .el-icon {
-  color: var(--md-sys-color-outline);
-}
-
-:global(.theme-dark) .file-context-menu,
-:global(.dark) .file-context-menu {
-  border-color: rgba(115, 115, 115, .2);
-  background: var(--md-sys-color-surface-container);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, .34);
-}
-
-:global(.theme-dark) .context-menu-item,
-:global(.dark) .context-menu-item {
-  color: var(--md-sys-color-on-surface-variant);
-}
-
-:global(.theme-dark) .context-menu-item:hover,
-:global(.dark) .context-menu-item:hover {
-  color: var(--md-sys-color-on-surface);
-  background: var(--md-sys-color-surface-container-high);
-}
-
-@media (max-width: 860px) {
-  .empty-state {
-    grid-template-columns: 1fr;
-  }
-  .welcome-sidebar {
-    display: none;
-  }
-  .workspace-layout {
-    flex-direction: column;
-    overflow-y: auto;
-  }
-  .center-panel {
-    flex: 0 0 300px;
-    min-height: 300px;
-    width: 100%;
-    border-right: 0;
-    border-bottom: 1px solid var(--md-sys-color-outline-variant);
-  }
-  .right-panel {
-    flex: 1 0 320px;
-    min-height: 320px;
-    width: 100%;
-  }
-}
-
-@media (max-width: 650px) {
-  .empty-content {
-    margin: var(--app-spacing-md);
-    padding: var(--app-spacing-lg);
-  }
-}
+.workspace-view{height:100%;min-height:0;overflow:hidden}.workspace-layout{height:100%;display:grid;grid-template-columns:clamp(240px,var(--changes-width),46%) 4px minmax(0,1fr);min-height:0}.left-panel,.welcome-sidebar{display:none}.center-panel{display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--md-sys-color-surface-container-lowest)}.changes-filterbar{display:flex;align-items:center;gap:4px;padding:4px 6px;height:36px;min-height:36px;border-bottom:1px solid var(--md-sys-color-outline-variant)}.changes-filterbar input{min-width:40px;flex:1;border:1px solid var(--md-sys-color-outline-variant);border-radius:12px;padding:3px 8px;background:var(--md-sys-color-surface-container-lowest);font-size:12px}.changes-filterbar button{display:grid;place-items:center;min-width:24px;height:24px;padding:2px;border:0;background:none;cursor:pointer}.changes-filterbar button:disabled{opacity:.35;cursor:default}.changes-filterbar select,.changes-status-filter select{border:0;min-width:0;background:var(--md-sys-color-surface-container-lowest);font-size:11px;max-width:96px}.changes-status-filter{display:flex;justify-content:space-between;align-items:center;height:26px;min-height:26px;padding:0 8px;font-size:11px;border-bottom:1px solid var(--md-sys-color-outline-variant);color:var(--md-sys-color-on-surface-variant)}.changes-status-filter select{max-width:220px}.file-list{position:relative;flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}.workspace-change-groups{display:grid;flex:1;min-height:0;overflow:hidden}.staging-notice,.cached-status-notice{font-size:11px;padding:6px 8px;line-height:1.4;border-bottom:1px solid var(--md-sys-color-outline-variant);color:var(--md-sys-color-on-surface-variant)}.staging-notice button{background:none;border:0;color:var(--md-sys-color-primary);cursor:pointer}.right-panel{display:grid;grid-template-rows:30px minmax(100px,1fr) 4px minmax(160px,var(--composer-height));min-width:0;min-height:0;overflow:hidden;padding:0 4px;background:var(--md-sys-color-surface)}.panel-header{display:flex;align-items:center;padding:0 8px;gap:6px;border-bottom:1px solid var(--md-sys-color-outline-variant);font-size:12px;color:var(--md-sys-color-on-surface-variant)}.panel-title{display:flex;align-items:center;gap:6px}.panel-content{position:relative;min-height:0;overflow:hidden;display:flex;flex-direction:column}.diff-content{display:flex;flex-direction:column;flex:1;min-height:0}.diff-header{display:flex;justify-content:space-between;gap:8px;padding:5px 8px;font-size:11px}.diff-path-tag{max-width:80%;overflow:hidden;text-overflow:ellipsis}.diff-stats{display:flex;gap:5px}.diff-content :deep(.diff-viewer){flex:1;min-height:0}.empty-diff{display:flex;flex:1;gap:14px;align-items:center;justify-content:center;flex-direction:column;color:var(--md-sys-color-on-surface-variant);font-size:14px}.empty-diff>.el-icon{font-size:42px;opacity:.35}.workspace-commit-composer{display:flex;flex-direction:column;min-height:0;overflow:auto;padding:8px;gap:6px}.workspace-commit-composer :deep(.commit-message-editor){flex:1;min-height:0}.workspace-commit-composer :deep(.compact label:last-of-type){flex:1;min-height:0}.workspace-commit-composer :deep(.el-textarea),.workspace-commit-composer :deep(.el-textarea__inner){height:100%;min-height:52px!important;max-height:none}.commit-action-row{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-shrink:0}.commit-action-row small{font-size:11px;color:var(--md-sys-color-on-surface-variant)}.loading-diff{padding:16px}.empty-state{display:grid;place-items:center;height:100%}.empty-content{text-align:center;max-width:500px;padding:28px}.welcome-mark{font-size:48px;opacity:.5}.welcome-eyebrow{color:var(--md-sys-color-primary);font-size:12px}.empty-content h2{margin:10px 0;font-size:24px}.empty-content p{color:var(--md-sys-color-on-surface-variant);font-size:13px}.empty-actions{margin-top:24px;display:flex;gap:12px;justify-content:center}@media(max-width:850px){.workspace-layout{grid-template-columns:minmax(210px,40%) 4px minmax(0,1fr)}.changes-filterbar select{max-width:70px}.right-panel{grid-template-rows:30px minmax(60px,1fr) 4px minmax(160px,var(--composer-height))}}
 </style>

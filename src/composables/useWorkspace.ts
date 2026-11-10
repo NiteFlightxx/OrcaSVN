@@ -1,13 +1,14 @@
 import { useWorkspaceStore } from '@/stores/workspace'
-import { svnStatus, svnInfo, svnLocalRevision, readGitignore } from '@/api/svn'
+import { svnStatus, svnInfo, svnLocalRevision, readGitignore, type DiscardStatusPatch } from '@/api/svn'
 import { open } from '@tauri-apps/plugin-dialog'
 import { useSettings } from '@/composables/useSettings'
 import i18n from '@/i18n'
 import { parseGitignore } from '@/utils/gitignore'
 import { filterByGitignoreAsync } from '@/utils/gitignoreWorker'
-import { cacheSvnInfoMetadata, getCachedSvnInfoMetadata, type SvnInfoMetadata } from '@/utils/svnInfoCache'
+import { cacheSvnInfoMetadata, getCachedSvnInfoMetadata, invalidateSvnInfoMetadata, type SvnInfoMetadata } from '@/utils/svnInfoCache'
 import { cacheWorkspaceSnapshot, getWorkspaceSnapshot, invalidateWorkspaceSnapshot } from '@/utils/workspaceSnapshot'
 import type { SvnInfo } from '@/types'
+import { mergeDiscardStatus } from '@/utils/statusPatch'
 
 let workspaceRequestGeneration = 0
 let pendingRequest: { path: string; generation: number; force: boolean; background: boolean; promise: Promise<boolean> } | null = null
@@ -123,6 +124,7 @@ export function useWorkspace() {
     const generation = ++workspaceRequestGeneration
     const previousPath = workspaceStore.currentPath
     const previousStatusList = workspaceStore.statusList
+    const previousRawStatusList = workspaceStore.rawStatusList
     const previousSvnInfo = workspaceStore.svnInfo
     const previousStatusIsStale = workspaceStore.statusIsStale
     const { settings } = useSettings()
@@ -137,6 +139,7 @@ export function useWorkspace() {
 
     // 提前设置 currentPath，让依赖工作区路径的视图尽早切换。
     workspaceStore.setCurrentPath(path, false)
+    workspaceStore.setRawStatusList(null)
     workspaceStore.setStatusList(snapshot?.statusList || [])
     workspaceStore.setSvnInfo(snapshot?.svnInfo || null)
     workspaceStore.setStatusIsStale(Boolean(snapshot))
@@ -151,6 +154,7 @@ export function useWorkspace() {
       // 变更列表不依赖仓库元数据，status 返回后立即展示。
       const status = await statusRequest
       if (!isCurrent()) return false
+      workspaceStore.setRawStatusList(status)
       workspaceStore.setStatusList(status)
 
       const [infoResult] = await Promise.all([infoRequest, gitignoreRequest])
@@ -184,6 +188,7 @@ export function useWorkspace() {
       if (previousPath) workspaceStore.setCurrentPath(previousPath, false)
       else workspaceStore.resetWorkspaceState()
       workspaceStore.setStatusList(previousStatusList)
+      workspaceStore.setRawStatusList(previousRawStatusList)
       workspaceStore.setSvnInfo(previousSvnInfo)
       workspaceStore.setStatusIsStale(previousStatusIsStale)
       reportStatusError(path, String(err))
@@ -221,21 +226,25 @@ export function useWorkspace() {
       generation === workspaceRequestGeneration && workspaceStore.currentPath === path
     )
 
-    workspaceStore.setLoading(true)
-    if (!background) clearStatusError()
+    if (!background) {
+      workspaceStore.setLoading(true)
+      clearStatusError()
+    }
     try {
       const statusRequest = svnStatus(path, force)
       const infoRequest = requestWorkspaceInfo(path, isCurrent)
       const gitignoreRequest = loadGitignoreIfNeeded(path, workspaceStore, isCurrent)
       const status = await statusRequest
       if (!isCurrent()) return false
-      workspaceStore.setStatusList(status)
-      const [infoResult] = await Promise.all([infoRequest, gitignoreRequest])
-      if (!isCurrent() || (infoResult.ok && !infoResult.info)) return false
+      await gitignoreRequest
+      if (!isCurrent()) return false
       const filteredStatus = await filterByGitignoreAsync(status, workspaceStore.gitignorePatterns)
       if (!isCurrent()) return false
+      workspaceStore.setRawStatusList(status)
       workspaceStore.setStatusList(filteredStatus)
       workspaceStore.setStatusIsStale(false)
+      const infoResult = await infoRequest
+      if (!isCurrent() || (infoResult.ok && !infoResult.info)) return false
       // Keep the status just scanned; the caller learns the revision is not current.
       if (!infoResult.ok) throw infoResult.error
       if (infoResult.info) {
@@ -265,6 +274,8 @@ export function useWorkspace() {
   function refreshStatus(): Promise<boolean> {
     const path = workspaceStore.currentPath
     if (!path) return Promise.resolve(false)
+    invalidateSvnInfoMetadata(path)
+    workspaceStore.advanceEpoch()
     if (pendingRequest?.path === path && pendingRequest.force && pendingRequest.generation === workspaceRequestGeneration) return pendingRequest.promise
     return trackRequest(path, () => performRefreshStatus(true), true)
   }
@@ -275,9 +286,46 @@ export function useWorkspace() {
     const path = workspaceStore.currentPath
     if (path) {
       invalidateWorkspaceSnapshot(path)
+      invalidateSvnInfoMetadata(path)
+      workspaceStore.advanceEpoch()
       workspaceStore.setStatusIsStale(true)
     }
     return path ? trackRequest(path, () => performRefreshStatus(true), true) : Promise.resolve(false)
+  }
+
+  function refreshStatusAfterDiscard(patch: DiscardStatusPatch | null): Promise<boolean> {
+    const path = workspaceStore.currentPath
+    if (!path) return Promise.resolve(false)
+    if (!patch || patch.workspace !== path || patch.expectedUrl !== workspaceStore.svnInfo?.url
+      || workspaceStore.rawStatusList === null) return refreshStatusAfterMutation()
+    invalidateWorkspaceSnapshot(path)
+    const generation = ++workspaceRequestGeneration
+    const branch = patch.expectedUrl
+    const isCurrent = () => generation === workspaceRequestGeneration
+      && path === workspaceStore.currentPath && branch === workspaceStore.svnInfo?.url
+    const status = mergeDiscardStatus(workspaceStore.rawStatusList, patch)
+    // Discard does not change repository URL/revision. Avoid the metadata,
+    // history and remote branch reloads attached to a whole-workspace epoch.
+    workspaceStore.setStatusIsStale(true)
+    workspaceStore.setLoading(true)
+    return trackRequest(path, async () => {
+      try {
+        await loadGitignoreIfNeeded(path, workspaceStore, isCurrent)
+        if (!isCurrent()) return false
+        const filtered = await filterByGitignoreAsync(status, workspaceStore.gitignorePatterns)
+        if (!isCurrent()) return false
+        workspaceStore.setRawStatusList(status)
+        workspaceStore.setStatusList(filtered)
+        workspaceStore.setStatusIsStale(false)
+        if (workspaceStore.svnInfo) cacheWorkspaceSnapshot(path, filtered, workspaceStore.svnInfo, useSettings().settings.gitignoreEnabled)
+        return true
+      } catch (error) {
+        if (isCurrent()) reportStatusError(path, String(error))
+        return false
+      } finally {
+        if (isCurrent()) workspaceStore.setLoading(false)
+      }
+    })
   }
 
   function refreshStatusIfStale(maxAgeMs: number): Promise<boolean> {
@@ -298,5 +346,5 @@ export function useWorkspace() {
     if (launchPath && launchError && !workspaceStore.error) reportStatusError(launchPath, launchError)
   }
 
-  return { loadWorkspace, openWorkspace, restoreLastWorkspace, openStartupWorkspace, refreshStatus, refreshStatusAfterMutation, refreshStatusIfStale }
+  return { loadWorkspace, openWorkspace, restoreLastWorkspace, openStartupWorkspace, refreshStatus, refreshStatusAfterMutation, refreshStatusAfterDiscard, refreshStatusIfStale }
 }

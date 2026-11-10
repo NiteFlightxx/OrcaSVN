@@ -1,6 +1,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod asset_stash;
+mod discard;
+mod file_actions;
 mod svn;
+#[cfg(test)]
+mod workflow_tests;
+mod workflows;
 
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
@@ -174,8 +180,53 @@ fn spawn_command(mut command: Command) -> Result<(), String> {
 
 #[tauri::command]
 async fn delete_unversioned(path: String, files: Vec<String>) -> Result<CommandResult, String> {
+    let _writer = workflows::acquire(&path).await?;
     let workspace = fs::canonicalize(&path).map_err(|e| format!("invalid workspace path: {e}"))?;
     let mut removed = Vec::new();
+
+    // Validate the entire selection before deleting anything; never trust a stale UI status.
+    for file in &files {
+        workflows::ensure_owned(&path, file).await?;
+        let target = workflows::safe_child(Path::new(&path), file)?;
+        let xml = workflows::run(
+            &path,
+            &[
+                "status",
+                "--xml",
+                "--depth",
+                "empty",
+                "--",
+                &workflows::target(file),
+            ],
+        )
+        .await?;
+        if !svn::parse_status_xml(&xml)
+            .map_err(|e| e.to_string())?
+            .iter()
+            .any(|s| s.status_code == "unversioned")
+        {
+            return Err(format!("Path is no longer unversioned: {file}"));
+        }
+        let mut pending = vec![target];
+        while let Some(next) = pending.pop() {
+            let relative = next
+                .strip_prefix(&path)
+                .map_err(|e| e.to_string())?
+                .to_string_lossy()
+                .replace('\\', "/");
+            workflows::safe_child(Path::new(&path), &relative)?;
+            if next.is_dir() {
+                if next.join(".svn").exists() || next.join(".git").exists() {
+                    return Err(format!(
+                        "Nested repository must be removed separately: {file}"
+                    ));
+                }
+                for child in fs::read_dir(next).map_err(|e| e.to_string())? {
+                    pending.push(child.map_err(|e| e.to_string())?.path());
+                }
+            }
+        }
+    }
 
     for file in files {
         let target = resolve_workspace_child(&workspace, &file)?;
@@ -308,6 +359,17 @@ fn validate_restore_target(workspace: &Path, target: &Path) -> Result<(), String
 
 #[tauri::command]
 async fn restore_unversioned_files(
+    path: String,
+    files: Vec<StashUnversionedEntry>,
+    dry_run: bool,
+) -> Result<(), String> {
+    if dry_run {
+        return restore_unversioned_files_impl(path, files, true).await;
+    }
+    let _writer = workflows::acquire(&path).await?;
+    restore_unversioned_files_impl(path, files, false).await
+}
+async fn restore_unversioned_files_impl(
     path: String,
     files: Vec<StashUnversionedEntry>,
     dry_run: bool,
@@ -560,6 +622,7 @@ async fn svn_checkout(
 
 #[tauri::command]
 async fn svn_update(path: String, revision: Option<u64>) -> Result<CommandResult, String> {
+    let _writer = workflows::acquire(&path).await?;
     svn::update(&path, revision)
         .await
         .map(|output| {
@@ -581,6 +644,7 @@ async fn svn_commit(
     files: Option<Vec<String>>,
     auto_delete_missing: Option<bool>,
 ) -> Result<CommandResult, String> {
+    let _writer = workflows::acquire(&path).await?;
     svn::commit_with_options(
         &path,
         &message,
@@ -686,6 +750,7 @@ async fn svn_apply_patch(
     patch: String,
     reverse: bool,
 ) -> Result<CommandResult, String> {
+    let _writer = workflows::acquire(&workspace_path).await?;
     svn::apply_patch(&workspace_path, &patch, reverse)
         .await
         .map(success_output)
@@ -701,6 +766,7 @@ async fn svn_blame(workspace_path: String, file: String) -> Result<Vec<svn::Blam
 
 #[tauri::command]
 async fn svn_add(path: String, files: Vec<String>) -> Result<CommandResult, String> {
+    let _writer = workflows::acquire(&path).await?;
     svn::add(&path, &files)
         .await
         .map(success_output)
@@ -709,6 +775,7 @@ async fn svn_add(path: String, files: Vec<String>) -> Result<CommandResult, Stri
 
 #[tauri::command]
 async fn svn_delete(path: String, files: Vec<String>) -> Result<CommandResult, String> {
+    let _writer = workflows::acquire(&path).await?;
     svn::delete(&path, &files)
         .await
         .map(success_output)
@@ -717,6 +784,7 @@ async fn svn_delete(path: String, files: Vec<String>) -> Result<CommandResult, S
 
 #[tauri::command]
 async fn svn_revert(path: String, files: Vec<String>) -> Result<CommandResult, String> {
+    let _writer = workflows::acquire(&path).await?;
     svn::revert(&path, &files)
         .await
         .map(success_output)
@@ -729,6 +797,7 @@ async fn svn_resolve(
     files: Vec<String>,
     strategy: String,
 ) -> Result<CommandResult, String> {
+    let _writer = workflows::acquire(&path).await?;
     svn::resolve(&path, &files, &strategy)
         .await
         .map(success_output)
@@ -737,6 +806,7 @@ async fn svn_resolve(
 
 #[tauri::command]
 async fn svn_cleanup(path: String) -> Result<CommandResult, String> {
+    let _writer = workflows::acquire(&path).await?;
     svn::cleanup(&path)
         .await
         .map(success_output)
@@ -745,6 +815,7 @@ async fn svn_cleanup(path: String) -> Result<CommandResult, String> {
 
 #[tauri::command]
 async fn svn_switch(path: String, url: String) -> Result<CommandResult, String> {
+    let _writer = workflows::acquire(&path).await?;
     svn::switch_cmd(&path, &url)
         .await
         .map(success_output)
@@ -758,6 +829,7 @@ async fn svn_merge(
     rev_start: u64,
     rev_end: u64,
 ) -> Result<CommandResult, String> {
+    let _writer = workflows::acquire(&path).await?;
     svn::merge(&path, &source, rev_start, rev_end)
         .await
         .map(success_output)
@@ -766,7 +838,9 @@ async fn svn_merge(
 
 #[cfg(test)]
 mod unversioned_stash_tests {
-    use super::{collect_unversioned_entry, restore_unversioned_files};
+    use super::{
+        collect_unversioned_entry, restore_unversioned_files_impl as restore_unversioned_files,
+    };
     use std::fs;
 
     #[test]
@@ -866,10 +940,40 @@ fn main() {
     tracing_subscriber::fmt::init();
 
     tauri::Builder::default()
+        .setup(|app| {
+            workflows::register_app(app.handle().clone());
+            Ok(())
+        })
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![
+            file_actions::workspace_item_details,
+            discard::preview_workspace_discard,
+            discard::execute_workspace_discard,
+            discard::cancel_workspace_discard,
+            file_actions::open_workspace_item,
+            file_actions::ignore_workspace_item,
+            file_actions::export_workspace_patch,
+            asset_stash::asset_stash_candidates,
+            asset_stash::asset_stash_create,
+            asset_stash::asset_stash_list,
+            asset_stash::asset_stash_check,
+            asset_stash::asset_stash_apply,
+            asset_stash::asset_stash_delete,
+            asset_stash::asset_stash_export,
+            asset_stash::asset_stash_import,
+            asset_stash::asset_stash_migrate,
+            asset_stash::asset_stash_preview,
+            workflows::repository_identity,
+            workflows::repository_branch,
+            workflows::repository_list,
+            workflows::repository_preview,
+            workflows::repository_execute,
+            workflows::repository_undo,
+            workflows::repository_conflicts,
+            workflows::repository_resolve,
+            workflows::repository_activities,
             configure_svn_executable,
             launch_workspace_path,
             svn_checkout,

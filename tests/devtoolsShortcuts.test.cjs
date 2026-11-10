@@ -40,3 +40,9 @@ test('preserves editing, escape, and unrelated shortcuts', () => {
   assert.deepEqual(dispatch({ key: 'Escape', code: 'Escape' }), [false, false])
   assert.deepEqual(dispatch({ code: 'KeyZ', ctrlKey: true, shiftKey: true }), [false, false])
 })
+
+
+test('full-path copy reaches the changes control while native inspection is prevented', () => {
+  assert.deepEqual(dispatch({ code: 'KeyC', key: 'C', ctrlKey: true, shiftKey: true, target: { closest: () => ({}) } }), [true, false])
+  assert.deepEqual(dispatch({ code: 'KeyI', ctrlKey: true, shiftKey: true, target: { closest: () => ({}) } }), [true, true])
+})

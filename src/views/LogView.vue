@@ -1,5 +1,10 @@
 <template>
-  <div class="log-view">
+  <div class="log-view" @click="contextVisible = false">
+    <div class="log-branch-context"><span>{{ $t('flow.current') }}: {{ flow.identity?.url || workspaceStore.svnInfo?.url }}</span><span>{{ $t('flow.browsing') }}: {{ logSource }}</span><button v-if="scopedHistory" @click="router.replace({ name: 'log', query: {} })">{{ $t('fileMenu.branchHistory') }}</button></div>
+    <div v-if="contextVisible" class="log-context" :style="{ left: `${contextX}px`, top: `${contextY}px` }" @click.stop>
+      <button :disabled="flow.busy || scopedHistory" @click="cherryPick">{{ $t('flow.cherryPick') }}</button>
+      <button @click="copyRevision">{{ $t('log.revision') }}</button>
+    </div>
     <el-card class="log-card">
       <template #header>
         <div class="card-header">
@@ -92,11 +97,16 @@
           :element-loading-text="$t('log.querying')"
           style="width: 100%"
           @row-click="handleRowClick"
+          @row-contextmenu="contextMenu"
           row-key="revision"
-          stripe
           highlight-current-row
           class="log-table"
         >
+          <el-table-column prop="message" :label="$t('log.commitMessage')" min-width="220">
+            <template #default="{ row }">
+              <span class="message-text" :title="row.message">{{ row.message }}</span>
+            </template>
+          </el-table-column>
           <el-table-column prop="revision" :label="$t('log.revision')" width="90" sortable align="center">
             <template #default="{ row }">
               <el-tag type="primary" size="small" effect="plain">r{{ row.revision }}</el-tag>
@@ -118,11 +128,7 @@
               </div>
             </template>
           </el-table-column>
-          <el-table-column prop="message" :label="$t('log.commitMessage')" min-width="220">
-            <template #default="{ row }">
-              <span class="message-text" :title="row.message">{{ row.message }}</span>
-            </template>
-          </el-table-column>
+
           <el-table-column
             :label="$t('log.changedFiles')"
             width="150"
@@ -158,15 +164,8 @@
         </div>
       </div>
 
-      <el-dialog
-        v-model="dialogVisible"
-        :title="$t('log.commitDetails')"
-        width="min(960px, calc(100vw - 32px))"
-        class="log-dialog"
-        destroy-on-close
-        @close="onDialogClose"
-      >
-        <div v-if="selectedLog" class="log-detail">
+      <section v-if="dialogVisible" class="log-inspector">
+        <div class="log-detail-actions"><el-button :disabled="flow.busy || scopedHistory || logSource === flow.identity?.url" @click="cherryPick">{{ $t('flow.cherryPick') }}</el-button><el-button @click="dialogVisible = false; onDialogClose()">{{ $t('common.close') }}</el-button></div>        <div v-if="selectedLog" class="log-detail">
           <el-descriptions :column="1" border class="detail-descriptions">
             <el-descriptions-item :label="$t('log.revision')">
               <el-tag type="primary" size="small">r{{ selectedLog.revision }}</el-tag>
@@ -205,6 +204,7 @@
               max-height="260"
               stripe
               class="changed-files-table"
+              @row-click="previewChangedPath"
               @row-dblclick="openChangedPathDiff"
             >
               <el-table-column :label="$t('commit.status')" width="96" align="center">
@@ -223,28 +223,58 @@
           </div>
         </div>
         
-        <template #footer>
-          <el-button @click="dialogVisible = false">
-            {{ $t('common.close') }}
-          </el-button>
-        </template>
-      </el-dialog>
+        <DiffViewer v-if="inlineDiff" :text="inlineDiff" compact />
+      </section>
     </el-card>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, nextTick, onActivated, onUnmounted, reactive, ref, watch } from 'vue'
+import { useWorkflowStore } from '@/stores/workflows'
+import { repositoryPreview } from '@/api/workflows'
+import { svnDiff } from '@/api/svn'
+import { ElMessage } from 'element-plus'
+import DiffViewer from '@/components/DiffViewer.vue'
+import { writeClipboardText } from '@/utils/clipboard'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { svnCurrentUser, svnLog } from '@/api/svn'
 import type { SvnLogEntry, SvnLogPath } from '@/types'
 import { useI18n } from 'vue-i18n'
 import { useWorkspace } from '@/composables/useWorkspace'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 
 const { t, locale } = useI18n()
 const router = useRouter()
+const route = useRoute()
 const workspaceStore = useWorkspaceStore()
+const flow = useWorkflowStore()
+const scopedHistory = computed(() => typeof route.query.target === 'string')
+const logSource = computed(() => {
+  if (typeof route.query.target === 'string' && route.query.workspace === workspaceStore.currentPath && route.query.branch === workspaceStore.svnInfo?.url) return route.query.target
+  return flow.browsingUrl || workspaceStore.svnInfo?.url || workspaceStore.currentPath || ''
+})
+const inlineDiff = ref('')
+const contextVisible = ref(false), contextX = ref(0), contextY = ref(0)
+let diffGeneration = 0
+function contextMenu(row: SvnLogEntry, _column: unknown, event: MouseEvent) {
+  event.preventDefault(); selectedLog.value = row; dialogVisible.value = true
+  contextX.value = Math.min(event.clientX, window.innerWidth - 250); contextY.value = Math.min(event.clientY, window.innerHeight - 100); contextVisible.value = true
+}
+async function copyRevision() { if (selectedLog.value) { await writeClipboardText(String(selectedLog.value.revision)); contextVisible.value = false } }
+async function cherryPick() {
+  contextVisible.value = false
+  const path = workspaceStore.currentPath, revision = selectedLog.value?.revision, source = logSource.value
+  if (!path || !revision || flow.busy || scopedHistory.value) return
+  try { const result = await flow.perform(t('flow.cherryPick'), () => repositoryPreview(path, source, revision), false); if (path === workspaceStore.currentPath && source === logSource.value) flow.plan = result } catch (e) { ElMessage.error(String(e)) }
+}
+async function previewChangedPath(row: SvnLogPath) {
+  if (!workspaceStore.currentPath || !selectedLog.value || !workspaceStore.svnInfo) return
+  const request = ++diffGeneration, revision = selectedLog.value.revision
+  const peg = row.action === 'D' ? revision - 1 : revision
+  const url = `${workspaceStore.svnInfo.repository_root.replace(/\/+$/, '')}${row.path}@${peg}`
+  try { const result = await svnDiff(workspaceStore.currentPath, url, revision); if (request === diffGeneration) inlineDiff.value = result.diff } catch (e) { if (request === diffGeneration) inlineDiff.value = String(e) }
+}
 const { openWorkspace: openWorkspaceDialog } = useWorkspace()
 
 const logs = ref<SvnLogEntry[]>([])
@@ -321,7 +351,7 @@ const normalizeLogEntries = (entries: SvnLogEntry[]) => {
 }
 
 const getLogCacheKey = (path: string, limit: number | undefined, startRev?: number, endRev?: number, keyword?: string, author?: string, dateFrom?: string, dateTo?: string) => {
-  return `${LOG_CACHE_KEY_VERSION}|${path}|${limit}|${startRev ?? ''}|${endRev ?? ''}|${keyword ?? ''}|${author ?? ''}|${dateFrom ?? ''}|${dateTo ?? ''}`
+  return `${LOG_CACHE_KEY_VERSION}|${workspaceStore.epoch}|${path}|${limit}|${startRev ?? ''}|${endRev ?? ''}|${keyword ?? ''}|${author ?? ''}|${dateFrom ?? ''}|${dateTo ?? ''}`
 }
 
 const getCachedLogPage = (path: string, limit: number | undefined, startRev?: number, endRev?: number, keyword?: string, author?: string, dateFrom?: string, dateTo?: string) => {
@@ -440,7 +470,9 @@ let lastLogError: string | null = null
 
 const fetchLogPage = async (index: number, refreshCache = false) => {
   const requestedPath = workspaceStore.currentPath
-  if (!requestedPath) return
+  const requestedSource = logSource.value
+  const epoch = workspaceStore.epoch
+  if (!requestedPath || !requestedSource) return
   const generation = ++requestGeneration
   const startRev = pageCursors.value[index]
   const endRev = startRev === undefined ? undefined : 1
@@ -452,11 +484,13 @@ const fetchLogPage = async (index: number, refreshCache = false) => {
   const dt = filters.dateTo || undefined
   loading.value = true
   try {
-    const cached = refreshCache ? null : getCachedLogPage(requestedPath, limit, startRev, endRev, kw, author, df, dt)
-    const batch = cached || normalizeLogEntries(await svnLog(requestedPath, limit, startRev, endRev, kw, author, df, dt))
-    if (generation !== requestGeneration || requestedPath !== workspaceStore.currentPath) return
-    if (!cached) setCachedLogPage(requestedPath, limit, batch, startRev, endRev, kw, author, df, dt)
-    logs.value = batch.slice(0, DEFAULT_LOG_PAGE_SIZE)
+    const cached = refreshCache ? null : getCachedLogPage(requestedSource, limit, startRev, endRev, kw, author, df, dt)
+    const batch = cached || normalizeLogEntries(await svnLog(requestedSource, limit, startRev, endRev, kw, author, df, dt))
+    if (generation !== requestGeneration || requestedPath !== workspaceStore.currentPath || requestedSource !== logSource.value || epoch !== workspaceStore.epoch) return
+    if (!cached) setCachedLogPage(requestedSource, limit, batch, startRev, endRev, kw, author, df, dt)
+    const repositoryRoot = workspaceStore.svnInfo?.repository_root || ''
+    const relativeSource = repositoryRoot && requestedSource.startsWith(repositoryRoot) ? decodeURIComponent(requestedSource.slice(repositoryRoot.length)).replace(/\/+$/, '') : ''
+    logs.value = batch.slice(0, DEFAULT_LOG_PAGE_SIZE).map(entry => ({ ...entry, changed_paths: relativeSource ? entry.changed_paths.filter(p => p.path === relativeSource || p.path.startsWith(`${relativeSource}/`)) : entry.changed_paths }))
     hasMore.value = batch.length > DEFAULT_LOG_PAGE_SIZE
     pageIndex.value = index
     if (hasMore.value) pageCursors.value[index + 1] = logs.value[logs.value.length - 1].revision - 1
@@ -512,6 +546,7 @@ const queryLogs = () => {
 }
 
 const handleRowClick = (row: SvnLogEntry) => {
+  diffGeneration++; inlineDiff.value = ''
   selectedLog.value = row
   dialogVisible.value = true
 }
@@ -616,6 +651,8 @@ watch(
   { immediate: true }
 )
 
+watch([logSource, () => workspaceStore.epoch], () => { requestGeneration++; diffGeneration++; inlineDiff.value = ''; dialogVisible.value = false; selectedLog.value = null; void reloadLogs(true, true) })
+
 watch(
   () => [filters.author, filters.keyword, filters.dateFrom, filters.dateTo] as const,
   scheduleFilterReload
@@ -647,12 +684,24 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.log-branch-context{display:flex;flex-wrap:wrap;gap:8px 24px;padding:8px 12px;border-bottom:1px solid var(--md-sys-color-outline-variant);font-size:12px;overflow-wrap:anywhere}
+.log-inspector{flex-shrink:0;box-sizing:border-box;border-top:1px solid var(--md-sys-color-outline-variant);padding:12px;max-height:60vh;overflow:auto;resize:vertical;min-height:200px}
+.log-detail-actions{display:flex;justify-content:flex-end;gap:8px;margin-bottom:8px}
+.log-context{position:fixed;z-index:2500;background:var(--md-sys-color-surface-container-lowest);border:1px solid var(--md-sys-color-outline-variant);padding:4px;min-width:210px}
+.log-context button{display:block;background:none;color:inherit;border:0;padding:8px;width:100%;text-align:left;cursor:pointer}
+.log-context button:hover{background:var(--md-sys-color-primary-container)}
+
 .log-view {
   height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .log-card {
-  height: 100%;
+  flex: 1;
+  min-height: 0;
+  height: auto;
   border-radius: var(--app-radius-lg);
 }
 
@@ -970,4 +1019,8 @@ onUnmounted(() => {
     grid-template-columns: 1fr;
   }
 }
+
+/* Dashboard.axaml/CommitDetail.axaml: compact history above the selected revision. */
+.log-card :deep(>.el-card__header){display:none}.log-card :deep(>.el-card__body){height:100%;padding:0!important}.log-filters{padding:7px 9px;gap:6px;margin:0;grid-template-columns:minmax(90px,1fr) minmax(140px,2fr) minmax(200px,2fr) auto auto}.log-query-state{padding:4px 10px;font-size:11px}.log-branch-context{padding:4px 10px;font-size:10px;gap:4px 16px}.log-table :deep(.el-table__cell){padding:3px 0;height:28px}.log-table :deep(.cell){font-size:12px;line-height:20px}.log-table :deep(.el-tag){border:0;background:transparent;font-size:11px}.log-pagination{padding:5px 10px;margin:0;border-top:1px solid var(--md-sys-color-outline-variant)}.log-inspector{background:var(--md-sys-color-surface-container-low);padding:10px;max-height:55vh}.log-detail-actions{margin-bottom:6px}.log-inspector :deep(.el-descriptions__cell){padding:5px 9px!important;font-size:12px}.commit-message-section,.changed-files-section{margin-top:10px}
+
 </style>
