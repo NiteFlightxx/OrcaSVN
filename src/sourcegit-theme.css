@@ -1,4 +1,4 @@
-/* Fork workbench: quiet surfaces with readable text and restrained highlights. */
+/* Fork workbench: reference dark grays with readable text and restrained highlights. */
 :root {
   --app-font-family: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", sans-serif;
   --app-font-family-mono: "Cascadia Mono", Consolas, "Microsoft YaHei UI", "Microsoft YaHei", monospace;
@@ -62,40 +62,68 @@ html:root {
   --el-text-color-placeholder: #69747e;
 }
 html:root.theme-dark, html:root.dark {
-  --source-titlebar: #242930;
-  --source-toolbar: #282e35;
-  --md-sys-color-surface: #2b3037;
-  --md-sys-color-surface-dim: #242930;
-  --md-sys-color-surface-container-lowest: #2b3037;
-  --md-sys-color-surface-container-low: #282e35;
-  --md-sys-color-surface-container: #303740;
-  --md-sys-color-surface-container-high: #38414b;
-  --md-sys-color-surface-container-highest: #424c57;
-  --md-sys-color-on-surface: #d5dce3;
-  --md-sys-color-on-surface-variant: #b3bec9;
-  --md-sys-color-outline: #687480;
-  --md-sys-color-outline-variant: #414b55;
-  --md-sys-color-primary: #92b6d5;
-  --md-sys-color-on-primary: #1c2b39;
-  --md-sys-color-primary-hover: #abcae3;
-  --md-sys-color-primary-active: #7aa1c4;
-  --md-sys-color-primary-container: #3a4d60;
-  --md-sys-color-on-primary-container: #e3e9ef;
+  --source-titlebar: #1a1a1a;
+  --source-toolbar: #1a1a1a;
+  --md-sys-color-surface: #333333;
+  --md-sys-color-surface-dim: #1a1a1a;
+  --md-sys-color-surface-container-lowest: #212121;
+  --md-sys-color-surface-container-low: #2c2c2d;
+  --md-sys-color-surface-container: #2b2b2b;
+  --md-sys-color-surface-container-high: #3e3e3e;
+  --md-sys-color-surface-container-highest: #444444;
+  --md-sys-color-on-surface: #d4d4d4;
+  --md-sys-color-on-surface-variant: #b8b8b8;
+  --md-sys-color-outline: #6c6c6c;
+  --md-sys-color-outline-variant: #454545;
+  --md-sys-color-primary: #75b9df;
+  --md-sys-color-on-primary: #14232e;
+  --md-sys-color-primary-hover: #92c9e8;
+  --md-sys-color-primary-active: #5aa1ce;
+  --md-sys-color-primary-container: #4d4d4d;
+  --md-sys-color-on-primary-container: #e6e6e6;
   --app-color-status-modified-bg: #433d2e;
   --app-color-status-modified-text: #d9c38d;
   --app-color-status-added-bg: #2d4037;
   --app-color-status-added-text: #b7d1be;
   --app-color-status-error-bg: #443338;
   --app-color-status-error-text: #e6b3b7;
-  --app-color-status-unversioned-bg: #383e50;
-  --app-color-status-unversioned-text: #bec6df;
-  --app-color-diff-meta-bg: #303a45;
-  --app-color-diff-meta-text: #b2c4d7;
-  --app-color-folder: #c4b187;
-  --app-color-scrollbar: #586572;
+  --app-color-status-unversioned-bg: #363638;
+  --app-color-status-unversioned-text: #c8c8d0;
+  --app-color-diff-meta-bg: #383838;
+  --app-color-diff-meta-text: #bdbdbd;
+  --app-color-folder: #b8b8b8;
+  --app-color-scrollbar: #666666;
   --el-text-color-regular: var(--md-sys-color-on-surface);
   --el-text-color-secondary: var(--md-sys-color-on-surface-variant);
-  --el-text-color-placeholder: #a1adb9;
+  --el-text-color-placeholder: #a0a0a0;
+}
+
+/* Keep the screenshot's panel roles distinct; a shared surface token alone
+   cannot express its dark file list beside a lighter preview. */
+html.theme-dark .source-shell .repository-toolbar {
+  background: var(--source-toolbar);
+}
+html.theme-dark .source-shell .repository-tabs {
+  background: #141414;
+}
+html.theme-dark .source-shell .source-sidebar {
+  background: var(--md-sys-color-surface-container-low);
+}
+html.theme-dark .source-shell .right-panel,
+html.theme-dark .source-shell .diff-viewer,
+html.theme-dark .source-shell .diff-lines,
+html.theme-dark .source-shell .log-inspector {
+  background: var(--md-sys-color-surface);
+}
+html.theme-dark .source-shell .workspace-commit-composer {
+  background: var(--md-sys-color-surface-container-low);
+}
+html.theme-dark .source-shell .workspace-commit-composer .el-input__wrapper,
+html.theme-dark .source-shell .workspace-commit-composer .el-textarea__inner {
+  background: var(--md-sys-color-surface);
+}
+html.theme-dark .source-shell .log-inspector .el-tree {
+  background: transparent;
 }
 button, select, input { color-scheme: inherit; }
 html.theme-dark, html.dark { color-scheme: dark; }
