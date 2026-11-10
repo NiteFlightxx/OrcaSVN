@@ -18,7 +18,13 @@ function harness() {
     setError(error) { this.error = error },
   }
   const mocks = {
-    '@/stores/workflows': { useWorkflowStore: () => ({ busy: false, perform: async (_title,operation) => operation() }) },
+    '@/stores/workflows': { useWorkflowStore: () => ({ busy: false, perform: async (_title, operation) => {
+      try { return await operation() }
+      finally {
+        if (store.currentPath === '/wc')
+          await mocks['@/composables/useWorkspace'].useWorkspace().refreshStatusAfterMutation()
+      }
+    } }) },
     vue: {
       ...vue, watch() {}, onUnmounted() {},
       onActivated(fn) { lifecycle.activate = fn },
@@ -53,6 +59,9 @@ function harness() {
       svnRemoteInfo: async () => { calls.push('remote'); return { revision: 2 } },
     },
   }
+  const updateModule = { exports: {}, require: name => { assert.ok(name in mocks, name); return mocks[name] } }
+  vm.runInNewContext(ts.transpileModule(fs.readFileSync('src/composables/useSvnUpdate.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, updateModule)
+  mocks['@/composables/useSvnUpdate'] = updateModule.exports
   const script = fs.readFileSync('src/views/UpdateView.vue', 'utf8').match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1]
   const code = ts.transpileModule(script + '\nexports.actions = { doUpdate, updating, visibleConflicts };', { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText
   const context = {

@@ -21,9 +21,10 @@ function shellHarness() {
     vue: { ...vue, onMounted() {}, onUnmounted() {} }, 'vue-router': { useRoute: () => ({ name: 'workspace', meta: {} }), useRouter: () => ({ push: async value => calls.push(['route', value]) }) }, 'vue-i18n': { useI18n: () => ({ t: key => key }) },
     'element-plus/es/components/message/index': { ElMessage: {} }, '@/api/svn': {}, '@/stores/workspace': { useWorkspaceStore: () => workspace }, '@/stores/stash': { useStashStore: () => ({ currentEntries: () => [] }) }, '@/stores/workflows': { useWorkflowStore: () => ({ stashes: [] }) },
     '@/composables/useWorkspace': { useWorkspace: () => ({ loadWorkspace: async path => { calls.push(['load', path]); if (fail) return false; workspace.currentPath = path; workspace.svnInfo = { url: 'file:///fixture/dev', revision: 1 }; return true } }) }, '@/composables/useWorkspaceErrorToast': { useWorkspaceErrorToast() {} }, '@/composables/useUpdateCheck': { useUpdateCheck: () => ({}) },
+    '@/composables/useSvnUpdate': { useSvnUpdate: () => ({ updateWorkspace: async () => calls.push(['update']), updating: vue.ref(false) }) },
     '@/components/BranchSidebar.vue': {}, '@/components/OperationDialog.vue': {}, '@/components/ActivityPanel.vue': {}, '@/components/LanguageSwitcher.vue': {}, '@/components/icons/materialIcons': {},
   }
-  const h = setup('src/layouts/MainLayout.vue', 'openTabs, selectRepositoryTab, closeRepositoryTab, handleShellKeydown, showSidebar, toggleSidebar', mocks, { document: { dispatchEvent() {} }, Event: class Event {}, localStorage: { getItem: key => storage.get(key) || null, setItem: (key, value) => storage.set(key, value) } })
+  const h = setup('src/layouts/MainLayout.vue', 'openTabs, selectRepositoryTab, closeRepositoryTab, handleShellKeydown, showSidebar, toggleSidebar, updateWorkspace', mocks, { document: { dispatchEvent() {} }, Event: class Event {}, localStorage: { getItem: key => storage.get(key) || null, setItem: (key, value) => storage.set(key, value) } })
   return { ...h, workspace, storage, calls, fail: value => { fail = value } }
 }
 test('repository tabs switch and close adjacent tabs without removing recent repositories', async () => {
@@ -110,5 +111,17 @@ test('workspace starts without a redundant branch column and can reveal it on de
   assert.equal(h.showSidebar.value,true)
   h.toggleSidebar()
   assert.equal(h.showSidebar.value,false)
+  h.stop()
+})
+
+test('toolbar update executes in place instead of navigating to the legacy update page', async () => {
+  const source = fs.readFileSync('src/layouts/MainLayout.vue', 'utf8')
+  const button = source.match(/<button\s[^>]*:aria-label="\$t\('menu.update'\)"[^>]*>/)[0]
+  assert.match(button, /@click="updateWorkspace"/)
+  assert.match(button, /:disabled="[^"]*workflow.busy/)
+  const h = shellHarness()
+  await h.updateWorkspace()
+  assert.deepEqual(h.calls, [['update']])
+  assert.equal(h.showSidebar.value, false)
   h.stop()
 })

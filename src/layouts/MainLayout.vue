@@ -118,12 +118,14 @@
         </button>
         <button
           class="tool-button"
-          :disabled="!workspaceStore.currentPath"
+          :disabled="!workspaceStore.currentPath || workspaceStore.isLoading || workflow.busy"
           :title="$t('menu.update')"
           :aria-label="$t('menu.update')"
-          @click="navigateTo('update')"
+          :aria-busy="updating"
+          @click="updateWorkspace"
         >
-          <el-icon><RefreshRight /></el-icon><span>{{ $t('menu.update') }}</span>
+          <el-icon :class="{ 'is-loading': updating }"><RefreshRight /></el-icon
+          ><span>{{ $t('menu.update') }}</span>
         </button>
       </div>
       <div class="toolbar-group toolbar-right">
@@ -277,6 +279,7 @@ import { useStashStore } from '@/stores/stash'
 import { useWorkspace } from '@/composables/useWorkspace'
 import { useWorkspaceErrorToast } from '@/composables/useWorkspaceErrorToast'
 import { useUpdateCheck } from '@/composables/useUpdateCheck'
+import { useSvnUpdate } from '@/composables/useSvnUpdate'
 import { persistRepositoryUi, repositoryUi, reorderTabs, tabsToClose } from '@/utils/repositoryUi'
 import FileContextMenu from '@/components/FileContextMenu.vue'
 import BranchSidebar from '@/components/BranchSidebar.vue'
@@ -297,6 +300,7 @@ const { t } = useI18n()
 const workspaceStore = useWorkspaceStore()
 const stashStore = useStashStore()
 const workflow = useWorkflowStore()
+const { updateWorkspace, updating } = useSvnUpdate()
 const { loadWorkspace, openWorkspace, refreshStatus, refreshStatusIfStale, openStartupWorkspace } =
   useWorkspace()
 const branchSidebar = ref<InstanceType<typeof BranchSidebar> | null>(null)

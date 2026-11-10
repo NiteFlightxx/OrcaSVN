@@ -154,12 +154,12 @@ import { useWorkflowStore } from '@/stores/workflows'
 import { computed, onActivated, onDeactivated, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { ElMessage } from 'element-plus/es/components/message/index'
-import { svnIncomingLog, svnRemoteInfo, svnUpdate } from '@/api/svn'
+import { svnIncomingLog, svnRemoteInfo } from '@/api/svn'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useWorkspace } from '@/composables/useWorkspace'
 import { getStatusClass, getStatusLabelKey } from '@/composables/useSvnStatus'
 import { useSettings } from '@/composables/useSettings'
+import { useSvnUpdate } from '@/composables/useSvnUpdate'
 import type { SvnLogEntry } from '@/types'
 
 type UpdateStateCache = {
@@ -170,13 +170,13 @@ type UpdateStateCache = {
 const updateStateCache = new Map<string, UpdateStateCache>()
 
 const router = useRouter()
-const { t, locale } = useI18n()
+const { locale } = useI18n()
 const workspaceStore = useWorkspaceStore()
 const { refreshStatusAfterMutation, refreshStatusIfStale } = useWorkspace()
 const { settings } = useSettings()
 
 const loading = ref(false)
-const updating = ref(false)
+const { updateWorkspace, updating } = useSvnUpdate()
 const operationFlow = useWorkflowStore()
 const incomingLogs = ref<SvnLogEntry[]>([])
 const updateConflicts = ref<string[]>([])
@@ -230,7 +230,7 @@ const applyCachedState = (path: string) => {
 // succeeding says nothing about them, so only the user can dismiss those.
 let lastPollError: string | null = null
 
-const loadUpdateState = async (force = false, background = false) => {
+const loadUpdateState = async (force = false, background = false, localStateFresh = false) => {
   // A completed update must refresh shared workspace state even after navigation.
   if (!workspaceStore.currentPath || (!force && (!isActive || loading.value || updating.value)))
     return
@@ -242,9 +242,11 @@ const loadUpdateState = async (force = false, background = false) => {
     isActive
   loading.value = true
   try {
-    const refreshed = await (force
-      ? refreshStatusAfterMutation()
-      : refreshStatusIfStale(updateStateIntervalMs))
+    const refreshed = localStateFresh
+      ? !workspaceStore.statusIsStale
+      : await (force
+          ? refreshStatusAfterMutation()
+          : refreshStatusIfStale(updateStateIntervalMs))
     // Without a known local revision, every remote commit would look incoming.
     if (!isCurrent() || !refreshed || !workspaceStore.svnInfo) return
     const info = await svnRemoteInfo(requestedPath)
@@ -290,36 +292,14 @@ const loadUpdateState = async (force = false, background = false) => {
 const doUpdate = async () => {
   if (!workspaceStore.currentPath || operationFlow.busy) return
   const requestedPath = workspaceStore.currentPath
-  updating.value = true
   updateConflicts.value = []
-  try {
-    await operationFlow.perform(
-      t('menu.update'),
-      async () => {
-        const result = await svnUpdate(requestedPath)
-        if (workspaceStore.currentPath !== requestedPath) return result
-        updateConflicts.value = result?.conflicts ?? []
-        updateStateCache.delete(requestedPath)
-        operationFlow.phase = 'refreshing'
-        await loadUpdateState(true)
-        return result
-      },
-      true,
-      false
-    )
-    if (workspaceStore.currentPath !== requestedPath) return
-    // Status can miss a reported conflict, for example when a filter hides the path.
-    if (updateConflicts.value.length) {
-      ElMessage.warning(t('update.conflictsTitle'))
-    } else {
-      ElMessage.success(`${t('common.update')} ${t('common.success')}`)
-    }
-  } catch (err) {
-    if (workspaceStore.currentPath !== requestedPath) return
-    workspaceStore.setError(String(err))
-  } finally {
-    updating.value = false
-  }
+  const result = await updateWorkspace()
+  if (!result || workspaceStore.currentPath !== requestedPath) return
+  updateConflicts.value = result.conflicts ?? []
+  updateStateCache.clear()
+  // The shared runner already refreshed local status. Only the active legacy
+  // update page needs remote revision details; toolbar updates never fetch them.
+  await loadUpdateState(true, false, true)
 }
 
 const viewDiff = (path: string) => {
