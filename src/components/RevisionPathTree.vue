@@ -72,7 +72,7 @@ function openNode(node: RevisionNode) {
   gap: 6px;
   width: 100%;
   min-width: 0;
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
 }
 .revision-path > span {
   overflow: hidden;

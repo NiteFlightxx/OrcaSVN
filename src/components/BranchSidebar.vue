@@ -316,13 +316,13 @@ function navigate(event: KeyboardEvent) {
   align-items: center;
   gap: 8px;
   padding: 0 8px;
-  font-size: 10px;
+  font-size: var(--app-font-size-2xs);
 }
 .branch-options select {
   border: 0;
   background: transparent;
   color: inherit;
-  font-size: 11px;
+  font-size: var(--app-font-size-xs);
 }
 .branch-options label {
   display: flex;
@@ -343,7 +343,7 @@ function navigate(event: KeyboardEvent) {
 .branch-panel {
   padding: 4px 0 0;
   border-top: 1px solid var(--md-sys-color-outline-variant);
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
   min-height: 0;
 }
 .branch-panel button {
@@ -365,7 +365,7 @@ function navigate(event: KeyboardEvent) {
   justify-content: space-between;
 }
 .branch-heading strong {
-  font-size: 11px;
+  font-size: var(--app-font-size-xs);
 }
 .branch-heading small {
   font-weight: 400;
@@ -394,7 +394,7 @@ function navigate(event: KeyboardEvent) {
   flex: 1;
 }
 .branch-current small {
-  font-size: 10px;
+  font-size: var(--app-font-size-2xs);
   color: var(--md-sys-color-on-surface-variant);
 }
 input {
@@ -416,7 +416,7 @@ input {
   height: 26px;
   padding: 5px 9px;
   cursor: pointer;
-  font-size: 11px;
+  font-size: var(--app-font-size-xs);
   color: var(--md-sys-color-on-surface-variant);
   user-select: none;
 }
@@ -503,7 +503,7 @@ input {
 .branch-empty,
 .flow-error {
   padding: 8px;
-  font-size: 11px;
+  font-size: var(--app-font-size-xs);
   color: var(--md-sys-color-on-surface-variant);
 }
 .flow-error {

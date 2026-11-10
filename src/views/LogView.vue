@@ -158,7 +158,7 @@
           <el-table-column
             prop="revision"
             :label="$t('log.revision')"
-            width="72"
+            width="90"
             sortable
             align="center"
           >
@@ -1071,7 +1071,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 4px;
   padding: 5px;
-  font-size: 11px;
+  font-size: var(--app-font-size-xs);
   cursor: pointer;
   list-style: none;
 }
@@ -1106,7 +1106,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   padding: 3px 8px;
-  font-size: 11px;
+  font-size: var(--app-font-size-xs);
 }
 .query-status {
   display: flex;
@@ -1119,16 +1119,16 @@ onUnmounted(() => {
 }
 .log-table :deep(.el-table__cell) {
   padding: 2px 0;
-  height: 26px;
+  height: 30px;
 }
 .log-table :deep(.cell) {
-  font-size: 12px;
+  font-size: var(--app-font-size-label);
   line-height: 20px;
 }
 .log-table :deep(.el-tag) {
   border: 0;
   background: transparent;
-  font-size: 11px;
+  font-size: var(--app-font-size-xs);
 }
 .message-text {
   display: block;
@@ -1156,7 +1156,7 @@ onUnmounted(() => {
   gap: 10px;
   padding: 5px 8px;
   border-top: 1px solid var(--md-sys-color-outline-variant);
-  font-size: 11px;
+  font-size: var(--app-font-size-xs);
 }
 .empty-log-result {
   flex: 1;
@@ -1181,7 +1181,7 @@ onUnmounted(() => {
   border-bottom: 2px solid transparent;
   background: none;
   color: var(--md-sys-color-on-surface-variant);
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
   cursor: pointer;
 }
 .inspector-tabs button.active {
@@ -1205,7 +1205,7 @@ onUnmounted(() => {
 }
 .revision-actions strong {
   flex: 1;
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
 }
 .quiet-icon {
   display: grid;
@@ -1226,7 +1226,7 @@ onUnmounted(() => {
   grid-template-columns: auto minmax(0, 1fr);
   gap: 7px 12px;
   margin: 0;
-  font-size: 11px;
+  font-size: var(--app-font-size-xs);
 }
 .revision-overview dt {
   color: var(--md-sys-color-on-surface-variant);
@@ -1243,11 +1243,11 @@ onUnmounted(() => {
   padding: 10px 0;
   border-block: 1px solid var(--md-sys-color-outline-variant);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--app-font-size-label);
   user-select: text;
 }
 .revision-overview h4 {
-  font-size: 11px;
+  font-size: var(--app-font-size-xs);
   font-weight: 500;
   margin: 10px 0 6px;
 }
@@ -1275,7 +1275,7 @@ onUnmounted(() => {
   background: none;
   color: inherit;
   padding: 5px 8px;
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
   cursor: pointer;
 }
 .revision-file-list button.active {
@@ -1305,7 +1305,7 @@ onUnmounted(() => {
   place-items: center;
   flex: 1;
   padding: 14px;
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
   color: var(--md-sys-color-on-surface-variant);
 }
 .log-context {
@@ -1334,7 +1334,7 @@ onUnmounted(() => {
   flex-wrap: wrap;
   gap: 4px 12px;
   padding: 4px 8px;
-  font-size: 10px;
+  font-size: var(--app-font-size-2xs);
   border-bottom: 1px solid var(--md-sys-color-outline-variant);
   overflow-wrap: anywhere;
 }

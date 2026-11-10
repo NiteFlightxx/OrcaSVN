@@ -184,7 +184,7 @@ const activeOffset = ref(-1)
 const noMatch = ref(false)
 const copying = ref(false)
 const characterWidth = ref(8)
-const rowHeight = computed(() => (props.compact ? 24 : 28))
+const rowHeight = computed(() => (props.compact ? 26 : 30))
 // Must equal the first three `grid-template-columns` of `.diff-row`.
 const gutterWidth = computed(() => (props.compact ? 120 : 146))
 const contentWidth = computed(
@@ -350,7 +350,7 @@ onBeforeUnmount(() => {
   border: 0;
   background: transparent;
   color: inherit;
-  font-size: 11px;
+  font-size: var(--app-font-size-xs);
 }
 .diff-pair {
   display: grid;
@@ -438,7 +438,7 @@ onBeforeUnmount(() => {
 .diff-lines {
   font-family: var(--app-font-family-mono);
   font-size: var(--app-font-size-label);
-  line-height: 20px;
+  line-height: 22px;
 }
 .compact .diff-lines {
   font-size: var(--app-font-size-sm);
@@ -446,7 +446,6 @@ onBeforeUnmount(() => {
 .diff-row {
   display: grid;
   grid-template-columns: 56px 56px 34px minmax(0, 1fr);
-  border-bottom: 1px solid var(--md-sys-color-outline-variant);
 }
 .compact .diff-row {
   grid-template-columns: 48px 48px 24px minmax(0, 1fr);
@@ -503,12 +502,12 @@ onBeforeUnmount(() => {
   color: var(--app-color-status-error-text);
 }
 .diff-meta {
-  background: var(--app-color-status-unversioned-bg);
+  background: var(--app-color-diff-meta-bg);
 }
 .diff-meta .diff-code,
 .diff-meta .diff-marker {
-  color: var(--app-color-status-unversioned-text);
-  font-weight: 700;
+  color: var(--app-color-diff-meta-text);
+  font-weight: 500;
 }
 .is-search-match {
   box-shadow: inset 3px 0 var(--md-sys-color-primary);

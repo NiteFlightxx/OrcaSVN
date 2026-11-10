@@ -1343,7 +1343,7 @@ const discardTargets = async (targets: string[]) => {
 
 <style scoped>
 .selection-hint {
-  font-size: 11px;
+  font-size: var(--app-font-size-xs);
   color: var(--md-sys-color-on-surface-variant);
 }
 .inspector-tools {
@@ -1356,14 +1356,14 @@ const discardTargets = async (targets: string[]) => {
   background: none;
   color: var(--md-sys-color-primary);
   cursor: pointer;
-  font-size: 11px;
+  font-size: var(--app-font-size-xs);
 }
 .property-diff {
   max-height: 30vh;
   overflow: auto;
   white-space: pre-wrap;
   padding: 8px;
-  font-size: 11px;
+  font-size: var(--app-font-size-xs);
 }
 
 .workspace-view {
@@ -1404,7 +1404,7 @@ const discardTargets = async (targets: string[]) => {
   border-radius: 12px;
   padding: 3px 8px;
   background: var(--md-sys-color-surface-container-lowest);
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
 }
 .changes-filterbar button {
   display: grid;
@@ -1425,7 +1425,7 @@ const discardTargets = async (targets: string[]) => {
   border: 0;
   min-width: 0;
   background: var(--md-sys-color-surface-container-lowest);
-  font-size: 11px;
+  font-size: var(--app-font-size-xs);
   max-width: 96px;
 }
 .changes-status-filter {
@@ -1435,7 +1435,7 @@ const discardTargets = async (targets: string[]) => {
   height: 26px;
   min-height: 26px;
   padding: 0 8px;
-  font-size: 11px;
+  font-size: var(--app-font-size-xs);
   border-bottom: 1px solid var(--md-sys-color-outline-variant);
   color: var(--md-sys-color-on-surface-variant);
 }
@@ -1458,7 +1458,7 @@ const discardTargets = async (targets: string[]) => {
 }
 .staging-notice,
 .cached-status-notice {
-  font-size: 11px;
+  font-size: var(--app-font-size-xs);
   padding: 6px 8px;
   line-height: 1.4;
   border-bottom: 1px solid var(--md-sys-color-outline-variant);
@@ -1485,7 +1485,7 @@ const discardTargets = async (targets: string[]) => {
   padding: 0 8px;
   gap: 6px;
   border-bottom: 1px solid var(--md-sys-color-outline-variant);
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
   color: var(--md-sys-color-on-surface-variant);
 }
 .panel-title {
@@ -1511,7 +1511,7 @@ const discardTargets = async (targets: string[]) => {
   justify-content: space-between;
   gap: 8px;
   padding: 5px 8px;
-  font-size: 11px;
+  font-size: var(--app-font-size-xs);
 }
 .diff-path-tag {
   max-width: 80%;
@@ -1570,7 +1570,7 @@ const discardTargets = async (targets: string[]) => {
   flex-shrink: 0;
 }
 .commit-action-row small {
-  font-size: 11px;
+  font-size: var(--app-font-size-xs);
   color: var(--md-sys-color-on-surface-variant);
 }
 .loading-diff {
@@ -1592,7 +1592,7 @@ const discardTargets = async (targets: string[]) => {
 }
 .welcome-eyebrow {
   color: var(--md-sys-color-primary);
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
 }
 .empty-content h2 {
   margin: 10px 0;

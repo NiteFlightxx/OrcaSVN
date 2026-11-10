@@ -695,7 +695,7 @@ onUnmounted(() => {
   border: 0;
   background: none;
   color: inherit;
-  font-size: 11px;
+  font-size: var(--app-font-size-xs);
   padding: 2px 6px;
 }
 .repository-identity {
@@ -716,7 +716,7 @@ onUnmounted(() => {
 .repository-identity strong {
   display: block;
   max-width: 100%;
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
   font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -727,7 +727,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 5px;
   max-width: 100%;
-  font-size: 10px;
+  font-size: var(--app-font-size-2xs);
   color: var(--md-sys-color-on-surface-variant);
 }
 .repository-toolbar > .toolbar-group {
@@ -754,7 +754,7 @@ onUnmounted(() => {
   background: none;
   color: inherit;
   padding: 3px 8px;
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
 }
 .repository-navigation > button > span,
 .sidebar-stashes button > span {
@@ -774,7 +774,7 @@ onUnmounted(() => {
 .repository-navigation b,
 .sidebar-stashes small {
   margin-left: auto;
-  font-size: 10px;
+  font-size: var(--app-font-size-2xs);
   font-weight: 400;
   color: var(--md-sys-color-on-surface-variant);
 }
@@ -797,7 +797,7 @@ onUnmounted(() => {
   gap: 6px;
   padding: 0 5px;
   min-height: 26px;
-  font-size: 11px;
+  font-size: var(--app-font-size-xs);
   cursor: pointer;
   list-style: none;
 }
@@ -858,7 +858,7 @@ button:disabled {
 }
 .app-mark strong {
   color: var(--md-sys-color-on-surface);
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
 }
 .repository-tab-list {
   display: flex;
@@ -874,7 +874,7 @@ button:disabled {
   max-width: 220px;
   border-right: 1px solid var(--md-sys-color-outline-variant);
   border-top: 2px solid transparent;
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
 }
 .repository-tab.active {
   border-top-color: var(--md-sys-color-primary);
@@ -911,7 +911,7 @@ button:disabled {
   max-width: 450px;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-size: 10px;
+  font-size: var(--app-font-size-2xs);
   opacity: 0.65;
 }
 .repository-toolbar {
@@ -946,7 +946,7 @@ button:disabled {
   border: 0;
   border-radius: 3px;
   background: none;
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
   white-space: nowrap;
 }
 .tool-button:hover:not(:disabled) {
@@ -956,7 +956,7 @@ button:disabled {
   font-size: 17px;
 }
 .tool-button .chevron {
-  font-size: 10px;
+  font-size: var(--app-font-size-2xs);
 }
 .toolbar-divider {
   height: 20px;
@@ -965,7 +965,7 @@ button:disabled {
   margin: 0 5px;
 }
 .repository-name {
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
   max-width: 140px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1005,7 +1005,7 @@ button:disabled {
   height: 34px;
   flex-shrink: 0;
   padding: 0 10px;
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
   border-bottom: 1px solid var(--md-sys-color-outline-variant);
 }
 .sidebar-repository strong {
@@ -1014,7 +1014,7 @@ button:disabled {
   white-space: nowrap;
 }
 .sidebar-repository small {
-  font-size: 10px;
+  font-size: var(--app-font-size-2xs);
   opacity: 0.65;
 }
 .sidebar-resizer {
@@ -1028,7 +1028,7 @@ button:disabled {
 }
 .sidebar-stashes,
 .repository-details {
-  font-size: 11px;
+  font-size: var(--app-font-size-xs);
   padding: 7px;
   border-top: 1px solid var(--md-sys-color-outline-variant);
 }
@@ -1046,7 +1046,7 @@ summary {
   background: none;
   border: 0;
   text-align: left;
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1058,7 +1058,7 @@ summary {
   display: block;
   overflow-wrap: anywhere;
   padding: 5px;
-  font-size: 10px;
+  font-size: var(--app-font-size-2xs);
   color: var(--md-sys-color-on-surface-variant);
 }
 .route-workbench {
@@ -1077,10 +1077,10 @@ summary {
   align-items: center;
   padding: 0 12px;
   border-bottom: 1px solid var(--md-sys-color-outline-variant);
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
 }
 .route-header small {
-  font-size: 11px;
+  font-size: var(--app-font-size-xs);
   opacity: 0.6;
 }
 .route-content {
@@ -1132,7 +1132,7 @@ summary {
   padding: 0 9px;
   border-top: 1px solid var(--md-sys-color-outline-variant);
   background: var(--md-sys-color-surface-container);
-  font-size: 10px;
+  font-size: var(--app-font-size-2xs);
   color: var(--md-sys-color-on-surface-variant);
 }
 .fork-status > span {
@@ -1154,7 +1154,7 @@ summary {
   border: 0;
   background: none;
   color: var(--md-sys-color-primary);
-  font-size: 10px;
+  font-size: var(--app-font-size-2xs);
 }
 .update-dot {
   width: 5px;

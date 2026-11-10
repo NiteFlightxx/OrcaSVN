@@ -52,7 +52,7 @@
       ref="viewport"
       class="change-tree"
       :item-count="rows.length"
-      :row-height="26"
+      :row-height="30"
       :reset-key="`${workspaceKey}|${filterKey}|${viewMode}`"
       role="tree"
       aria-multiselectable="true"
@@ -502,11 +502,11 @@ defineExpose({ clearSelection })
   border-bottom: 1px solid var(--md-sys-color-outline-variant);
   gap: 4px;
   background: var(--md-sys-color-surface-container);
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
 }
 .change-tree-panel > header strong {
   white-space: nowrap;
-  font-size: 11px;
+  font-size: var(--app-font-size-xs);
   color: var(--md-sys-color-on-surface-variant);
 }
 .tree-tools {
@@ -537,11 +537,11 @@ defineExpose({ clearSelection })
   display: flex;
   align-items: center;
   box-sizing: border-box;
-  height: 26px;
+  height: 30px;
   gap: 4px;
   padding-right: 5px;
   cursor: default;
-  font-size: 12px;
+  font-size: var(--app-font-size-label);
 }
 .change-row:hover {
   background: var(--md-sys-state-hover);
@@ -560,7 +560,7 @@ defineExpose({ clearSelection })
   cursor: pointer;
 }
 .folder-icon {
-  color: #cca642;
+  color: var(--app-color-folder);
   font-size: 15px;
   flex-shrink: 0;
 }
@@ -591,10 +591,10 @@ defineExpose({ clearSelection })
 }
 .tree-count {
   opacity: 0.6;
-  font-size: 10px;
+  font-size: var(--app-font-size-2xs);
 }
 .tree-status {
-  font-size: 10px;
+  font-size: var(--app-font-size-2xs);
   font-weight: 700;
   border-radius: 2px;
   min-width: 14px;
@@ -649,7 +649,7 @@ defineExpose({ clearSelection })
 .empty-tree {
   padding: 18px 8px;
   color: var(--md-sys-color-on-surface-variant);
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
   text-align: center;
 }
 </style>

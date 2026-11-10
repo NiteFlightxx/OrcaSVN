@@ -25,7 +25,7 @@ body {
 /* 选择文本样式 */
 ::selection {
   background: var(--md-sys-color-primary-container);
-  color: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary-container);
 }
 
 /* 聚焦样式 */
@@ -65,7 +65,7 @@ a:hover {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--md-sys-color-outline-variant);
+  background: var(--app-color-scrollbar);
   border-radius: 4px;
   transition: background var(--app-transition-fast);
 }
@@ -167,7 +167,7 @@ a:hover {
 }
 
 .el-table th.el-table__cell {
-  font-weight: 700;
+  font-weight: 500;
   color: var(--el-table-header-text-color);
   background: var(--el-table-header-bg-color);
   height: 44px;
@@ -685,7 +685,7 @@ a:hover {
 }
 
 .theme-dark ::-webkit-scrollbar-thumb {
-  background: var(--md-sys-color-outline-variant);
+  background: var(--app-color-scrollbar);
 }
 
 .theme-dark ::-webkit-scrollbar-thumb:hover {
@@ -785,12 +785,12 @@ a:hover {
 }
 
 .theme-dark .diff-meta {
-  background: var(--app-color-status-unversioned-bg);
+  background: var(--app-color-diff-meta-bg);
 }
 
 .theme-dark .diff-meta .diff-code,
 .theme-dark .diff-meta .diff-marker {
-  color: var(--app-color-status-unversioned-text);
+  color: var(--app-color-diff-meta-text);
 }
 
 .theme-dark .commit-message {
@@ -936,7 +936,7 @@ body,
 .el-table {
   overflow: hidden;
   border-radius: var(--app-radius-md);
-  color: var(--md-sys-color-on-surface-variant);
+  color: var(--md-sys-color-on-surface);
   font-size: var(--app-font-size-label);
   --el-table-header-bg-color: var(--md-sys-color-surface-container-low);
   --el-table-row-hover-bg-color: var(--md-sys-color-surface-container-high);
@@ -1038,7 +1038,7 @@ body,
 }
 
 .theme-dark ::-webkit-scrollbar-thumb {
-  background: var(--md-sys-color-outline-variant);
+  background: var(--app-color-scrollbar);
 }
 
 .theme-dark ::-webkit-scrollbar-thumb:hover {

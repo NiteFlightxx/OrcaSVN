@@ -1,6 +1,6 @@
 /* Shared workbench metrics for history, conflicts, stash and repository tools. */
 .route-content {
-  --workbench-row: 26px;
+  --workbench-row: 30px;
   --workbench-header: 28px;
 }
 .route-content .el-card {
@@ -20,18 +20,18 @@
 }
 .route-content .el-table__cell {
   padding: 3px 0;
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
 }
 .route-content .el-button {
   min-height: 26px;
   height: auto;
   padding: 5px 9px;
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
   border-radius: 3px;
 }
 .route-content .el-tree-node__content {
-  height: 26px;
-  font-size: 12px;
+  height: 30px;
+  font-size: var(--app-font-size-sm);
 }
 .route-content :is(button, input, select, textarea):focus-visible,
 .file-context-menu button:focus-visible {
@@ -74,7 +74,7 @@
 }
 .route-content .conflict-split nav button {
   padding: 5px 8px;
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
   min-height: 26px;
 }
 .route-content .settings-view,
@@ -116,7 +116,7 @@
   padding: 5px 10px;
   background: var(--app-color-status-modified-bg);
   color: var(--app-color-status-modified-text);
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
   flex-shrink: 0;
 }
 .repository-conflict-bar button {
@@ -196,7 +196,7 @@ html .source-shell .branch-heading > div {
 html .source-shell .branch-options {
   display: block;
   padding: 0 10px;
-  font-size: 11px;
+  font-size: var(--app-font-size-xs);
 }
 html .source-shell .branch-options > summary {
   display: flex;
@@ -225,7 +225,7 @@ html .source-shell .branch-groups {
 }
 html .source-shell .branch-row {
   padding-left: 10px;
-  height: 28px;
+  height: 30px;
 }
 html .source-shell .branch-icon {
   font-size: 14px;
@@ -237,14 +237,14 @@ html .source-shell .branch-name > span {
   white-space: nowrap;
 }
 html .source-shell .current-check {
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
   color: var(--md-sys-color-primary);
 }
 html .source-shell .branch-star {
   font-size: 13px;
 }
 html .source-shell .fork-status {
-  font-size: 11px;
+  font-size: var(--app-font-size-xs);
   min-height: 23px;
   padding: 3px 10px;
 }
@@ -263,12 +263,12 @@ html .source-shell .status-path {
 .route-content .changes-filterbar select {
   width: 62px;
   flex-shrink: 0;
-  font-size: 11px;
+  font-size: var(--app-font-size-xs);
   max-width: 72px;
 }
 .route-content .changes-filterbar input {
   border-radius: 4px;
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
   padding: 3px 6px;
 }
 .route-content .changes-filterbar button[aria-pressed='true'] {
@@ -288,7 +288,7 @@ html .source-shell .status-path {
   display: flex;
   gap: 6px;
   align-items: center;
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
 }
 .route-content .panel-title > span {
   overflow: hidden;
@@ -319,7 +319,7 @@ html .source-shell .status-path {
   background: var(--md-sys-color-surface-container-high);
 }
 .route-content .compact-diff-stats {
-  font-size: 10px;
+  font-size: var(--app-font-size-2xs);
   display: flex;
   gap: 6px;
   margin-right: 6px;
@@ -339,7 +339,7 @@ html .source-shell .status-path {
 }
 .route-content .change-row .tree-status {
   background: transparent;
-  font-size: 10px;
+  font-size: var(--app-font-size-2xs);
   min-width: 13px;
   font-weight: 600;
 }
@@ -365,7 +365,7 @@ html .source-shell .status-path {
   width: 23px;
 }
 .route-content .tree-disclosure {
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
 }
 .route-content .workspace-commit-composer .compact label > span {
   display: none;
@@ -374,7 +374,7 @@ html .source-shell .status-path {
   gap: 6px;
 }
 .route-content .workspace-commit-composer .message-actions {
-  font-size: 11px;
+  font-size: var(--app-font-size-xs);
   gap: 6px;
 }
 .route-content .workspace-commit-composer .message-actions select {
@@ -409,7 +409,7 @@ html .source-shell .status-path {
   padding: 4px 8px;
 }
 .route-content .stash-toolbar > strong {
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
 }
 .route-content .stash-toolbar small {
   font-weight: 400;
@@ -421,13 +421,13 @@ html .source-shell .status-path {
 }
 html .source-shell .repository-conflict-bar {
   padding: 3px 8px;
-  font-size: 11px;
+  font-size: var(--app-font-size-xs);
 }
 html .source-shell .activity-trigger {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
+  font-size: var(--app-font-size-xs);
   padding: 4px 10px;
 }
 @media (max-width: 850px) {
