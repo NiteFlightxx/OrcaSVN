@@ -9,6 +9,9 @@ function harness(inspect) {
   const workspace = vue.reactive({ currentPath: '/wc', statusList: [] })
   const flow = vue.reactive({ stashes: [], identity: { url: 'file:///repo/dev' } })
   const mocks = {
+    '@/utils/changeTree': { buildChangeTree: () => [] },
+    '@/utils/changeSelection': { readPanelSize: (_key,fallback) => fallback },
+    '@/utils/diffPairs': {},
     vue,
     'vue-router': { useRoute: () => vue.reactive({ query: {} }) },
     'vue-i18n': { useI18n: () => ({ t: key => key, te: () => false }) },

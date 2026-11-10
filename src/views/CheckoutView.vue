@@ -85,34 +85,30 @@
             {{ outputSucceeded ? $t('common.success') : $t('common.error') }}
           </el-tag>
         </div>
-        <el-input
-          v-model="output"
-          type="textarea"
-          :rows="10"
-          readonly
-          class="output-textarea"
-        />
+        <el-input v-model="output" type="textarea" :rows="10" readonly class="output-textarea" />
       </div>
     </el-card>
   </div>
 </template>
 
 <script setup lang="ts">
+import { useWorkflowStore } from '@/stores/workflows'
+import { useWorkspace } from '@/composables/useWorkspace'
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
-import { useWorkspaceStore } from '@/stores/workspace'
 import { svnCheckout } from '@/api/svn'
 import { open } from '@tauri-apps/plugin-dialog'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
 const router = useRouter()
-const workspaceStore = useWorkspaceStore()
+const operationFlow = useWorkflowStore()
+const { loadWorkspace } = useWorkspace()
 
 const form = reactive({
   url: '',
   path: '',
-  revision: undefined as number | undefined
+  revision: undefined as number | undefined,
 })
 
 const loading = ref(false)
@@ -123,7 +119,7 @@ const selectDirectory = async () => {
   const selected = await open({
     directory: true,
     multiple: false,
-    title: t('dialog.selectTargetDirectory')
+    title: t('dialog.selectTargetDirectory'),
   })
 
   if (selected) {
@@ -132,7 +128,7 @@ const selectDirectory = async () => {
 }
 
 const doCheckout = async () => {
-  if (!form.url || !form.path) {
+  if (operationFlow.busy || !form.url || !form.path) {
     return
   }
 
@@ -141,15 +137,16 @@ const doCheckout = async () => {
   outputSucceeded.value = false
 
   try {
-    const result = await svnCheckout(form.url, form.path, form.revision)
+    const result = await operationFlow.perform(
+      t('common.checkout'),
+      () => svnCheckout(form.url, form.path, form.revision),
+      true,
+      false
+    )
     output.value = result.output
     outputSucceeded.value = true
 
-    workspaceStore.setCurrentPath(form.path)
-
-    setTimeout(() => {
-      router.push({ name: 'workspace' })
-    }, 1500)
+    if (await loadWorkspace(form.path)) await router.push({ name: 'workspace' })
   } catch (err) {
     output.value = `${t('common.error')}：${err}`
     outputSucceeded.value = false
@@ -211,7 +208,7 @@ const resetForm = () => {
 }
 
 .checkout-form :deep(.el-form-item.is-required .el-form-item__label::after) {
-  content: "*";
+  content: '*';
   margin-left: 5px;
   color: var(--el-color-danger);
 }
@@ -273,11 +270,11 @@ const resetForm = () => {
   .checkout-view {
     padding: 0 var(--app-spacing);
   }
-  
+
   .checkout-form :deep(.el-form-item) {
     flex-direction: column;
   }
-  
+
   .checkout-form :deep(.el-form-item__label) {
     text-align: left;
     padding-bottom: 4px;
@@ -288,12 +285,12 @@ const resetForm = () => {
   .revision-control {
     width: 100%;
   }
-  
+
   .form-actions {
     display: flex;
     flex-direction: column;
   }
-  
+
   .form-actions .el-button {
     width: 100%;
   }

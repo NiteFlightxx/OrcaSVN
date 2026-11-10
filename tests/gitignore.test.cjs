@@ -11,7 +11,7 @@ const context = { exports: {} }
 vm.runInNewContext(compiled, context)
 const { filterByGitignore, parseGitignore } = context.exports
 
-test('gitignore hides matching tracked and unversioned paths', () => {
+test('gitignore hides only matching unversioned paths and retains tracked modifications', () => {
   const patterns = parseGitignore('*.log\n!keep.log')
   const statuses = [
     { path: 'existing.log', status_code: 'modified' },
@@ -20,7 +20,7 @@ test('gitignore hides matching tracked and unversioned paths', () => {
     { path: 'source.ts', status_code: 'modified' },
   ]
   const visible = filterByGitignore(statuses, patterns)
-  assert.deepEqual(Array.from(visible, status => status.path), ['keep.log', 'source.ts'])
+  assert.deepEqual(Array.from(visible, status => status.path), ['existing.log', 'keep.log', 'source.ts'])
   assert.equal(filterByGitignore(statuses, []).length, statuses.length)
 })
 

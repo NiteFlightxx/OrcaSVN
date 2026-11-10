@@ -1,3 +1,4 @@
+import { experienceLocales } from './experience'
 import { branchUiLocales } from './branchUi'
 import { conflictDialogLocales } from './conflictDialog'
 import { sourceUiLocales } from './sourceUi'
@@ -14,17 +15,27 @@ import koKR from './locales/ko-KR'
 import enUS from './locales/en-US'
 
 export const supportedLocales = ['zh-CN', 'zh-TW', 'ja-JP', 'ko-KR', 'en-US'] as const
-export type SupportedLocale = typeof supportedLocales[number]
+export type SupportedLocale = (typeof supportedLocales)[number]
 
 export function detectSystemLocale(): SupportedLocale {
   const languages = navigator.languages?.length ? navigator.languages : [navigator.language]
 
   for (const language of languages) {
     const normalized = language.toLowerCase()
-    if (normalized === 'zh-tw' || normalized === 'zh-hk' || normalized === 'zh-mo' || normalized === 'zh-hant') {
+    if (
+      normalized === 'zh-tw' ||
+      normalized === 'zh-hk' ||
+      normalized === 'zh-mo' ||
+      normalized === 'zh-hant'
+    ) {
       return 'zh-TW'
     }
-    if (normalized === 'zh-cn' || normalized === 'zh-sg' || normalized === 'zh-hans' || normalized === 'zh') {
+    if (
+      normalized === 'zh-cn' ||
+      normalized === 'zh-sg' ||
+      normalized === 'zh-hans' ||
+      normalized === 'zh'
+    ) {
       return 'zh-CN'
     }
     if (normalized.startsWith('ja')) return 'ja-JP'
@@ -53,11 +64,61 @@ const i18n = createI18n({
   locale: getStoredLocale(),
   fallbackLocale: 'en-US',
   messages: {
-    'zh-CN': { branchUI: branchUiLocales['zh-CN'], conflictDialog: conflictDialogLocales['zh-CN'], sourceUI: sourceUiLocales['zh-CN'], ...zhCN, flow: workflowLocales['zh-CN'], changes: changeLocales['zh-CN'], commitDetails: commitDetailLocales['zh-CN'], fileMenu: fileMenuLocales['zh-CN'] },
-    'zh-TW': { branchUI: branchUiLocales['zh-TW'], conflictDialog: conflictDialogLocales['zh-TW'], sourceUI: sourceUiLocales['zh-TW'], ...zhTW, flow: workflowLocales['zh-TW'], changes: changeLocales['zh-TW'], commitDetails: commitDetailLocales['zh-TW'], fileMenu: fileMenuLocales['zh-TW'] },
-    'ja-JP': { branchUI: branchUiLocales['ja-JP'], conflictDialog: conflictDialogLocales['ja-JP'], sourceUI: sourceUiLocales['ja-JP'], ...jaJP, flow: workflowLocales['ja-JP'], changes: changeLocales['ja-JP'], commitDetails: commitDetailLocales['ja-JP'], fileMenu: fileMenuLocales['ja-JP'] },
-    'ko-KR': { branchUI: branchUiLocales['ko-KR'], conflictDialog: conflictDialogLocales['ko-KR'], sourceUI: sourceUiLocales['ko-KR'], ...koKR, flow: workflowLocales['ko-KR'], changes: changeLocales['ko-KR'], commitDetails: commitDetailLocales['ko-KR'], fileMenu: fileMenuLocales['ko-KR'] },
-    'en-US': { branchUI: branchUiLocales['en-US'], conflictDialog: conflictDialogLocales['en-US'], sourceUI: sourceUiLocales['en-US'], ...enUS, flow: workflowLocales['en-US'], changes: changeLocales['en-US'], commitDetails: commitDetailLocales['en-US'], fileMenu: fileMenuLocales['en-US'] },
+    'zh-CN': {
+      experience: experienceLocales['zh-CN'],
+      branchUI: branchUiLocales['zh-CN'],
+      conflictDialog: conflictDialogLocales['zh-CN'],
+      sourceUI: sourceUiLocales['zh-CN'],
+      ...zhCN,
+      flow: workflowLocales['zh-CN'],
+      changes: changeLocales['zh-CN'],
+      commitDetails: commitDetailLocales['zh-CN'],
+      fileMenu: fileMenuLocales['zh-CN'],
+    },
+    'zh-TW': {
+      experience: experienceLocales['zh-TW'],
+      branchUI: branchUiLocales['zh-TW'],
+      conflictDialog: conflictDialogLocales['zh-TW'],
+      sourceUI: sourceUiLocales['zh-TW'],
+      ...zhTW,
+      flow: workflowLocales['zh-TW'],
+      changes: changeLocales['zh-TW'],
+      commitDetails: commitDetailLocales['zh-TW'],
+      fileMenu: fileMenuLocales['zh-TW'],
+    },
+    'ja-JP': {
+      experience: experienceLocales['ja-JP'],
+      branchUI: branchUiLocales['ja-JP'],
+      conflictDialog: conflictDialogLocales['ja-JP'],
+      sourceUI: sourceUiLocales['ja-JP'],
+      ...jaJP,
+      flow: workflowLocales['ja-JP'],
+      changes: changeLocales['ja-JP'],
+      commitDetails: commitDetailLocales['ja-JP'],
+      fileMenu: fileMenuLocales['ja-JP'],
+    },
+    'ko-KR': {
+      experience: experienceLocales['ko-KR'],
+      branchUI: branchUiLocales['ko-KR'],
+      conflictDialog: conflictDialogLocales['ko-KR'],
+      sourceUI: sourceUiLocales['ko-KR'],
+      ...koKR,
+      flow: workflowLocales['ko-KR'],
+      changes: changeLocales['ko-KR'],
+      commitDetails: commitDetailLocales['ko-KR'],
+      fileMenu: fileMenuLocales['ko-KR'],
+    },
+    'en-US': {
+      experience: experienceLocales['en-US'],
+      branchUI: branchUiLocales['en-US'],
+      conflictDialog: conflictDialogLocales['en-US'],
+      sourceUI: sourceUiLocales['en-US'],
+      ...enUS,
+      flow: workflowLocales['en-US'],
+      changes: changeLocales['en-US'],
+      commitDetails: commitDetailLocales['en-US'],
+      fileMenu: fileMenuLocales['en-US'],
+    },
   },
 })
 

@@ -1,5 +1,6 @@
 <template>
   <div class="settings-view">
+    <ToolSettings />
     <el-card class="settings-card animate-fade-in">
       <el-form :model="settings" label-width="180px" class="settings-form" label-position="left">
         <div class="settings-section">
@@ -7,7 +8,7 @@
             <el-icon><Monitor /></el-icon>
             {{ $t('settings.appearance') }}
           </h3>
-          
+
           <el-form-item :label="$t('language.label')" class="form-item">
             <el-select
               v-model="currentLanguage"
@@ -143,6 +144,7 @@
 </template>
 
 <script setup lang="ts">
+import ToolSettings from '@/components/ToolSettings.vue'
 import { computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus/es/components/message/index'
@@ -157,7 +159,13 @@ const { t } = useI18n()
 const { setLocale } = useLocale()
 const { settings } = useSettings()
 const { refreshStatusAfterMutation } = useWorkspace()
-const { currentVersion: appVersion, state: updateState, latestVersion, checkForUpdates, openReleasePage } = useUpdateCheck()
+const {
+  currentVersion: appVersion,
+  state: updateState,
+  latestVersion,
+  checkForUpdates,
+  openReleasePage,
+} = useUpdateCheck()
 
 const languages = computed(() => [
   { label: t('language.zhCN'), value: 'zh-CN' },
@@ -265,7 +273,9 @@ onMounted(() => {
   border: 1px solid var(--md-sys-color-outline-variant);
   border-radius: var(--app-radius-sm);
   background: var(--md-sys-color-surface-container-low);
-  transition: background-color var(--app-transition-fast), border-color var(--app-transition-fast);
+  transition:
+    background-color var(--app-transition-fast),
+    border-color var(--app-transition-fast);
 }
 
 .theme-radio:hover {
@@ -311,7 +321,11 @@ onMounted(() => {
   width: 48px;
   height: 48px;
   border-radius: var(--app-radius);
-  background: linear-gradient(135deg, var(--md-sys-color-primary-container), var(--md-sys-color-secondary-container));
+  background: linear-gradient(
+    135deg,
+    var(--md-sys-color-primary-container),
+    var(--md-sys-color-secondary-container)
+  );
   color: var(--md-sys-color-primary);
   font-size: 24px;
   box-shadow: var(--md-sys-elevation-1);
@@ -360,11 +374,11 @@ onMounted(() => {
   .settings-view {
     padding: 0 var(--app-spacing);
   }
-  
+
   .settings-form :deep(.el-form-item) {
     flex-direction: column;
   }
-  
+
   .settings-form :deep(.el-form-item__label) {
     text-align: left;
     padding-bottom: 4px;

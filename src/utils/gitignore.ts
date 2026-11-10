@@ -97,7 +97,7 @@ function matchesPath(filePath: string, patterns: GitignorePattern[]): boolean {
   // rules once the answer is known, preserving negation and ancestor matching.
   for (let index = patterns.length - 1; index >= 0; index--) {
     const pattern = patterns[index]
-    if (candidates.some(candidate => pattern.regex.test(candidate))) return !pattern.negation
+    if (candidates.some((candidate) => pattern.regex.test(candidate))) return !pattern.negation
   }
   return false
 }
@@ -122,8 +122,11 @@ export function createGitignoreMatcher(patterns: GitignorePattern[], maxEntries 
 
 export function filterByGitignore(
   statuses: SvnStatus[],
-  patterns: GitignorePattern[],
+  patterns: GitignorePattern[]
 ): SvnStatus[] {
   if (patterns.length === 0) return statuses
-  return statuses.filter(status => !isIgnored(status.path, patterns))
+  return statuses.filter(
+    (status) =>
+      !['unversioned', 'ignored'].includes(status.status_code) || !isIgnored(status.path, patterns)
+  )
 }

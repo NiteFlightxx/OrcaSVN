@@ -18,6 +18,7 @@ function harness() {
     setError(error) { this.error = error },
   }
   const mocks = {
+    '@/stores/workflows': { useWorkflowStore: () => ({ busy: false, perform: async (_title,operation) => operation() }) },
     vue: {
       ...vue, watch() {}, onUnmounted() {},
       onActivated(fn) { lifecycle.activate = fn },

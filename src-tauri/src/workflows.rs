@@ -17,6 +17,14 @@ static APP: OnceLock<tauri::AppHandle> = OnceLock::new();
 pub fn register_app(app: tauri::AppHandle) {
     let _ = APP.set(app);
 }
+pub fn command_output(workspace: &str, text: &str) {
+    if let Some(app) = APP.get() {
+        let _ = app.emit(
+            "svn-command-output",
+            serde_json::json!({"workspace":workspace,"text":text}),
+        );
+    }
+}
 pub fn progress(phase: &str, file: &str, current: usize, total: usize) {
     if let Some(app) = APP.get() {
         let _ = app.emit(

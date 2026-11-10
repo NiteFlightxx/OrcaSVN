@@ -15,7 +15,7 @@ fn child(root: &Path, file: &str) -> w::Result<PathBuf> {
         w::safe_child(root, file)
     }
 }
-async fn owned(path: &str, file: &str) -> w::Result<PathBuf> {
+pub(crate) async fn owned(path: &str, file: &str) -> w::Result<PathBuf> {
     let workspace = fs::canonicalize(path).map_err(|e| e.to_string())?;
     let full = child(&workspace, file)?;
     let identity = w::identity(path).await?;
@@ -47,6 +47,7 @@ pub struct ItemDetails {
     pub kind: String,
     pub exists: bool,
     pub binary: bool,
+    pub size: u64,
     pub history_url: Option<String>,
 }
 #[tauri::command]
@@ -69,6 +70,7 @@ pub async fn workspace_item_details(path: String, file: String) -> w::Result<Ite
         kind,
         exists: full.exists(),
         binary: binary_hint(&full)?,
+        size: fs::metadata(&full).map(|meta| meta.len()).unwrap_or(0),
         history_url: info.and_then(|i| (i.revision > 0 && !i.url.is_empty()).then_some(i.url)),
     })
 }

@@ -6,12 +6,14 @@ const vm = require('node:vm')
 const vue = require('vue')
 
 function harness(fetch) {
-  const calls = []
+  const calls = [], uiState = {}
   const flow = vue.reactive({ browsingUrl: '', identity: null })
   const store = vue.reactive({ currentPath: '/wc', epoch: 0, setError(error) { this.error = error } })
   const route = vue.reactive({ query: {} })
   const mocks = {
-    vue: { ...vue, watch() {}, onActivated() {}, onUnmounted() {} },
+    '@/utils/changeSelection': { readPanelSize: (_key,fallback) => fallback },
+    '@/utils/repositoryUi': { repositoryUi: () => uiState },
+    vue: { ...vue, watch() {}, onMounted() {}, onActivated() {}, onUnmounted() {} },
     '@/stores/workflows': { useWorkflowStore: () => flow },
     '@/api/workflows': {},
     '@/components/DiffViewer.vue': {},
@@ -25,7 +27,7 @@ function harness(fetch) {
   }
   const script = fs.readFileSync('src/views/LogView.vue', 'utf8').match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1]
   const context = { exports: {}, require: name => { assert.ok(name in mocks, name); return mocks[name] } }
-  const code = ts.transpileModule(script + '\nexports.state = { reloadLogs, fetchLogPage, logs, pageIndex, pageCursors, hasMore, loading, filters };', { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText
+  const code = ts.transpileModule(script + '\nexports.state = { reloadLogs, fetchLogPage, logs, pageIndex, pageCursors, hasMore, loading, filters, saveHistoryView, restoreHistoryView };', { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText
   vm.runInNewContext(code, context)
   return { ...context.exports.state, calls, store, flow, route }
 }
@@ -116,4 +118,17 @@ test('file history reads its selected URL and drops the scope after a branch or 
   h.store.svnInfo = { url: 'file:///repo/publish' }
   await h.reloadLogs(true, true)
   assert.equal(h.calls.at(-1)[0], 'file:///repo/other')
+})
+
+test('restoring repository history retains the actual revision cursor page and selection', async () => {
+  const h = harness(query)
+  await h.reloadLogs()
+  await h.fetchLogPage(1)
+  const expected = Array.from(h.logs.value, entry => entry.revision)
+  h.saveHistoryView()
+  await h.reloadLogs()
+  assert.equal(h.pageIndex.value,0)
+  await h.restoreHistoryView()
+  assert.equal(h.pageIndex.value,1)
+  assert.deepEqual(Array.from(h.logs.value,entry=>entry.revision),expected)
 })

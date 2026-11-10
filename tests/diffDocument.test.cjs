@@ -82,8 +82,8 @@ test('hunk content that looks like a file header is still a changed line', () =>
 
 test('the gutter width matches the row grid in both layouts', () => {
   const source = fs.readFileSync('src/components/DiffViewer.vue', 'utf8')
-  const [, compact, full] = source.match(/gutterWidth = computed\(\(\) => props\.compact \? (\d+) : (\d+)\)/)
-  const columns = selector => source.match(new RegExp(`${selector} \\{ display: grid; grid-template-columns: ([^;]+)|${selector} \\{ grid-template-columns: ([^;]+)`)).slice(1).find(Boolean)
+  const [, compact, full] = source.match(/gutterWidth = computed\(\(\) => \(?props\.compact \? (\d+) : (\d+)\)?\)/)
+  const columns = selector => source.match(new RegExp(`${selector}\\s*\\{[^}]*?grid-template-columns:\\s*([^;]+)`))[1]
     .match(/(\d+)px/g).reduce((sum, width) => sum + parseInt(width), 0)
   assert.equal(columns('\\.diff-row'), Number(full))
   assert.equal(columns('\\.compact \\.diff-row'), Number(compact))

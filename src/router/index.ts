@@ -8,7 +8,12 @@ const router = createRouter({
       path: '/',
       component: MainLayout,
       children: [
-        { path: 'conflicts', name: 'conflicts', component: () => import('@/views/ConflictsView.vue'), meta: { title: 'flow.conflicts' } },
+        {
+          path: 'conflicts',
+          name: 'conflicts',
+          component: () => import('@/views/ConflictsView.vue'),
+          meta: { title: 'flow.conflicts' },
+        },
         {
           path: '',
           name: 'workspace',
@@ -24,7 +29,7 @@ const router = createRouter({
         {
           path: 'commit',
           name: 'commit',
-          component: () => import('@/views/CommitView.vue'),
+          redirect: (to) => ({ name: 'workspace', query: { ...to.query, commit: '1' } }),
           meta: { title: 'menu.commit' },
         },
         {

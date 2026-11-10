@@ -102,18 +102,32 @@ async fn execute_svn_inner(
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
 
-    let output = collect_command_output(
-        &mut cmd,
-        if args
-            .iter()
-            .any(|arg| matches!(*arg, "switch" | "merge" | "export" | "checkout"))
-        {
-            Duration::from_secs(1800)
-        } else {
-            SVN_TIMEOUT
-        },
-    )
-    .await?;
+    let deadline = if args
+        .iter()
+        .any(|arg| matches!(*arg, "switch" | "merge" | "export" | "checkout"))
+    {
+        Duration::from_secs(1800)
+    } else {
+        SVN_TIMEOUT
+    };
+    let output = if args.iter().any(|arg| {
+        matches!(
+            *arg,
+            "switch"
+                | "merge"
+                | "update"
+                | "commit"
+                | "checkout"
+                | "revert"
+                | "add"
+                | "resolve"
+                | "cleanup"
+        )
+    }) {
+        collect_streamed_output(&mut cmd, deadline, path.unwrap_or("")).await?
+    } else {
+        collect_command_output(&mut cmd, deadline).await?
+    };
     if output.trim().is_empty() && always_prints_output(&args_vec) {
         return Err(SvnError::CommandFailed(format!(
             "SVN 命令成功退出但没有任何输出：svn {}\n{} 的输出未能送达 OrcaSVN，可能是透明加密或数据防泄漏软件的进程策略所致。请联系管理员，将 OrcaSVN 及其启动的 SVN 程序加入策略。",
@@ -153,10 +167,118 @@ async fn collect_command_output(cmd: &mut Command, deadline: Duration) -> Result
     }
 }
 
+async fn collect_streamed_output(
+    cmd: &mut Command,
+    deadline: Duration,
+    workspace: &str,
+) -> Result<String, SvnError> {
+    use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
+    async fn drain(reader: impl AsyncRead + Unpin, workspace: String) -> std::io::Result<Vec<u8>> {
+        let mut reader = BufReader::new(reader);
+        let mut all = Vec::new();
+        let mut line = Vec::new();
+        let mut pending = Vec::new();
+        let mut last_emit = std::time::Instant::now();
+        loop {
+            line.clear();
+            if reader.read_until(b'\n', &mut line).await? == 0 {
+                break;
+            }
+            pending.extend_from_slice(&line);
+            if pending.len() >= 8192 || last_emit.elapsed() >= Duration::from_millis(80) {
+                crate::workflows::command_output(&workspace, &String::from_utf8_lossy(&pending));
+                pending.clear();
+                last_emit = std::time::Instant::now();
+            }
+            all.extend_from_slice(&line);
+        }
+        if !pending.is_empty() {
+            crate::workflows::command_output(&workspace, &String::from_utf8_lossy(&pending));
+        }
+        Ok(all)
+    }
+    let mut child = cmd.spawn().map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            SvnError::SvnNotFound
+        } else {
+            SvnError::CommandFailed(e.to_string())
+        }
+    })?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| SvnError::CommandFailed("Missing stdout pipe".into()))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| SvnError::CommandFailed("Missing stderr pipe".into()))?;
+    let mut out_task = tokio::spawn(drain(stdout, workspace.to_owned()));
+    let mut err_task = tokio::spawn(drain(stderr, workspace.to_owned()));
+    let result = timeout(deadline, async {
+        let status = child.wait().await?;
+        let out = (&mut out_task).await.map_err(std::io::Error::other)??;
+        let err = (&mut err_task).await.map_err(std::io::Error::other)??;
+        Ok::<_, std::io::Error>((status, out, err))
+    })
+    .await;
+    out_task.abort();
+    err_task.abort();
+    let (status, out, err) = result
+        .map_err(|_| SvnError::Timeout)?
+        .map_err(|e| SvnError::CommandFailed(e.to_string()))?;
+    let out = String::from_utf8_lossy(&out).into_owned();
+    if status.success() {
+        Ok(out)
+    } else {
+        Err(SvnError::CommandFailed(format!(
+            "{out}\n{}",
+            String::from_utf8_lossy(&err)
+        )))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::path::Path;
+
+    #[test]
+    fn streaming_output_preserves_stdout_and_nonzero_stderr() {
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        #[cfg(windows)]
+        let mut command = {
+            let mut cmd = Command::new("cmd");
+            cmd.args([
+                "/D",
+                "/C",
+                "echo synthetic-stdout & echo synthetic-stderr 1>&2 & exit /b 7",
+            ]);
+            cmd
+        };
+        #[cfg(not(windows))]
+        let mut command = {
+            let mut cmd = Command::new("sh");
+            cmd.args([
+                "-c",
+                "printf synthetic-stdout; printf synthetic-stderr >&2; exit 7",
+            ]);
+            cmd
+        };
+        command
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true);
+        let error = runtime
+            .block_on(collect_streamed_output(
+                &mut command,
+                Duration::from_secs(10),
+                "synthetic-test-only",
+            ))
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("synthetic-stdout"));
+        assert!(error.contains("synthetic-stderr"));
+    }
 
     #[test]
     fn empty_output_is_only_an_error_for_commands_that_always_print() {

@@ -19,8 +19,11 @@ function harness(options = {}) {
   const staging = vue.reactive({ key: vue.computed(() => stagingUtils.stagingKey(workspace.currentPath, workspace.svnInfo?.url)), paths: [], eligible: files, ready: vue.computed(() => !workspace.statusIsStale), stage: paths => calls.push(['stage', paths]), unstage: paths => calls.push(['unstage', paths]) })
   const details = { kind: 'file', exists: true, binary: false, historyUrl: 'file:///repo/dev/Content/A.txt' }
   const mocks = {
+    '@/composables/useExternalTool': { useExternalTool: () => ({ open: async () => {} }) },
+    '@tauri-apps/api/core': { invoke: async () => '' },
+    '@/utils/repositoryUi': { repositoryUi: () => ({}) },
     vue: { ...vue, onMounted() {}, onDeactivated() {}, onBeforeUnmount() {} },
-    'vue-router': { useRouter: () => ({ push: value => calls.push(['route', value]) }) },
+    'vue-router': { useRoute: () => ({ query: {} }), useRouter: () => ({ push: value => calls.push(['route', value]) }) },
     'vue-i18n': { useI18n: () => ({ t: key => key }) },
     '@/stores/workspace': { useWorkspaceStore: () => workspace }, '@/stores/staging': { useStagingStore: () => staging },
     '@/stores/commitDraft': { useCommitDraftStore: () => ({ key: 'draft', message: '' }) },

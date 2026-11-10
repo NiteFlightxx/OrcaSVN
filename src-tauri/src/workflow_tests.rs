@@ -7,6 +7,76 @@ struct Fixture {
     dev: String,
     publish: String,
 }
+
+#[test]
+fn revision_comparison_properties_and_external_diff_inputs_are_read_only() {
+    let fixture = Fixture::new();
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let before = fixture
+        .svn(Some(&fixture.dev), &["info", "--show-item", "revision"])
+        .trim()
+        .parse::<u64>()
+        .unwrap();
+    fs::write(fixture.root().join("text.txt"), "committed version\n").unwrap();
+    fixture.svn(Some(&fixture.dev), &["commit", "-m", "comparison fixture"]);
+    fixture.svn(Some(&fixture.dev), &["update"]);
+    let after = fixture
+        .svn(Some(&fixture.dev), &["info", "--show-item", "revision"])
+        .trim()
+        .parse::<u64>()
+        .unwrap();
+    fs::write(fixture.root().join("text.txt"), "uncommitted version\n").unwrap();
+    fs::write(fixture.root().join("asset.uasset"), [0, 255, 2, 9]).unwrap();
+    fixture.svn(Some(&fixture.dev), &["propset", "svn:ignore", "*.tmp", "."]);
+    let status = fixture.svn(Some(&fixture.dev), &["status"]);
+    let comparison = runtime
+        .block_on(crate::external_tools::workspace_compare(
+            fixture.dev.clone(),
+            format!("{}/dev", fixture.url),
+            before,
+            Some(after),
+            false,
+        ))
+        .unwrap();
+    assert!(comparison.contains("+committed version"));
+    assert!(!comparison.contains("uncommitted version"));
+    let working = runtime
+        .block_on(crate::external_tools::workspace_compare(
+            fixture.dev.clone(),
+            String::new(),
+            after,
+            None,
+            true,
+        ))
+        .unwrap();
+    assert!(working.contains("+uncommitted version"));
+    let properties = runtime
+        .block_on(crate::external_tools::workspace_properties(
+            fixture.dev.clone(),
+            ".".into(),
+        ))
+        .unwrap();
+    assert!(properties.contains("svn:ignore"));
+    assert!(!properties.contains("uncommitted version"));
+    let directory = fixture.temp.join("tool-inputs");
+    fs::create_dir(&directory).unwrap();
+    let files = runtime
+        .block_on(crate::external_tools::prepare_inputs(
+            &fixture.dev,
+            "asset.uasset",
+            false,
+            &directory,
+        ))
+        .unwrap();
+    assert_eq!(fs::read(&files["left"]).unwrap(), [0, 1, 255, 7]);
+    assert_eq!(fs::read(&files["right"]).unwrap(), [0, 255, 2, 9]);
+    fs::write(&files["right"], b"tool edits a snapshot").unwrap();
+    assert_eq!(
+        fs::read(fixture.root().join("asset.uasset")).unwrap(),
+        [0, 255, 2, 9]
+    );
+    assert_eq!(fixture.svn(Some(&fixture.dev), &["status"]), status);
+}
 impl Fixture {
     fn new() -> Self {
         let parent = std::env::temp_dir();
@@ -121,6 +191,80 @@ impl Fixture {
         self.svn(Some(&self.dev), &["add", "--", "folder"]);
         self.svn(Some(&self.dev), &["commit", "-m", "synthetic directory"]);
         self.svn(Some(&self.dev), &["update"]);
+    }
+}
+
+#[test]
+fn external_merge_inputs_preserve_conflict_versions_and_require_separate_resolution() {
+    let fixture = Fixture::new();
+    fs::write(
+        PathBuf::from(&fixture.publish).join("text.txt"),
+        "incoming version\n",
+    )
+    .unwrap();
+    fixture.svn(
+        Some(&fixture.publish),
+        &["commit", "-m", "incoming fixture"],
+    );
+    fs::write(fixture.root().join("text.txt"), "local version\n").unwrap();
+    fixture.svn(
+        Some(&fixture.dev),
+        &[
+            "switch",
+            "--accept",
+            "postpone",
+            "--",
+            &format!("{}/publish", fixture.url),
+            ".",
+        ],
+    );
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let before = runtime
+        .block_on(w::repository_conflicts(fixture.dev.clone()))
+        .unwrap();
+    assert_eq!(before.len(), 1);
+    let directory = fixture.temp.join("merge-inputs");
+    fs::create_dir(&directory).unwrap();
+    let inputs = runtime
+        .block_on(crate::external_tools::prepare_inputs(
+            &fixture.dev,
+            "text.txt",
+            true,
+            &directory,
+        ))
+        .unwrap();
+    assert_eq!(fs::read_to_string(&inputs["base"]).unwrap(), "base\n");
+    assert_eq!(
+        fs::read_to_string(&inputs["mine"]).unwrap(),
+        "local version\n"
+    );
+    assert_eq!(
+        fs::read_to_string(&inputs["theirs"]).unwrap(),
+        "incoming version\n"
+    );
+    fs::write(&inputs["merged"], "manually merged\n").unwrap();
+    assert_eq!(
+        fs::read_to_string(fixture.root().join("text.txt")).unwrap(),
+        "manually merged\n"
+    );
+    assert_eq!(
+        runtime
+            .block_on(w::repository_conflicts(fixture.dev.clone()))
+            .unwrap()
+            .len(),
+        1
+    );
+    for version in &before[0].versions {
+        if version.side != "working" {
+            assert_eq!(
+                fs::read_to_string(fixture.root().join(&version.path)).unwrap(),
+                match version.side.as_str() {
+                    "base" => "base\n",
+                    "local" => "local version\n",
+                    _ => "incoming version\n",
+                }
+            );
+        }
     }
 }
 impl Drop for Fixture {

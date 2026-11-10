@@ -19,6 +19,7 @@ function harness(overrides = {}, refreshStatusAfterMutation = async () => true) 
     ...overrides,
   }
   const mocks = {
+    '@/utils/repositoryUi': { repositoryUi: () => ({}) },
     vue: { ...vue, watch() {} },
     pinia: { defineStore: (_name, setup) => () => vue.reactive(setup()) },
     '@tauri-apps/api/event': { listen: async () => () => {} },
@@ -80,7 +81,9 @@ test('a rejected branch is not persisted, and a late listing cannot replace newe
 
 test('failed post-operation status refresh cannot leave workspace actions permanently busy', async () => {
   const h = harness({}, async () => { throw new Error('local refresh failed') })
-  await assert.rejects(h.flow.perform('synthetic operation', async () => 'completed'), /local refresh failed/)
+  assert.equal(await h.flow.perform('synthetic operation', async () => 'completed'), 'completed')
+  assert.equal(h.flow.refreshWarning, true)
+  assert.equal(h.flow.phase, 'completed')
   assert.equal(h.flow.busy, false)
 })
 

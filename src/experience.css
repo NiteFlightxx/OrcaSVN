@@ -1,0 +1,127 @@
+/* Shared workbench metrics for history, conflicts, stash and repository tools. */
+.route-content {
+  --workbench-row: 26px;
+  --workbench-header: 28px;
+}
+.route-content .el-card {
+  border-radius: 0;
+  box-shadow: none;
+  border: 0;
+}
+.route-content .el-card__header {
+  padding: 8px 12px;
+  min-height: 28px;
+}
+.route-content .el-card__body {
+  padding: 12px;
+}
+.route-content .el-table {
+  --el-table-header-bg-color: var(--md-sys-color-surface-container-low);
+}
+.route-content .el-table__cell {
+  padding: 3px 0;
+  font-size: 12px;
+}
+.route-content .el-button {
+  min-height: 26px;
+  height: auto;
+  padding: 5px 9px;
+  font-size: 12px;
+  border-radius: 3px;
+}
+.route-content .el-tree-node__content {
+  height: 26px;
+  font-size: 12px;
+}
+.route-content :is(button, input, select, textarea):focus-visible,
+.file-context-menu button:focus-visible {
+  outline: 1px solid var(--md-sys-color-primary);
+  outline-offset: -1px;
+}
+.el-dialog {
+  --el-dialog-padding-primary: 14px;
+  display: flex;
+  flex-direction: column;
+  max-height: 90dvh;
+  overflow: hidden;
+  border-radius: 5px;
+}
+.el-dialog__header {
+  margin: 0;
+  padding-bottom: 10px;
+  flex-shrink: 0;
+}
+.el-dialog__title {
+  font-size: 15px;
+}
+.el-dialog__body {
+  min-height: 0;
+  overflow: auto;
+}
+.el-dialog__footer {
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+  padding-top: 10px;
+  flex-shrink: 0;
+}
+.route-content .conflicts-workbench {
+  padding: 8px;
+}
+.route-content .conflicts-workbench h3 {
+  font-size: 13px;
+}
+.route-content .conflict-split {
+  gap: 8px;
+}
+.route-content .conflict-split nav button {
+  padding: 5px 8px;
+  font-size: 12px;
+  min-height: 26px;
+}
+.route-content .settings-view,
+.route-content .update-view,
+.route-content .blame-view,
+.route-content .diff-view {
+  padding: 0;
+}
+.selection-hint {
+  line-height: 1.4;
+}
+@media (max-width: 700px) {
+  .repository-toolbar .repository-name {
+    display: none;
+  }
+  .repository-toolbar .tool-button {
+    padding: 4px 5px;
+  }
+  .source-shell .source-body {
+    grid-template-columns: 40px minmax(0, 1fr);
+  }
+  .source-shell .source-sidebar,
+  .source-shell .sidebar-resizer {
+    display: none;
+  }
+  .source-shell .page-switcher {
+    width: 40px;
+  }
+  .source-shell .current-branch {
+    max-width: 110px;
+  }
+}
+
+.repository-conflict-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  background: var(--app-color-status-modified-bg);
+  color: var(--app-color-status-modified-text);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.repository-conflict-bar button {
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}

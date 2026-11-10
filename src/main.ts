@@ -1,3 +1,5 @@
+import { ElTree } from 'element-plus/es/components/tree/index'
+import 'element-plus/es/components/tree/style/css'
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import { ElAlert } from 'element-plus/es/components/alert/index'
@@ -23,11 +25,7 @@ import { ElInputNumber } from 'element-plus/es/components/input-number/index'
 import { ElLoading } from 'element-plus/es/components/loading/index'
 import { ElMenu, ElMenuItem } from 'element-plus/es/components/menu/index'
 import { ElOption, ElSelect } from 'element-plus/es/components/select/index'
-import {
-  ElRadio,
-  ElRadioButton,
-  ElRadioGroup,
-} from 'element-plus/es/components/radio/index'
+import { ElRadio, ElRadioButton, ElRadioGroup } from 'element-plus/es/components/radio/index'
 import { ElSkeleton } from 'element-plus/es/components/skeleton/index'
 import { ElSwitch } from 'element-plus/es/components/switch/index'
 import { ElTable, ElTableColumn } from 'element-plus/es/components/table/index'
@@ -82,6 +80,7 @@ import { configureSvnExecutable } from './api/svn'
 import { useSettings } from './composables/useSettings'
 import { initializeTheme } from './composables/useTheme'
 import './style.css'
+import './experience.css'
 import { blockDevtoolsShortcut } from './utils/devtoolsShortcuts'
 
 window.addEventListener('keydown', blockDevtoolsShortcut, true)
@@ -92,6 +91,7 @@ const app = createApp(App)
 const pinia = createPinia()
 
 const components = [
+  ElTree,
   ElAlert,
   ElAside,
   ElBreadcrumb,

@@ -17,13 +17,16 @@ function harness(status = 'modified', path = 'file.ts') {
   let refreshes = 0, operation = async () => {}, unmount
   const staging = vue.reactive({ paths: [], eligible: [], key: 'scope', ready: true })
   const mocks = {
+    '@/composables/useExternalTool': { useExternalTool: () => ({ open: async () => {} }) },
+    '@tauri-apps/api/core': { invoke: async () => '' },
+    '@/utils/repositoryUi': { repositoryUi: () => ({}) },
     vue: { ...vue, onMounted() {}, onDeactivated() {}, onBeforeUnmount(fn) { unmount = fn } },
-    'vue-router': { useRouter: () => ({}) },
+    'vue-router': { useRoute: () => ({ query: {} }), useRouter: () => ({}) },
     'vue-i18n': { useI18n: () => ({ t: key => key }) },
     '@/stores/workspace': { useWorkspaceStore: () => store },
     '@/stores/staging': { useStagingStore: () => staging },
     '@/stores/commitDraft': { useCommitDraftStore: () => ({ key: '', message: '' }) },
-    '@/stores/workflows': { useWorkflowStore: () => ({ busy: false }) },
+    '@/stores/workflows': { useWorkflowStore: () => ({ busy: false, perform: async (_title,operation) => operation() }) },
     '@/api/svn': {
       previewWorkspaceDiscard: async (_wc, paths) => ({ id: 'plan', nodes: paths.map(path => ({ path, remove: status === 'unversioned' || status === 'added' })) }),
       executeWorkspaceDiscard: async (...args) => { operations.push({ type: 'discard', args }); const result = await operation(); return result || { completedPaths: [path], error: null } },

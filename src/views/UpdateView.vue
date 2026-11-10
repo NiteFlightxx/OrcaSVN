@@ -12,7 +12,13 @@
               <el-icon><Refresh /></el-icon>
               {{ $t('update.check') }}
             </el-button>
-            <el-button type="primary" size="small" @click="doUpdate" :loading="updating" :disabled="!workspaceStore.currentPath">
+            <el-button
+              type="primary"
+              size="small"
+              @click="doUpdate"
+              :loading="updating"
+              :disabled="!workspaceStore.currentPath || operationFlow.busy"
+            >
               <el-icon><RefreshRight /></el-icon>
               {{ $t('common.update') }}
             </el-button>
@@ -20,7 +26,11 @@
         </div>
       </template>
 
-      <el-empty v-if="!workspaceStore.currentPath" :description="$t('log.openWorkspaceFirst')" class="empty-workspace" />
+      <el-empty
+        v-if="!workspaceStore.currentPath"
+        :description="$t('log.openWorkspaceFirst')"
+        class="empty-workspace"
+      />
 
       <div v-else class="update-content">
         <el-alert
@@ -59,7 +69,13 @@
             <h3>{{ $t('update.incomingTitle') }}</h3>
             <span>{{ $t('update.incomingHint') }}</span>
           </div>
-          <el-table :data="incomingLogs" stripe class="update-table" max-height="280" row-key="revision">
+          <el-table
+            :data="incomingLogs"
+            stripe
+            class="update-table"
+            max-height="280"
+            row-key="revision"
+          >
             <el-table-column prop="revision" :label="$t('log.revision')" width="90" align="center">
               <template #default="{ row }">
                 <el-tag type="primary" size="small" effect="plain">r{{ row.revision }}</el-tag>
@@ -69,7 +85,11 @@
             <el-table-column :label="$t('log.date')" width="180">
               <template #default="{ row }">{{ formatDate(row.date) }}</template>
             </el-table-column>
-            <el-table-column prop="message" :label="$t('log.commitMessage')" show-overflow-tooltip />
+            <el-table-column
+              prop="message"
+              :label="$t('log.commitMessage')"
+              show-overflow-tooltip
+            />
             <el-table-column :label="$t('log.changedFiles')" width="110" align="center">
               <template #default="{ row }">{{ row.changed_paths?.length || 0 }}</template>
             </el-table-column>
@@ -86,8 +106,19 @@
             <h3>{{ $t('update.localTitle') }}</h3>
             <span>{{ $t('update.localHint') }}</span>
           </div>
-          <el-table :data="localChanges" stripe class="update-table" max-height="280" row-key="path">
-            <el-table-column prop="status_code" :label="$t('commit.status')" width="120" align="center">
+          <el-table
+            :data="localChanges"
+            stripe
+            class="update-table"
+            max-height="280"
+            row-key="path"
+          >
+            <el-table-column
+              prop="status_code"
+              :label="$t('commit.status')"
+              width="120"
+              align="center"
+            >
               <template #default="{ row }">
                 <span class="status-badge" :class="getStatusClass(row.status_code)">
                   {{ $t(getStatusLabelKey(row.status_code)) }}
@@ -119,6 +150,7 @@
 </template>
 
 <script setup lang="ts">
+import { useWorkflowStore } from '@/stores/workflows'
 import { computed, onActivated, onDeactivated, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
@@ -145,6 +177,7 @@ const { settings } = useSettings()
 
 const loading = ref(false)
 const updating = ref(false)
+const operationFlow = useWorkflowStore()
 const incomingLogs = ref<SvnLogEntry[]>([])
 const updateConflicts = ref<string[]>([])
 const remoteRevision = ref(0)
@@ -154,28 +187,38 @@ let updateRequestGeneration = 0
 const updateStateIntervalMs = 30_000
 
 const localRevision = computed(() => workspaceStore.svnInfo?.revision || 0)
-const localChanges = computed(() => workspaceStore.statusList.filter(status => status.status_code !== 'normal' && status.status_code !== ''))
+const localChanges = computed(() =>
+  workspaceStore.statusList.filter(
+    (status) => status.status_code !== 'normal' && status.status_code !== ''
+  )
+)
 
 // Hide conflicts once resolved. If paths cannot be matched, as with a summary
 // line, keep the list for as long as anything remains conflicted.
 const visibleConflicts = computed(() => {
-  const conflicted = new Set(workspaceStore.statusList
-    .filter(status => status.status_code === 'conflicted' || status.prop_status === 'conflicted')
-    .map(status => status.path.replace(/\\/g, '/')))
+  const conflicted = new Set(
+    workspaceStore.statusList
+      .filter(
+        (status) => status.status_code === 'conflicted' || status.prop_status === 'conflicted'
+      )
+      .map((status) => status.path.replace(/\\/g, '/'))
+  )
   // A failed refresh leaves the list out of date, so it cannot show they were resolved.
   if (conflicted.size === 0) return workspaceStore.statusIsStale ? updateConflicts.value : []
-  const matched = updateConflicts.value.filter(path => conflicted.has(path.replace(/\\/g, '/')))
+  const matched = updateConflicts.value.filter((path) => conflicted.has(path.replace(/\\/g, '/')))
   return matched.length ? matched : updateConflicts.value
 })
 
-const formatDate = (date: string) => date ? new Date(date).toLocaleString(locale.value) : ''
+const formatDate = (date: string) => (date ? new Date(date).toLocaleString(locale.value) : '')
 
 const applyCachedState = (path: string) => {
-  const cached = updateStateCache.get(`${path}|${workspaceStore.svnInfo?.url}|${workspaceStore.epoch}`)
+  const cached = updateStateCache.get(
+    `${path}|${workspaceStore.svnInfo?.url}|${workspaceStore.epoch}`
+  )
   if (!cached) return false
 
   remoteRevision.value = cached.remoteRevision
-  incomingLogs.value = cached.incomingLogs.map(entry => ({
+  incomingLogs.value = cached.incomingLogs.map((entry) => ({
     ...entry,
     changed_paths: [...(entry.changed_paths || [])],
   }))
@@ -189,15 +232,19 @@ let lastPollError: string | null = null
 
 const loadUpdateState = async (force = false, background = false) => {
   // A completed update must refresh shared workspace state even after navigation.
-  if (!workspaceStore.currentPath || (!force && (!isActive || loading.value || updating.value))) return
+  if (!workspaceStore.currentPath || (!force && (!isActive || loading.value || updating.value)))
+    return
   const requestedPath = workspaceStore.currentPath
   const generation = ++updateRequestGeneration
-  const isCurrent = () => generation === updateRequestGeneration
-    && workspaceStore.currentPath === requestedPath
-    && isActive
+  const isCurrent = () =>
+    generation === updateRequestGeneration &&
+    workspaceStore.currentPath === requestedPath &&
+    isActive
   loading.value = true
   try {
-    const refreshed = await (force ? refreshStatusAfterMutation() : refreshStatusIfStale(updateStateIntervalMs))
+    const refreshed = await (force
+      ? refreshStatusAfterMutation()
+      : refreshStatusIfStale(updateStateIntervalMs))
     // Without a known local revision, every remote commit would look incoming.
     if (!isCurrent() || !refreshed || !workspaceStore.svnInfo) return
     const info = await svnRemoteInfo(requestedPath)
@@ -205,19 +252,27 @@ const loadUpdateState = async (force = false, background = false) => {
     remoteRevision.value = info.revision
     const local = workspaceStore.svnInfo?.revision || 0
     if (info.revision > local) {
-      const logs = await svnIncomingLog(requestedPath, settings.logLimit || 50, info.revision, local)
+      const logs = await svnIncomingLog(
+        requestedPath,
+        settings.logLimit || 50,
+        info.revision,
+        local
+      )
       if (!isCurrent()) return
       incomingLogs.value = logs
     } else {
       incomingLogs.value = []
     }
-    updateStateCache.set(`${requestedPath}|${workspaceStore.svnInfo?.url}|${workspaceStore.epoch}`, {
-      remoteRevision: remoteRevision.value,
-      incomingLogs: incomingLogs.value.map(entry => ({
-        ...entry,
-        changed_paths: [...(entry.changed_paths || [])],
-      })),
-    })
+    updateStateCache.set(
+      `${requestedPath}|${workspaceStore.svnInfo?.url}|${workspaceStore.epoch}`,
+      {
+        remoteRevision: remoteRevision.value,
+        incomingLogs: incomingLogs.value.map((entry) => ({
+          ...entry,
+          changed_paths: [...(entry.changed_paths || [])],
+        })),
+      }
+    )
     if (lastPollError !== null) {
       if (workspaceStore.error === lastPollError) workspaceStore.setError(null)
       lastPollError = null
@@ -233,16 +288,25 @@ const loadUpdateState = async (force = false, background = false) => {
 }
 
 const doUpdate = async () => {
-  if (!workspaceStore.currentPath) return
+  if (!workspaceStore.currentPath || operationFlow.busy) return
   const requestedPath = workspaceStore.currentPath
   updating.value = true
   updateConflicts.value = []
   try {
-    const result = await svnUpdate(requestedPath)
-    if (workspaceStore.currentPath !== requestedPath) return
-    updateConflicts.value = result?.conflicts ?? []
-    updateStateCache.delete(requestedPath)
-    await loadUpdateState(true)
+    await operationFlow.perform(
+      t('menu.update'),
+      async () => {
+        const result = await svnUpdate(requestedPath)
+        if (workspaceStore.currentPath !== requestedPath) return result
+        updateConflicts.value = result?.conflicts ?? []
+        updateStateCache.delete(requestedPath)
+        operationFlow.phase = 'refreshing'
+        await loadUpdateState(true)
+        return result
+      },
+      true,
+      false
+    )
     if (workspaceStore.currentPath !== requestedPath) return
     // Status can miss a reported conflict, for example when a filter hides the path.
     if (updateConflicts.value.length) {
@@ -278,7 +342,9 @@ onActivated(() => {
     applyCachedState(workspaceStore.currentPath)
     void loadUpdateState()
   }
-  updateStateTimer = window.setInterval(() => { void loadUpdateState(false, true) }, updateStateIntervalMs)
+  updateStateTimer = window.setInterval(() => {
+    void loadUpdateState(false, true)
+  }, updateStateIntervalMs)
 })
 
 onDeactivated(stopUpdatePolling)
@@ -374,7 +440,7 @@ watch(
 
 :global(.theme-dark) .revision-strip div,
 :global(.dark) .revision-strip div {
-  border-color: rgba(115, 115, 115, .14);
+  border-color: rgba(115, 115, 115, 0.14);
   background: var(--md-sys-color-surface-container);
 }
 
@@ -414,32 +480,27 @@ watch(
 
 :global(.theme-dark) .update-table,
 :global(.dark) .update-table {
-  --el-table-border-color: rgba(115, 115, 115, .12);
-  border: 1px solid rgba(115, 115, 115, .1);
+  --el-table-border-color: rgba(115, 115, 115, 0.12);
+  border: 1px solid rgba(115, 115, 115, 0.1);
 }
 
 :global(.theme-dark) .update-table :deep(.el-table__inner-wrapper::before),
 :global(.theme-dark) .update-table :deep(.el-table__inner-wrapper::after),
 :global(.dark) .update-table :deep(.el-table__inner-wrapper::before),
 :global(.dark) .update-table :deep(.el-table__inner-wrapper::after) {
-  background-color: rgba(115, 115, 115, .1);
+  background-color: rgba(115, 115, 115, 0.1);
 }
 
 :global(.theme-dark) .update-table :deep(th.el-table__cell),
 :global(.theme-dark) .update-table :deep(td.el-table__cell),
 :global(.dark) .update-table :deep(th.el-table__cell),
 :global(.dark) .update-table :deep(td.el-table__cell) {
-  border-color: rgba(115, 115, 115, .1);
+  border-color: rgba(115, 115, 115, 0.1);
 }
 
 .list-divider {
   height: 1px;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(115, 115, 115, .18),
-    transparent
-  );
+  background: linear-gradient(90deg, transparent, rgba(115, 115, 115, 0.18), transparent);
 }
 
 .empty-line {

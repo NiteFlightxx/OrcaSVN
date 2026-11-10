@@ -1,5 +1,14 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { CommandResult, SvnStatus, SvnLogEntry, SvnInfo, SvnAuthUser, DiffResult, BlameLine, StashUnversionedEntry } from '@/types'
+import type {
+  CommandResult,
+  SvnStatus,
+  SvnLogEntry,
+  SvnInfo,
+  SvnAuthUser,
+  DiffResult,
+  BlameLine,
+  StashUnversionedEntry,
+} from '@/types'
 
 export async function configureSvnExecutable(executable?: string): Promise<string> {
   return invoke<string>('configure_svn_executable', {
@@ -23,7 +32,7 @@ export async function svnCommit(
   path: string,
   message: string,
   files?: string[],
-  autoDeleteMissing = false,
+  autoDeleteMissing = false
 ): Promise<CommandResult> {
   return invoke<CommandResult>('svn_commit', { path, message, files, autoDeleteMissing })
 }
@@ -42,7 +51,16 @@ export async function svnLog(
   dateFrom?: string,
   dateTo?: string
 ): Promise<SvnLogEntry[]> {
-  return invoke<SvnLogEntry[]>('svn_log', { path, limit, startRev, endRev, keyword, author, dateFrom, dateTo })
+  return invoke<SvnLogEntry[]>('svn_log', {
+    path,
+    limit,
+    startRev,
+    endRev,
+    keyword,
+    author,
+    dateFrom,
+    dateTo,
+  })
 }
 
 export async function svnIncomingLog(
@@ -107,7 +125,10 @@ export async function deleteUnversioned(path: string, files: string[]): Promise<
   return invoke<CommandResult>('delete_unversioned', { path, files })
 }
 
-export async function readUnversionedFiles(path: string, files: string[]): Promise<StashUnversionedEntry[]> {
+export async function readUnversionedFiles(
+  path: string,
+  files: string[]
+): Promise<StashUnversionedEntry[]> {
   return invoke<StashUnversionedEntry[]>('read_unversioned_files', { path, files })
 }
 
@@ -165,18 +186,62 @@ export async function openWorkspaceTarget(
 export async function revealWorkspaceFile(path: string, file: string): Promise<void> {
   return invoke<void>('reveal_workspace_file', { path, file })
 }
-export interface WorkspaceItemDetails { kind: string; exists: boolean; binary: boolean; historyUrl: string | null }
-export const workspaceItemDetails = (path: string, file: string) => invoke<WorkspaceItemDetails>('workspace_item_details', { path, file })
-export const openWorkspaceItem = (path: string, file: string) => invoke<void>('open_workspace_item', { path, file })
-export const ignoreWorkspaceItem = (path: string, file: string, byExtension: boolean, expectedUrl: string) => invoke<void>('ignore_workspace_item', { path, file, byExtension, expectedUrl })
-export const exportWorkspacePatch = (path: string, files: string[], destination: string, expectedUrl: string) => invoke<void>('export_workspace_patch', { path, files, destination, expectedUrl })
-export interface DiscardNode { path: string; status: string; directory: boolean; remove: boolean }
-export interface DiscardPreview { id: string; nodes: DiscardNode[] }
-export interface DiscardStatusPatch { workspace: string; expectedUrl: string; paths: string[]; subtrees: string[]; entries: SvnStatus[] }
-export interface DiscardOutcome { completedPaths: string[]; error: string | null; status: DiscardStatusPatch | null }
-export const previewWorkspaceDiscard = (path: string, files: string[], expectedUrl: string, protectedFiles: string[]) => invoke<DiscardPreview>('preview_workspace_discard', { path, files, expectedUrl, protectedFiles })
-export const executeWorkspaceDiscard = (planId: string) => invoke<DiscardOutcome>('execute_workspace_discard', { planId })
-export const cancelWorkspaceDiscard = (planId: string) => invoke<void>('cancel_workspace_discard', { planId })
+export interface WorkspaceItemDetails {
+  kind: string
+  exists: boolean
+  binary: boolean
+  size?: number
+  historyUrl: string | null
+}
+export const workspaceItemDetails = (path: string, file: string) =>
+  invoke<WorkspaceItemDetails>('workspace_item_details', { path, file })
+export const openWorkspaceItem = (path: string, file: string) =>
+  invoke<void>('open_workspace_item', { path, file })
+export const ignoreWorkspaceItem = (
+  path: string,
+  file: string,
+  byExtension: boolean,
+  expectedUrl: string
+) => invoke<void>('ignore_workspace_item', { path, file, byExtension, expectedUrl })
+export const exportWorkspacePatch = (
+  path: string,
+  files: string[],
+  destination: string,
+  expectedUrl: string
+) => invoke<void>('export_workspace_patch', { path, files, destination, expectedUrl })
+export interface DiscardNode {
+  path: string
+  status: string
+  directory: boolean
+  remove: boolean
+}
+export interface DiscardPreview {
+  id: string
+  nodes: DiscardNode[]
+}
+export interface DiscardStatusPatch {
+  workspace: string
+  expectedUrl: string
+  paths: string[]
+  subtrees: string[]
+  entries: SvnStatus[]
+}
+export interface DiscardOutcome {
+  completedPaths: string[]
+  error: string | null
+  status: DiscardStatusPatch | null
+}
+export const previewWorkspaceDiscard = (
+  path: string,
+  files: string[],
+  expectedUrl: string,
+  protectedFiles: string[]
+) =>
+  invoke<DiscardPreview>('preview_workspace_discard', { path, files, expectedUrl, protectedFiles })
+export const executeWorkspaceDiscard = (planId: string) =>
+  invoke<DiscardOutcome>('execute_workspace_discard', { planId })
+export const cancelWorkspaceDiscard = (planId: string) =>
+  invoke<void>('cancel_workspace_discard', { planId })
 
 export async function launchWorkspacePath(): Promise<string | null> {
   return invoke<string | null>('launch_workspace_path')

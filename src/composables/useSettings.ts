@@ -9,6 +9,10 @@ export interface AppSettings {
   language: string
   gitignoreEnabled: boolean
   autoDeleteMissingOnCommit: boolean
+  diffToolPath: string
+  diffToolArgs: string
+  mergeToolPath: string
+  mergeToolArgs: string
 }
 
 const STORAGE_KEY = 'orcasvn-settings'
@@ -21,6 +25,10 @@ const defaults: AppSettings = {
   language: detectSystemLocale(),
   gitignoreEnabled: false,
   autoDeleteMissingOnCommit: false,
+  diffToolPath: '',
+  diffToolArgs: '["{left}", "{right}"]',
+  mergeToolPath: '',
+  mergeToolArgs: '["{base}", "{mine}", "{theirs}", "{merged}"]',
 }
 
 function loadSettings(): AppSettings {

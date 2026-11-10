@@ -2,6 +2,7 @@
 
 mod asset_stash;
 mod discard;
+mod external_tools;
 mod file_actions;
 mod svn;
 #[cfg(test)]
@@ -953,6 +954,9 @@ fn main() {
             discard::execute_workspace_discard,
             discard::cancel_workspace_discard,
             file_actions::open_workspace_item,
+            external_tools::workspace_external_tool,
+            external_tools::workspace_properties,
+            external_tools::workspace_compare,
             file_actions::ignore_workspace_item,
             file_actions::export_workspace_patch,
             asset_stash::asset_stash_candidates,
