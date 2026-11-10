@@ -1,7 +1,10 @@
 <template>
   <div
     class="log-view"
-    :style="{ '--history-split': `${historySplit}%`, '--files-width': `${filesWidth}px` }"
+    :style="{
+      '--history-split': `${historySplit}%`,
+      '--files-width': `${filesWidth}px`,
+    }"
     @click="contextVisible = false"
   >
     <div
@@ -53,55 +56,66 @@
 
       <div v-else ref="logScroller" class="log-content">
         <div class="log-filters">
-          <el-select
-            v-model="filters.author"
-            :placeholder="$t('log.searchAuthor')"
-            class="author-select"
-            filterable
-            clearable
-            :disabled="authorOptions.length === 0"
-            size="small"
-            value-on-clear=""
-            @clear="clearAuthorFilter"
-          >
-            <el-option
-              v-for="option in authorOptions"
-              :key="option.value"
-              :label="option.label"
-              :value="option.value"
-            />
-          </el-select>
           <el-input
             v-model="filters.keyword"
             :placeholder="$t('log.searchKeyword')"
+            :aria-label="$t('log.searchKeyword')"
             clearable
             size="small"
           />
-          <el-date-picker
-            v-model="dateRange"
-            type="daterange"
-            value-format="YYYY-MM-DD"
-            format="YYYY/MM/DD"
-            :start-placeholder="$t('log.dateFrom')"
-            :end-placeholder="$t('log.dateTo')"
-            range-separator="-"
-            popper-class="log-date-range-dropdown"
-            placement="bottom-end"
-            :fallback-placements="['top-end', 'bottom-start', 'top-start']"
-            class="log-date-range"
-            clearable
-            unlink-panels
-            :editable="false"
-            size="small"
-          />
+          <details class="history-extra-filters">
+            <summary>
+              <el-icon><Search /></el-icon>{{ $t('forkUI.filters') }}
+            </summary>
+            <div class="history-filter-popover">
+              <el-select
+                v-model="filters.author"
+                :placeholder="$t('log.searchAuthor')"
+                class="author-select"
+                filterable
+                clearable
+                :disabled="authorOptions.length === 0"
+                size="small"
+                value-on-clear=""
+                @clear="clearAuthorFilter"
+              >
+                <el-option
+                  v-for="option in authorOptions"
+                  :key="option.value"
+                  :label="option.label"
+                  :value="option.value"
+                />
+              </el-select>
+              <el-date-picker
+                v-model="dateRange"
+                type="daterange"
+                value-format="YYYY-MM-DD"
+                format="YYYY/MM/DD"
+                :start-placeholder="$t('log.dateFrom')"
+                :end-placeholder="$t('log.dateTo')"
+                range-separator="-"
+                popper-class="log-date-range-dropdown"
+                placement="bottom-end"
+                :fallback-placements="['top-end', 'bottom-start', 'top-start']"
+                class="log-date-range"
+                clearable
+                unlink-panels
+                :editable="false"
+                size="small"
+              />
+            </div>
+          </details>
           <el-button type="primary" size="small" :loading="loading" @click="queryLogs">
             <el-icon><Search /></el-icon>
             {{ $t('log.query') }}
           </el-button>
-          <el-button size="small" @click="resetFilters">
-            <el-icon><RefreshLeft /></el-icon>
-            {{ $t('common.reset') }}
-          </el-button>
+          <el-button
+            size="small"
+            :title="$t('common.reset')"
+            :aria-label="$t('common.reset')"
+            @click="resetFilters"
+            ><el-icon><RefreshLeft /></el-icon
+          ></el-button>
         </div>
 
         <div class="log-query-state">
@@ -144,7 +158,7 @@
           <el-table-column
             prop="revision"
             :label="$t('log.revision')"
-            width="90"
+            width="72"
             sortable
             align="center"
           >
@@ -152,7 +166,7 @@
               <el-tag type="primary" size="small" effect="plain">r{{ row.revision }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="author" :label="$t('log.author')" width="180">
+          <el-table-column prop="author" :label="$t('log.author')" width="110">
             <template #default="{ row }">
               <div class="author-cell">
                 <el-icon><User /></el-icon>
@@ -160,26 +174,12 @@
               </div>
             </template>
           </el-table-column>
-          <el-table-column prop="date" :label="$t('log.date')" width="180" sortable>
+          <el-table-column prop="date" :label="$t('log.date')" width="150" sortable>
             <template #default="{ row }">
               <div class="date-cell">
                 <el-icon><Calendar /></el-icon>
                 <span>{{ formatDate(row.date) }}</span>
               </div>
-            </template>
-          </el-table-column>
-
-          <el-table-column
-            :label="$t('log.changedFiles')"
-            width="150"
-            align="center"
-            class-name="changed-files-column"
-            label-class-name="changed-files-header"
-          >
-            <template #default="{ row }">
-              <el-tag size="small" effect="plain">
-                {{ row.changed_paths?.length || 0 }}
-              </el-tag>
             </template>
           </el-table-column>
         </el-table>
@@ -213,75 +213,123 @@
       </div>
 
       <PanelSplitter
-        v-if="dialogVisible"
-        axis="y"
+        v-if="workspaceStore.currentPath"
+        axis="x"
         v-model:value="historySplit"
-        :min="25"
-        :max="80"
+        :min="40"
+        :max="75"
         percent
-        :label="$t('sourceUI.resizeGroups')"
+        :label="$t('forkUI.resizeHistory')"
       />
-      <section v-if="dialogVisible" class="log-inspector">
-        <div class="log-detail-actions">
-          <el-button
-            :disabled="flow.busy || scopedHistory || logSource === flow.identity?.url"
-            @click="cherryPick"
-            >{{ $t('flow.cherryPick') }}</el-button
-          ><el-button
-            @click="
-              () => {
-                dialogVisible = false
-                onDialogClose()
-              }
-            "
-            >{{ $t('common.close') }}</el-button
+      <section v-if="workspaceStore.currentPath" class="log-inspector">
+        <div
+          class="inspector-tabs"
+          role="tablist"
+          :aria-label="$t('forkUI.commit')"
+          @keydown="navigateInspectorTabs"
+        >
+          <button
+            v-for="tab in inspectorTabs"
+            :id="'history-tab-' + tab.id"
+            :key="tab.id"
+            role="tab"
+            :aria-selected="inspectorTab === tab.id"
+            aria-controls="history-tabpanel"
+            :tabindex="inspectorTab === tab.id ? 0 : -1"
+            :class="{ active: inspectorTab === tab.id }"
+            @click="inspectorTab = tab.id"
           >
+            {{ $t(tab.label) }}
+          </button>
         </div>
-        <div v-if="selectedLog" class="revision-summary">
-          <span
-            >r{{ selectedLog.revision }} · {{ selectedLog.author }} ·
-            {{ formatDate(selectedLog.date) }}</span
-          >
-          <pre>{{ selectedLog.message }}</pre>
+        <div v-if="!selectedLog" class="inspector-empty">
+          {{ $t('forkUI.selectCommit') }}
         </div>
-        <div v-if="selectedLog" class="log-detail">
-          <div class="changed-files-section">
-            <h4 class="message-title">
-              <el-icon><Document /></el-icon>
-              {{ $t('log.changedFiles') }}
-            </h4>
-            <el-table
-              :data="selectedLog.changed_paths || []"
-              max-height="260"
-              stripe
-              class="changed-files-table"
-              @row-click="previewChangedPath"
-              @row-dblclick="openChangedPathDiff"
+        <div
+          v-else
+          id="history-tabpanel"
+          class="inspector-content"
+          role="tabpanel"
+          :aria-labelledby="'history-tab-' + inspectorTab"
+        >
+          <div class="revision-actions">
+            <strong>r{{ selectedLog.revision }}</strong
+            ><el-button
+              size="small"
+              :disabled="flow.busy || scopedHistory || logSource === flow.identity?.url"
+              @click="cherryPick"
+              >{{ $t('flow.cherryPick') }}</el-button
+            ><button
+              class="quiet-icon"
+              :title="$t('common.close')"
+              :aria-label="$t('common.close')"
+              @click="closeInspector"
             >
-              <el-table-column :label="$t('commit.status')" width="96" align="center">
-                <template #default="{ row }">
-                  <el-tag size="small" :type="getActionTagType(row.action)">
-                    {{ getActionLabel(row.action) }}
-                  </el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column :label="$t('commit.file')" show-overflow-tooltip>
-                <template #default="{ row }">
-                  <span class="file-path">{{ row.path }}</span>
-                </template>
-              </el-table-column>
-            </el-table>
+              <el-icon><Close /></el-icon>
+            </button>
           </div>
+          <section v-show="inspectorTab === 'commit'" class="revision-overview">
+            <dl>
+              <dt>{{ $t('log.author') }}</dt>
+              <dd>{{ selectedLog.author }}</dd>
+              <dt>{{ $t('log.date') }}</dt>
+              <dd>{{ formatDate(selectedLog.date) }}</dd>
+              <dt>{{ $t('forkUI.repository') }}</dt>
+              <dd :title="logSource">{{ logSource }}</dd>
+            </dl>
+            <pre class="revision-message">{{ selectedLog.message }}</pre>
+            <h4>
+              {{ $t('log.changedFiles') }} ·
+              {{ selectedLog.changed_paths?.length || 0 }}
+            </h4>
+            <RevisionPathTree
+              :key="selectedLog.revision"
+              :paths="selectedLog.changed_paths || []"
+              :selected="selectedRevisionPath"
+              @select="showRevisionFile"
+              @open="openChangedPathDiff"
+            />
+          </section>
+          <section v-show="inspectorTab !== 'commit'" class="revision-changes">
+            <div class="revision-file-browser" :style="{ flexBasis: filesWidth + 'px' }">
+              <div v-show="inspectorTab === 'changes'" class="revision-file-list">
+                <button
+                  v-for="row in selectedLog.changed_paths || []"
+                  :key="row.path"
+                  :class="{ active: selectedRevisionPath === row.path }"
+                  :title="row.path"
+                  @click="previewChangedPath(row)"
+                  @dblclick="openChangedPathDiff(row)"
+                >
+                  <small>{{ row.action }}</small
+                  ><span>{{ row.path }}</span>
+                </button>
+              </div>
+              <RevisionPathTree
+                v-show="inspectorTab === 'tree'"
+                :key="selectedLog.revision"
+                :paths="selectedLog.changed_paths || []"
+                :selected="selectedRevisionPath"
+                @select="previewChangedPath"
+                @open="openChangedPathDiff"
+              />
+            </div>
+            <PanelSplitter
+              axis="y"
+              v-model:value="filesWidth"
+              :min="90"
+              :max="400"
+              :label="$t('sourceUI.resizeChanges')"
+            />
+            <div class="history-diff">
+              <DiffViewer v-if="selectedRevisionPath" :text="inlineDiff" compact /><span
+                v-else
+                class="inspector-empty"
+                >{{ $t('forkUI.selectRevisionFile') }}</span
+              >
+            </div>
+          </section>
         </div>
-
-        <PanelSplitter
-          axis="x"
-          v-model:value="filesWidth"
-          :min="220"
-          :max="600"
-          :label="$t('sourceUI.resizeChanges')"
-        />
-        <div class="history-diff"><DiffViewer :text="inlineDiff" compact /></div>
       </section>
     </el-card>
     <RevisionCompareDialog
@@ -316,6 +364,7 @@ import RevisionCompareDialog from '@/components/RevisionCompareDialog.vue'
 import { readPanelSize } from '@/utils/changeSelection'
 import { repositoryUi } from '@/utils/repositoryUi'
 import DiffViewer from '@/components/DiffViewer.vue'
+import RevisionPathTree from '@/components/RevisionPathTree.vue'
 import { writeClipboardText } from '@/utils/clipboard'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { svnCurrentUser, svnLog } from '@/api/svn'
@@ -340,12 +389,47 @@ const logSource = computed(() => {
   return flow.browsingUrl || workspaceStore.svnInfo?.url || workspaceStore.currentPath || ''
 })
 const inlineDiff = ref('')
-const historySplit = ref(readPanelSize('orcasvn-history-split', 55, 25, 80)),
-  filesWidth = ref(readPanelSize('orcasvn-history-files', 330, 220, 600))
+const selectedRevisionPath = ref('')
+const inspectorTab = ref<'commit' | 'changes' | 'tree'>('commit')
+const inspectorTabs = [
+  { id: 'commit', label: 'forkUI.commit' },
+  { id: 'changes', label: 'forkUI.changes' },
+  { id: 'tree', label: 'forkUI.fileTree' },
+] as const
+function navigateInspectorTabs(event: KeyboardEvent) {
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+  event.preventDefault()
+  const index = inspectorTabs.findIndex((tab) => tab.id === inspectorTab.value)
+  const next =
+    event.key === 'Home'
+      ? 0
+      : event.key === 'End'
+        ? 2
+        : (index + (event.key === 'ArrowLeft' ? 2 : 1)) % 3
+  inspectorTab.value = inspectorTabs[next].id
+  ;(event.currentTarget as HTMLElement)
+    .querySelectorAll<HTMLButtonElement>('[role="tab"]')
+    [next]?.focus()
+}
+function showRevisionFile(row: SvnLogPath) {
+  inspectorTab.value = 'changes'
+  void previewChangedPath(row)
+}
+function closeInspector() {
+  diffGeneration++
+  selectedLog.value = null
+  selectedRevisionPath.value = ''
+  inlineDiff.value = ''
+  dialogVisible.value = false
+  onDialogClose()
+}
+
+const historySplit = ref(readPanelSize('orcasvn-history-columns', 60, 40, 75)),
+  filesWidth = ref(readPanelSize('orcasvn-history-file-height', 180, 90, 400))
 watch([historySplit, filesWidth], () => {
   try {
-    localStorage.setItem('orcasvn-history-split', String(historySplit.value))
-    localStorage.setItem('orcasvn-history-files', String(filesWidth.value))
+    localStorage.setItem('orcasvn-history-columns', String(historySplit.value))
+    localStorage.setItem('orcasvn-history-file-height', String(filesWidth.value))
   } catch {}
 })
 const comparison = ref<{ revisions: number[]; working: boolean } | null>(null),
@@ -369,6 +453,8 @@ function saveHistoryView() {
     repositoryUi(path).history = {
       filters: { ...filters },
       revision: selectedLog.value?.revision,
+      inspectorTab: inspectorTab.value,
+      selectedPath: selectedRevisionPath.value,
       page: pageIndex.value,
       cursors: [...pageCursors.value],
       scroll: logScroller.value?.scrollTop || 0,
@@ -398,6 +484,9 @@ async function restoreHistoryView() {
     if (entry) {
       selectedLog.value = entry
       dialogVisible.value = true
+      inspectorTab.value = state.inspectorTab || 'commit'
+      const file = entry.changed_paths?.find((row) => row.path === state.selectedPath)
+      if (file) void previewChangedPath(file)
     }
   } finally {
     restoringHistory = false
@@ -419,8 +508,7 @@ const contextVisible = ref(false),
 let diffGeneration = 0
 function contextMenu(row: SvnLogEntry, _column: unknown, event: MouseEvent) {
   event.preventDefault()
-  selectedLog.value = row
-  dialogVisible.value = true
+  handleRowClick(row)
   contextX.value = Math.min(event.clientX, window.innerWidth - 250)
   contextY.value = Math.min(event.clientY, window.innerHeight - 100)
   contextVisible.value = true
@@ -450,6 +538,8 @@ async function cherryPick() {
 }
 async function previewChangedPath(row: SvnLogPath) {
   if (!workspaceStore.currentPath || !selectedLog.value || !workspaceStore.svnInfo) return
+  selectedRevisionPath.value = row.path
+  inlineDiff.value = ''
   const request = ++diffGeneration,
     revision = selectedLog.value.revision
   const peg = row.action === 'D' ? revision - 1 : revision
@@ -784,9 +874,11 @@ const queryLogs = () => {
 const handleRowClick = (row: SvnLogEntry) => {
   diffGeneration++
   inlineDiff.value = ''
+  selectedRevisionPath.value = ''
   selectedLog.value = row
   dialogVisible.value = true
-  if (row.changed_paths?.[0]) void previewChangedPath(row.changed_paths[0])
+  if (inspectorTab.value !== 'commit' && row.changed_paths?.[0])
+    void previewChangedPath(row.changed_paths[0])
 }
 
 let preserveLogSelection = false
@@ -850,27 +942,6 @@ const clearAuthorFilter = () => {
   filters.author = ''
 }
 
-const getActionLabel = (action: string) => {
-  const key = `log.action${action || 'Unknown'}`
-  const translated = t(key)
-  return translated === key ? action || t('common.noData') : translated
-}
-
-const getActionTagType = (action: string) => {
-  switch (action) {
-    case 'A':
-      return 'success'
-    case 'D':
-      return 'danger'
-    case 'M':
-      return 'warning'
-    case 'R':
-      return 'primary'
-    default:
-      return 'info'
-  }
-}
-
 const formatDate = (dateStr: string): string => {
   if (!dateStr) return ''
   const date = new Date(dateStr)
@@ -907,6 +978,7 @@ watch([logSource, () => workspaceStore.epoch], () => {
   inlineDiff.value = ''
   dialogVisible.value = false
   selectedLog.value = null
+  selectedRevisionPath.value = ''
   void reloadLogs(true, true)
 })
 
@@ -940,487 +1012,114 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.revision-summary {
-  grid-column: 1/-1;
-  max-height: 76px;
-  overflow: auto;
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--md-sys-color-outline-variant);
-  font-size: 11px;
-}
-.revision-summary span {
-  color: var(--md-sys-color-on-surface-variant);
-}
-.revision-summary pre {
-  margin: 5px 0 0;
-  white-space: pre-wrap;
-  font: inherit;
-}
-.log-detail .changed-files-section {
-  margin: 0;
-}
-.log-detail .message-title {
-  margin: 0 0 6px;
-  font-size: 12px;
-}
-.log-filters .log-date-range {
-  width: 100% !important;
-  min-width: 0 !important;
-}
-.log-filters > * {
-  min-width: 0;
-}
-.log-filters .el-input {
-  width: 100%;
-}
-
-.log-inspector {
-  display: grid !important;
-  grid-template-columns: minmax(200px, var(--files-width)) 4px minmax(0, 1fr);
-  grid-template-rows: 30px auto minmax(0, 1fr);
-  height: calc(100% - var(--history-split)) !important;
-  flex: 0 0 calc(100% - var(--history-split));
-  max-height: none !important;
-  min-height: 140px;
-  overflow: hidden !important;
-  padding: 0 !important;
-  resize: none !important;
-}
-.log-detail-actions {
-  grid-column: 1/-1;
-  margin: 0 !important;
-  border-bottom: 1px solid var(--md-sys-color-outline-variant);
-  padding: 2px 8px;
-}
-.log-detail {
-  overflow: auto;
-  min-height: 0;
-  padding: 8px;
-}
-.history-diff {
-  display: flex;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-}
-.history-diff :deep(.diff-viewer) {
-  border: 0;
-  border-radius: 0;
-}
-.log-inspector :deep(.changed-files-table) {
-  font-size: 12px;
-}
-.log-view :deep(.el-card__body) {
-  overflow: hidden;
-}
-.log-query-state {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.log-branch-context {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 24px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--md-sys-color-outline-variant);
-  font-size: 12px;
-  overflow-wrap: anywhere;
-}
-.log-inspector {
-  flex-shrink: 0;
-  box-sizing: border-box;
-  border-top: 1px solid var(--md-sys-color-outline-variant);
-  padding: 12px;
-  max-height: 60vh;
-  overflow: auto;
-  resize: vertical;
-  min-height: 200px;
-}
-.log-detail-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-.log-context {
-  position: fixed;
-  z-index: 2500;
-  background: var(--md-sys-color-surface-container-lowest);
-  border: 1px solid var(--md-sys-color-outline-variant);
-  padding: 4px;
-  min-width: 210px;
-}
-.log-context button {
-  display: block;
-  background: none;
-  color: inherit;
-  border: 0;
-  padding: 8px;
-  width: 100%;
-  text-align: left;
-  cursor: pointer;
-}
-.log-context button:hover {
-  background: var(--md-sys-color-primary-container);
-}
-
 .log-view {
   height: 100%;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  min-height: 0;
 }
-
 .log-card {
   flex: 1;
   min-height: 0;
-  height: auto;
-  border-radius: var(--app-radius-lg);
-}
-
-:deep(.log-card > .el-card__body) {
-  display: flex;
-  flex-direction: column;
-  height: calc(100% - 57px);
-  min-height: 0;
-}
-
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.card-title {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--app-spacing-sm);
-  font-weight: 700;
-}
-
-.header-actions {
-  align-items: center;
-  display: flex;
-  gap: var(--app-spacing-sm);
-}
-
-.loaded-count {
-  color: var(--el-text-color-secondary);
-  font-size: var(--app-font-size-xs);
-}
-
-.no-workspace {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--app-spacing-xl) 0;
-}
-
-.empty-icon {
-  font-size: 64px;
-  color: var(--el-text-color-placeholder);
-}
-
-.log-content {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-}
-
-.log-filters {
-  display: grid;
-  grid-template-columns: minmax(120px, 1fr) minmax(180px, 2fr) 380px auto auto;
-  gap: var(--app-spacing-sm);
-  margin-bottom: var(--app-spacing);
-}
-
-.author-select {
-  width: 100%;
-}
-
-.author-select :deep(.el-select__wrapper) {
-  height: 40px;
-  min-height: 40px;
-}
-
-.author-select :deep(.el-select__wrapper.is-focused),
-.author-select :deep(.el-select__wrapper.is-focus) {
-  box-shadow: 0 0 0 2px var(--md-sys-color-primary) inset;
-}
-
-.author-select :deep(.el-select__input),
-.author-select :deep(.el-select__input:focus),
-.author-select :deep(.el-select__input:focus-visible) {
   border: 0;
-  outline: none;
-  box-shadow: none;
+  border-radius: 0;
 }
-
-.log-date-range {
-  width: 100%;
-  min-width: 0;
-}
-
-.log-date-range :deep(.el-range-input) {
-  color: var(--el-text-color-primary);
-}
-
-.log-date-range :deep(.el-range-input::placeholder) {
-  color: var(--el-text-color-placeholder);
-}
-
-.log-date-range :deep(.el-range-separator),
-.log-date-range :deep(.el-range__icon),
-.log-date-range :deep(.el-range__close-icon) {
-  color: var(--el-text-color-secondary);
-}
-
-.log-query-state {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 28px;
-  gap: var(--app-spacing-sm);
-  margin: -4px 0 var(--app-spacing-sm);
-  color: var(--el-text-color-secondary);
-  font-size: var(--app-font-size-sm);
-}
-
-.query-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--md-sys-color-primary);
-  font-weight: 600;
-}
-
-.log-table {
-  border-radius: var(--app-radius-md);
-  overflow: hidden;
-}
-
-.log-table :deep(.changed-files-column .cell),
-.log-table :deep(.changed-files-header .cell) {
-  white-space: nowrap;
-}
-
-.log-pagination {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 12px;
-  padding: 12px;
-  color: var(--el-text-color-secondary);
-  font-size: var(--app-font-size-xs);
-  text-align: center;
-}
-
-.empty-log-result {
-  padding: var(--app-spacing-lg) 0 var(--app-spacing-xl);
-}
-
-:global(.theme-dark) .log-query-state,
-:global(.dark) .log-query-state {
-  color: var(--md-sys-color-on-surface-variant);
-}
-
-:global(.theme-dark) .query-status,
-:global(.dark) .query-status {
-  color: var(--md-sys-color-on-primary-container);
-}
-
-:global(.theme-dark) .log-table,
-:global(.dark) .log-table {
-  --el-table-border-color: rgba(115, 115, 115, 0.12);
-  border: 1px solid rgba(115, 115, 115, 0.1);
-}
-
-:global(.theme-dark) .log-table :deep(.el-table__inner-wrapper::before),
-:global(.theme-dark) .log-table :deep(.el-table__inner-wrapper::after),
-:global(.dark) .log-table :deep(.el-table__inner-wrapper::before),
-:global(.dark) .log-table :deep(.el-table__inner-wrapper::after) {
-  background-color: rgba(115, 115, 115, 0.1);
-}
-
-:global(.theme-dark) .empty-log-result,
-:global(.dark) .empty-log-result {
-  color: var(--md-sys-color-on-surface-variant);
-}
-
-.author-cell,
-.date-cell {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--el-text-color-regular);
-}
-
-.author-cell .el-icon,
-.date-cell .el-icon {
-  flex-shrink: 0;
-  font-size: var(--app-font-size-body);
-  color: var(--el-text-color-secondary);
-}
-
-.author-cell span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.message-text {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.log-dialog {
-  border-radius: var(--app-radius-xl);
-}
-
-.log-detail {
-  display: flex;
-  flex-direction: column;
-  gap: var(--app-spacing-lg);
-}
-
-.detail-descriptions {
-  border-radius: var(--app-radius-md);
-  overflow: hidden;
-}
-
-.author-info,
-.date-info {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.author-info span,
-.date-info span {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.author-info .el-icon,
-.date-info .el-icon {
-  flex-shrink: 0;
-}
-
-.author-info .el-icon,
-.date-info .el-icon {
-  font-size: var(--app-font-size-body);
-  color: var(--el-text-color-secondary);
-}
-
-.commit-message-section {
-  margin-top: var(--app-spacing-sm);
-}
-
-.changed-files-section {
-  margin-top: var(--app-spacing-sm);
-}
-
-.message-title {
-  display: flex;
-  align-items: center;
-  gap: var(--app-spacing-sm);
-  margin-bottom: var(--app-spacing);
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--el-text-color-primary);
-}
-
-.message-title .el-icon {
-  font-size: var(--app-font-size-title);
-  color: var(--md-sys-color-primary);
-}
-
-.commit-message {
-  background: var(--el-fill-color-light);
-  border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: var(--app-radius-md);
-  padding: var(--app-spacing-md);
-  overflow: auto;
-}
-
-.commit-message pre {
-  margin: 0;
-  font-family: inherit;
-  font-size: var(--app-font-size-body);
-  line-height: 1.6;
-  white-space: pre-wrap;
-  word-break: break-all;
-  color: var(--el-text-color-primary);
-}
-
-.changed-files-table {
-  border-radius: var(--app-radius-md);
-  overflow: hidden;
-}
-
-.changed-files-table :deep(.el-table__row) {
-  cursor: pointer;
-}
-
-.file-path {
-  font-family: var(--app-font-family-mono);
-  font-size: var(--app-font-size-label);
-}
-
-@media (max-width: 860px) {
-  .card-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: var(--app-spacing-sm);
-  }
-
-  .header-actions {
-    width: 100%;
-  }
-
-  .log-filters {
-    grid-template-columns: 1fr 1fr;
-  }
-}
-
-@media (max-width: 640px) {
-  .log-filters {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* Dashboard.axaml/CommitDetail.axaml: compact history above the selected revision. */
 .log-card :deep(> .el-card__header) {
   display: none;
 }
 .log-card :deep(> .el-card__body) {
   height: 100%;
   padding: 0 !important;
+  display: grid;
+  grid-template-columns:
+    minmax(220px, min(var(--history-split), calc(100% - 244px)))
+    4px minmax(240px, 1fr);
+  overflow: hidden;
+}
+.no-workspace {
+  grid-column: 1/-1;
+  display: grid;
+  place-items: center;
+}
+.log-content {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
 }
 .log-filters {
-  padding: 7px 9px;
-  gap: 6px;
-  margin: 0;
-  grid-template-columns: minmax(90px, 1fr) minmax(140px, 2fr) minmax(200px, 2fr) auto auto;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 8px;
+}
+.log-filters > .el-input {
+  flex: 1;
+  min-width: 50px;
+}
+.log-filters .el-button {
+  margin-left: 0;
+}
+.history-extra-filters {
+  position: static;
+  flex-shrink: 0;
+}
+.history-extra-filters > summary {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px;
+  font-size: 11px;
+  cursor: pointer;
+  list-style: none;
+}
+.history-extra-filters > summary::-webkit-details-marker {
+  display: none;
+}
+.history-filter-popover {
+  position: absolute;
+  z-index: 20;
+  left: 8px;
+  top: 100%;
+  display: grid;
+  gap: 8px;
+  width: min(300px, calc(100% - 16px));
+  padding: 10px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface-container);
+}
+.log-filters > * {
+  min-width: 0;
+}
+.log-filters :deep(.log-date-range) {
+  width: 100% !important;
+  min-width: 0 !important;
+}
+.log-filters :deep(.el-select),
+.log-filters :deep(.el-input) {
+  width: 100%;
 }
 .log-query-state {
-  padding: 4px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 8px;
   font-size: 11px;
 }
-.log-branch-context {
-  padding: 4px 10px;
-  font-size: 10px;
-  gap: 4px 16px;
+.query-status {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+.log-table {
+  flex: 1;
+  min-height: 140px;
 }
 .log-table :deep(.el-table__cell) {
-  padding: 3px 0;
-  height: 28px;
+  padding: 2px 0;
+  height: 26px;
 }
 .log-table :deep(.cell) {
   font-size: 12px;
@@ -1431,25 +1130,212 @@ onUnmounted(() => {
   background: transparent;
   font-size: 11px;
 }
+.message-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.author-cell,
+.date-cell {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.author-cell span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .log-pagination {
-  padding: 5px 10px;
-  margin: 0;
+  margin-top: auto;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 8px;
   border-top: 1px solid var(--md-sys-color-outline-variant);
+  font-size: 11px;
+}
+.empty-log-result {
+  flex: 1;
 }
 .log-inspector {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
   background: var(--md-sys-color-surface-container-low);
-  padding: 10px;
-  max-height: 55vh;
 }
-.log-detail-actions {
-  margin-bottom: 6px;
+.inspector-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  flex-shrink: 0;
 }
-.log-inspector :deep(.el-descriptions__cell) {
-  padding: 5px 9px !important;
+.inspector-tabs button {
+  flex: 1;
+  height: 32px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 12px;
+  cursor: pointer;
+}
+.inspector-tabs button.active {
+  color: var(--md-sys-color-primary);
+  border-bottom-color: var(--md-sys-color-primary);
+}
+.inspector-content {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+.revision-actions {
+  min-height: 32px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 3px 8px;
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+}
+.revision-actions strong {
+  flex: 1;
   font-size: 12px;
 }
-.commit-message-section,
-.changed-files-section {
-  margin-top: 10px;
+.quiet-icon {
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+.revision-overview {
+  padding: 10px;
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
+}
+.revision-overview dl {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 7px 12px;
+  margin: 0;
+  font-size: 11px;
+}
+.revision-overview dt {
+  color: var(--md-sys-color-on-surface-variant);
+}
+.revision-overview dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+.revision-message {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 12px 0;
+  padding: 10px 0;
+  border-block: 1px solid var(--md-sys-color-outline-variant);
+  font: inherit;
+  font-size: 12px;
+  user-select: text;
+}
+.revision-overview h4 {
+  font-size: 11px;
+  font-weight: 500;
+  margin: 10px 0 6px;
+}
+.revision-changes {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  flex: 1;
+}
+.revision-file-browser {
+  overflow: auto;
+  flex-grow: 0;
+  flex-shrink: 1;
+  min-height: 60px;
+  max-height: 55%;
+}
+.revision-file-list button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: none;
+  color: inherit;
+  padding: 5px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.revision-file-list button.active {
+  background: var(--md-sys-color-primary-container);
+}
+.revision-file-list button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.revision-file-list button small {
+  color: var(--md-sys-color-on-surface-variant);
+}
+.history-diff {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+.history-diff :deep(.diff-viewer) {
+  border: 0;
+  border-radius: 0;
+}
+.inspector-empty {
+  display: grid;
+  place-items: center;
+  flex: 1;
+  padding: 14px;
+  font-size: 12px;
+  color: var(--md-sys-color-on-surface-variant);
+}
+.log-context {
+  position: fixed;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface-container);
+}
+.log-context button {
+  text-align: left;
+  border: 0;
+  background: none;
+  padding: 7px 12px;
+  color: inherit;
+  cursor: pointer;
+}
+.log-context button:hover {
+  background: var(--md-sys-color-surface-container-high);
+}
+.log-branch-context {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 4px 8px;
+  font-size: 10px;
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  overflow-wrap: anywhere;
 }
 </style>

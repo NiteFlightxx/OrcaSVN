@@ -3,13 +3,20 @@ export interface RepositoryUiState {
   query: Record<string, unknown>
   browsingUrl: string
   workingUrl?: string
-  workspace?: { filter: string; query: string; selected: string | null; scroll: number[] }
+  workspace?: {
+    filter: string
+    query: string
+    selected: string | null
+    scroll: number[]
+  }
   history?: {
     filters: Record<string, string>
     revision?: number
     page: number
     cursors: (number | undefined)[]
     scroll: number
+    inspectorTab?: 'commit' | 'changes' | 'tree'
+    selectedPath?: string
   }
 }
 const states = new Map<string, RepositoryUiState>()
@@ -55,7 +62,11 @@ try {
           !Object.values(state.history.filters).every((value) => typeof value === 'string') ||
           !Array.isArray(state.history.cursors) ||
           !Number.isSafeInteger(state.history.page) ||
-          state.history.page < 0)
+          state.history.page < 0 ||
+          (state.history.inspectorTab !== undefined &&
+            !['commit', 'changes', 'tree'].includes(state.history.inspectorTab)) ||
+          (state.history.selectedPath !== undefined &&
+            typeof state.history.selectedPath !== 'string'))
       )
         delete state.history
       states.set(pair[0], state)

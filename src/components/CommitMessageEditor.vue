@@ -33,7 +33,7 @@
         v-model="draft.description"
         :disabled="disabled || !draft.key"
         type="textarea"
-        :rows="compact ? 3 : 5"
+        :rows="compact ? 2 : 5"
         resize="vertical"
         :placeholder="$t('commitDetails.descriptionPlaceholder')"
         :aria-label="$t('commitDetails.description')"

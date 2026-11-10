@@ -5,7 +5,7 @@ const ts = require('typescript')
 const vm = require('node:vm')
 const vue = require('vue')
 
-function harness(fetch) {
+function harness(fetch, diff = async () => ({ diff: '' })) {
   const calls = [], uiState = {}
   const flow = vue.reactive({ browsingUrl: '', identity: null })
   const store = vue.reactive({ currentPath: '/wc', epoch: 0, setError(error) { this.error = error } })
@@ -13,21 +13,21 @@ function harness(fetch) {
   const mocks = {
     '@/utils/changeSelection': { readPanelSize: (_key,fallback) => fallback },
     '@/utils/repositoryUi': { repositoryUi: () => uiState },
-    vue: { ...vue, watch() {}, onMounted() {}, onActivated() {}, onUnmounted() {} },
+    vue: { ...vue, watch() {}, onMounted() {}, onActivated() {}, onDeactivated() {}, onUnmounted() {} },
     '@/stores/workflows': { useWorkflowStore: () => flow },
     '@/api/workflows': {},
     '@/components/DiffViewer.vue': {},
     '@/utils/clipboard': {},
     'element-plus': {},
     '@/stores/workspace': { useWorkspaceStore: () => store },
-    '@/api/svn': { svnLog: async (...args) => { calls.push(args); return fetch(...args) } },
+    '@/api/svn': { svnLog: async (...args) => { calls.push(args); return fetch(...args) }, svnDiff: diff },
     'vue-i18n': { useI18n: () => ({ t: key => key, locale: vue.ref('en-US') }) },
     '@/composables/useWorkspace': { useWorkspace: () => ({}) },
     'vue-router': { useRouter: () => ({}), useRoute: () => route },
   }
   const script = fs.readFileSync('src/views/LogView.vue', 'utf8').match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1]
-  const context = { exports: {}, require: name => { assert.ok(name in mocks, name); return mocks[name] } }
-  const code = ts.transpileModule(script + '\nexports.state = { reloadLogs, fetchLogPage, logs, pageIndex, pageCursors, hasMore, loading, filters, saveHistoryView, restoreHistoryView };', { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText
+  const context = { exports: {}, sessionStorage: { removeItem() {} }, require: name => { assert.ok(name in mocks, name); return mocks[name] } }
+  const code = ts.transpileModule(script + '\nexports.state = { reloadLogs, fetchLogPage, logs, pageIndex, pageCursors, hasMore, loading, filters, saveHistoryView, restoreHistoryView, inspectorTab, selectedRevisionPath, selectedLog, inlineDiff, handleRowClick, previewChangedPath, closeInspector };', { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText
   vm.runInNewContext(code, context)
   return { ...context.exports.state, calls, store, flow, route }
 }
@@ -131,4 +131,52 @@ test('restoring repository history retains the actual revision cursor page and s
   await h.restoreHistoryView()
   assert.equal(h.pageIndex.value,1)
   assert.deepEqual(Array.from(h.logs.value,entry=>entry.revision),expected)
+})
+
+test('history selection opens metadata without eagerly fetching a file diff', async () => {
+  const calls = []
+  const h = harness(query, async (...args) => { calls.push(args); return { diff: 'unexpected' } })
+  h.store.svnInfo = { url: 'file:///repo/dev', repository_root: 'file:///repo' }
+  h.handleRowClick({ ...entries[0], changed_paths: [{ path: '/dev/Source/A.cpp', action: 'M' }] })
+  assert.equal(h.inspectorTab.value, 'commit')
+  assert.equal(h.selectedLog.value.revision, entries[0].revision)
+  assert.equal(h.selectedRevisionPath.value, '')
+  assert.deepEqual(calls, [])
+})
+
+test('changing history selection or closing details rejects a pending file diff', async () => {
+  let finish
+  const h = harness(query, () => new Promise(resolve => { finish = resolve }))
+  h.store.svnInfo = { url: 'file:///repo/dev', repository_root: 'file:///repo' }
+  h.handleRowClick(entries[0])
+  const pending = h.previewChangedPath({ path: '/dev/A.cpp', action: 'M' })
+  h.handleRowClick(entries[1])
+  finish({ diff: 'stale first selection' })
+  await pending
+  assert.equal(h.inlineDiff.value, '')
+  const next = h.previewChangedPath({ path: '/dev/B.cpp', action: 'D' })
+  h.closeInspector()
+  finish({ diff: 'closed details' })
+  await next
+  assert.equal(h.inlineDiff.value, '')
+  assert.equal(h.selectedLog.value, null)
+})
+
+test('history restoration retains the inspector tab and selected revision file', async () => {
+  const file = { path: '/dev/Source/Game.cpp', action: 'M' }
+  const revision = { ...entries[0], changed_paths: [file] }
+  const h = harness(() => [revision], async () => ({ diff: 'restored diff' }))
+  h.store.svnInfo = { url: 'file:///repo/dev', repository_root: 'file:///repo' }
+  await h.reloadLogs()
+  h.handleRowClick(revision)
+  h.inspectorTab.value = 'tree'
+  await h.previewChangedPath(file)
+  h.saveHistoryView()
+  h.closeInspector()
+  h.inspectorTab.value = 'commit'
+  await h.restoreHistoryView()
+  assert.equal(h.inspectorTab.value, 'tree')
+  assert.equal(h.selectedRevisionPath.value, file.path)
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(h.inlineDiff.value, 'restored diff')
 })

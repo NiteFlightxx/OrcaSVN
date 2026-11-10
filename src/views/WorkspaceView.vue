@@ -39,7 +39,10 @@
     <div
       v-else
       class="workspace-layout"
-      :style="{ '--changes-width': `${changeWidth}px`, '--composer-height': `${composerHeight}px` }"
+      :style="{
+        '--changes-width': `${changeWidth}px`,
+        '--composer-height': `${composerHeight}px`,
+      }"
     >
       <!-- 左侧面板：工作区信息 -->
       <aside class="left-panel">
@@ -180,7 +183,9 @@
           <div
             v-else
             class="workspace-change-groups"
-            :style="{ gridTemplateRows: `${groupSplit}fr 4px ${100 - groupSplit}fr` }"
+            :style="{
+              gridTemplateRows: `${groupSplit}fr 4px ${100 - groupSplit}fr`,
+            }"
           >
             <WorkspaceChangeTree
               :title="$t('changes.unstaged')"
@@ -244,7 +249,9 @@
         </div>
         <p v-if="hiddenStagedCount" class="staging-notice">
           {{ $t('changes.hiddenStaged', { count: hiddenStagedCount }) }}
-          <button @click="staging.clear()">{{ $t('changes.clearSelection') }}</button>
+          <button @click="staging.clear()">
+            {{ $t('changes.clearSelection') }}
+          </button>
         </p>
         <FileContextMenu
           v-if="fileContextMenu.visible"
@@ -338,7 +345,7 @@
         <PanelSplitter
           axis="y"
           v-model:value="composerHeight"
-          :min="160"
+          :min="140"
           :max="420"
           reverse
           :label="$t('sourceUI.resizeCommit')"
@@ -458,7 +465,7 @@ const changeSearchInput = ref<HTMLInputElement | null>(null)
 const activePanel = ref<boolean | null>(null)
 const changeWidth = ref(readPanelSize('orcasvn-changes-width', 340, 240, 700))
 const groupSplit = ref(readPanelSize('orcasvn-changes-split', 50, 20, 80))
-const composerHeight = ref(readPanelSize('orcasvn-composer-height', 200, 160, 420))
+const composerHeight = ref(readPanelSize('orcasvn-fork-composer-height', 160, 140, 420))
 const viewMode = ref<'tree' | 'list' | 'compact'>(
   (() => {
     try {
@@ -473,7 +480,7 @@ watch([changeWidth, groupSplit, composerHeight, viewMode], () => {
   try {
     localStorage.setItem('orcasvn-changes-width', String(changeWidth.value))
     localStorage.setItem('orcasvn-changes-split', String(groupSplit.value))
-    localStorage.setItem('orcasvn-composer-height', String(composerHeight.value))
+    localStorage.setItem('orcasvn-fork-composer-height', String(composerHeight.value))
     localStorage.setItem('orcasvn-changes-mode', viewMode.value)
   } catch {
     /* Keep current panel sizes in memory. */
@@ -489,7 +496,9 @@ const fileActionPhase = ref<'preview' | 'confirm' | 'execute' | 'refresh'>('prev
 const actionBlockReason = computed(() => {
   if (pendingFileAction.value !== null) return t(`fileMenu.discardPhase_${fileActionPhase.value}`)
   if (flow.busy)
-    return t('fileMenu.operationBusy', { operation: flow.title || t('common.loading') })
+    return t('fileMenu.operationBusy', {
+      operation: flow.title || t('common.loading'),
+    })
   if (!staging.ready) return t('fileMenu.verifyFirst')
   return ''
 })
@@ -544,7 +553,11 @@ const contextItems = computed<FileMenuItem[]>(() => {
       separator: true,
       disabled: !current || !history || details?.kind !== 'file' || details.binary,
     },
-    { id: 'history', label: t('fileMenu.history'), disabled: !current || !history },
+    {
+      id: 'history',
+      label: t('fileMenu.history'),
+      disabled: !current || !history,
+    },
     {
       id: 'stage',
       icon: fileContextMenu.staged ? 'Minus' : 'Plus',
@@ -619,8 +632,17 @@ const contextItems = computed<FileMenuItem[]>(() => {
             (details.kind === 'dir' && file?.status_code === 'unversioned'))),
       title: t('fileMenu.patchHint'),
     },
-    { id: 'copy-relative', label: t('workspace.copyPath'), separator: true, shortcut: 'Ctrl+C' },
-    { id: 'copy-absolute', label: t('workspace.copyAbsolutePath'), shortcut: 'Ctrl+Alt+C' },
+    {
+      id: 'copy-relative',
+      label: t('workspace.copyPath'),
+      separator: true,
+      shortcut: 'Ctrl+C',
+    },
+    {
+      id: 'copy-absolute',
+      label: t('workspace.copyAbsolutePath'),
+      shortcut: 'Ctrl+Alt+C',
+    },
     ...(!staging.ready
       ? [
           {
@@ -716,7 +738,10 @@ const loadDiff = async (path: string) => {
     if (!isCurrent()) return
     selectedDetails.value = details
     if (details.binary || selectedConflict.value) return
-    void invoke<string>('workspace_properties', { path: workspacePath, file: path })
+    void invoke<string>('workspace_properties', {
+      path: workspacePath,
+      file: path,
+    })
       .then((value) => {
         if (isCurrent()) properties.value = value
       })
@@ -1447,7 +1472,7 @@ const discardTargets = async (targets: string[]) => {
 }
 .right-panel {
   display: grid;
-  grid-template-rows: 30px minmax(100px, 1fr) 4px minmax(160px, var(--composer-height));
+  grid-template-rows: 30px minmax(100px, 1fr) 4px minmax(140px, var(--composer-height));
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -1585,13 +1610,13 @@ const discardTargets = async (targets: string[]) => {
 }
 @media (max-width: 850px) {
   .workspace-layout {
-    grid-template-columns: minmax(210px, 40%) 4px minmax(0, 1fr);
+    grid-template-columns: clamp(220px, var(--changes-width), 46%) 4px minmax(0, 1fr);
   }
   .changes-filterbar select {
     max-width: 70px;
   }
   .right-panel {
-    grid-template-rows: 30px minmax(60px, 1fr) 4px minmax(160px, var(--composer-height));
+    grid-template-rows: 30px minmax(60px, 1fr) 4px minmax(140px, var(--composer-height));
   }
 }
 </style>

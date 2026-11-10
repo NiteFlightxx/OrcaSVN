@@ -14,18 +14,18 @@ function setup(path, names, mocks, extra = {}) {
 }
 function shellHarness() {
   const workspace = vue.reactive({ currentPath: '/fixture/alpha', svnInfo: { url: 'file:///fixture/dev', revision: 1 }, isLoading: false, statusList: [], recentWorkspaces: [], clearWorkspace() { this.currentPath = null; this.svnInfo = null } })
-  const storage = new Map(), calls = []
+  const storage = new Map(), calls = [], route = vue.reactive({ name: 'workspace', meta: {} })
   let fail = false
   const mocks = {
     '@/utils/repositoryUi': load('src/utils/repositoryUi.ts'),
-    vue: { ...vue, onMounted() {}, onUnmounted() {} }, 'vue-router': { useRoute: () => ({ name: 'workspace', meta: {} }), useRouter: () => ({ push: async value => calls.push(['route', value]) }) }, 'vue-i18n': { useI18n: () => ({ t: key => key }) },
+    vue: { ...vue, onMounted() {}, onUnmounted() {} }, 'vue-router': { useRoute: () => route, useRouter: () => ({ push: async value => { calls.push(['route', value]); route.name = value.name } }) }, 'vue-i18n': { useI18n: () => ({ t: key => key }) },
     'element-plus/es/components/message/index': { ElMessage: {} }, '@/api/svn': {}, '@/stores/workspace': { useWorkspaceStore: () => workspace }, '@/stores/stash': { useStashStore: () => ({ currentEntries: () => [] }) }, '@/stores/workflows': { useWorkflowStore: () => ({ stashes: [] }) },
     '@/composables/useWorkspace': { useWorkspace: () => ({ loadWorkspace: async path => { calls.push(['load', path]); if (fail) return false; workspace.currentPath = path; workspace.svnInfo = { url: 'file:///fixture/dev', revision: 1 }; return true } }) }, '@/composables/useWorkspaceErrorToast': { useWorkspaceErrorToast() {} }, '@/composables/useUpdateCheck': { useUpdateCheck: () => ({}) },
     '@/composables/useSvnUpdate': { useSvnUpdate: () => ({ updateWorkspace: async () => calls.push(['update']), updating: vue.ref(false) }) },
     '@/components/BranchSidebar.vue': {}, '@/components/OperationDialog.vue': {}, '@/components/ActivityPanel.vue': {}, '@/components/LanguageSwitcher.vue': {}, '@/components/icons/materialIcons': {},
   }
-  const h = setup('src/layouts/MainLayout.vue', 'openTabs, selectRepositoryTab, closeRepositoryTab, handleShellKeydown, showSidebar, toggleSidebar, updateWorkspace', mocks, { document: { dispatchEvent() {} }, Event: class Event {}, localStorage: { getItem: key => storage.get(key) || null, setItem: (key, value) => storage.set(key, value) } })
-  return { ...h, workspace, storage, calls, fail: value => { fail = value } }
+  const h = setup('src/layouts/MainLayout.vue', 'openTabs, selectRepositoryTab, closeRepositoryTab, handleShellKeydown, showSidebar, toggleSidebar, updateWorkspace, openStash, handleShellCommand', mocks, { document: { dispatchEvent() {} }, Event: class Event {}, localStorage: { getItem: key => storage.get(key) || null, setItem: (key, value) => storage.set(key, value) } })
+  return { ...h, workspace, storage, calls, route, fail: value => { fail = value } }
 }
 test('repository tabs switch and close adjacent tabs without removing recent repositories', async () => {
   const h = shellHarness()
@@ -104,13 +104,21 @@ test('branch right-click opens choices and only an explicit switch action prepar
   h.stop()
 })
 
-test('workspace starts without a redundant branch column and can reveal it on demand', () => {
+test('Fork navigation stays visible across pages and only an explicit toggle collapses it', async () => {
   const h=shellHarness()
+  assert.equal(h.showSidebar.value,true)
+  for (const name of ['log', 'workspace', 'stash', 'settings']) {
+    h.route.name = name
+    await vue.nextTick()
+    assert.equal(h.showSidebar.value,true)
+  }
+  h.toggleSidebar()
+  assert.equal(h.showSidebar.value,false)
+  h.route.name = 'log'
+  await vue.nextTick()
   assert.equal(h.showSidebar.value,false)
   h.toggleSidebar()
   assert.equal(h.showSidebar.value,true)
-  h.toggleSidebar()
-  assert.equal(h.showSidebar.value,false)
   h.stop()
 })
 
@@ -122,6 +130,17 @@ test('toolbar update executes in place instead of navigating to the legacy updat
   const h = shellHarness()
   await h.updateWorkspace()
   assert.deepEqual(h.calls, [['update']])
-  assert.equal(h.showSidebar.value, false)
+  assert.equal(h.showSidebar.value, true)
+  h.stop()
+})
+
+test('repository menu update stays in place and sidebar stashes select the requested entry', async () => {
+  const h = shellHarness()
+  await h.handleShellCommand('update')
+  assert.deepEqual(h.calls, [['update']])
+  h.openStash('synthetic-stash')
+  assert.equal(h.calls.at(-1)[1].name, 'stash')
+  assert.equal(h.calls.at(-1)[1].query.id, 'synthetic-stash')
+  assert.equal(h.showSidebar.value, true)
   h.stop()
 })

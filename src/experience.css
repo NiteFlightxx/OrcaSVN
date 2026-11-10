@@ -94,7 +94,7 @@
     padding: 4px 5px;
   }
   .source-shell .source-body {
-    grid-template-columns: 40px minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
   }
   .source-shell .source-sidebar,
   .source-shell .sidebar-resizer {
@@ -219,7 +219,8 @@ html .source-shell .branch-options-body label {
   align-items: center;
 }
 html .source-shell .branch-groups {
-  max-height: calc(100vh - 200px);
+  max-height: none;
+  overflow: visible;
   padding: 3px 0;
 }
 html .source-shell .branch-row {
@@ -275,7 +276,7 @@ html .source-shell .status-path {
   background: var(--md-sys-color-primary-container);
 }
 .route-content .workspace-view .right-panel {
-  grid-template-rows: 30px minmax(100px, 1fr) 4px minmax(150px, var(--composer-height));
+  grid-template-rows: 30px minmax(100px, 1fr) 4px minmax(140px, var(--composer-height));
 }
 .route-content .panel-header {
   justify-content: space-between;
@@ -431,7 +432,7 @@ html .source-shell .activity-trigger {
 }
 @media (max-width: 850px) {
   .route-content .workspace-view .workspace-layout {
-    grid-template-columns: minmax(220px, 40%) 4px minmax(0, 1fr);
+    grid-template-columns: clamp(220px, var(--changes-width), 46%) 4px minmax(0, 1fr);
   }
   .route-content .changes-filterbar select {
     width: 54px;
