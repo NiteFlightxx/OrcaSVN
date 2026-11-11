@@ -27,7 +27,7 @@ Staged 仍表示本次 SVN 提交的文件选择；内容由提交时读取。�
 
 ## 验证边界
 
-所有测试只使用合成数据及 `E:\Temp\OrcaSVN-Tests` 下的独立 SVN 仓库和独立 WebView profile。禁止测试或启动到 ExampleWorkspace。自动化检查分别验证 UI 选择、键盘、批量菜单、标签切换、拖动边界、草稿/暂存隔离及后端恢复行为；桌面交互结果另行记录，构建通过不等同于完成鼠标验收。
+所有测试只使用合成数据及 `E:\Temp\OrcaSVN-Tests` 下的独立 SVN 仓库和独立 WebView profile。禁止测试或启动到 用户工作副本。自动化检查分别验证 UI 选择、键盘、批量菜单、标签切换、拖动边界、草稿/暂存隔离及后端恢复行为；桌面交互结果另行记录，构建通过不等同于完成鼠标验收。
 
 2026-11-10 验证：前端类型检查、Vite 构建及 136 项 Node 测试通过；Tauri Debug 原生程序编译成功，输出仍为 BAT 指向的 `src-tauri/target/debug/OrcaSVN.exe`。完整 Rust 检查为 101 通过、3 失败、2 忽略，失败为既有 `status_cache` 的 polling、directory fallback、disk snapshot 用例；没有为本次 UI 改动调整这些实现或断言。
 

@@ -1,5 +1,9 @@
 use crate::{asset_stash as stash, workflows as w};
-use std::{fs, path::PathBuf, process::Command};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 struct Fixture {
     temp: PathBuf,
@@ -346,24 +350,47 @@ fn revision_comparison_properties_and_external_diff_inputs_are_read_only() {
     );
     assert_eq!(fixture.svn(Some(&fixture.dev), &["status"]), status);
 }
+fn isolated_test_parent(parent: &Path) -> bool {
+    !parent
+        .ancestors()
+        .any(|ancestor| ancestor.join(".svn").exists() || ancestor.join(".git").exists())
+}
+
+#[test]
+fn temporary_roots_reject_existing_version_control_workspaces() {
+    let parent = std::env::temp_dir();
+    assert!(isolated_test_parent(&parent));
+    let root = parent.join(format!("orcasvn-temp-boundary-{}", w::id()));
+    fs::create_dir(&root).unwrap();
+    let nested = root.join("nested").join("temporary");
+    assert!(isolated_test_parent(&nested));
+    for marker in [".svn", ".git"] {
+        fs::create_dir(root.join(marker)).unwrap();
+        assert!(!isolated_test_parent(&root));
+        assert!(!isolated_test_parent(&nested));
+        fs::remove_dir(root.join(marker)).unwrap();
+    }
+    fs::write(root.join(".git"), "gitdir: ../metadata").unwrap();
+    assert!(!isolated_test_parent(&nested));
+    fs::remove_file(root.join(".git")).unwrap();
+    assert!(isolated_test_parent(&nested));
+    fs::remove_dir(&root).unwrap();
+}
+
 impl Fixture {
     fn new() -> Self {
         let parent = std::env::temp_dir();
         assert!(
-            !parent
-                .ancestors()
-                .any(|ancestor| ancestor.join(".svn").exists() || ancestor.join(".git").exists()),
-            "Tests must use isolated directories outside existing working copies"
+            isolated_test_parent(&parent),
+            "Test temporary directories must be outside existing working copies"
         );
         fs::create_dir_all(&parent).unwrap();
         let parent = PathBuf::from(crate::strip_verbatim_prefix(
             &fs::canonicalize(parent).unwrap().to_string_lossy(),
         ));
         assert!(
-            !parent
-                .ancestors()
-                .any(|ancestor| ancestor.join(".svn").exists() || ancestor.join(".git").exists()),
-            "Tests must use isolated directories outside existing working copies"
+            isolated_test_parent(&parent),
+            "Resolved test temporary directories must be outside existing working copies"
         );
         let temp = parent.join(format!("orcasvn-workflow-{}", w::id()));
         fs::create_dir(&temp).unwrap();
