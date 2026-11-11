@@ -13,6 +13,9 @@ const contrast = (a, b) => {
   const x = luminance(a), y = luminance(b)
   return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05)
 }
+const mix = (accent, background, fraction) => '#' + [1, 3, 5].map(offset =>
+  Math.round(parseInt(accent.slice(offset, offset + 2), 16) * fraction + parseInt(background.slice(offset, offset + 2), 16) * (1 - fraction)).toString(16).padStart(2, '0')
+).join('')
 
 for (const [name, selector] of [['light', 'html:root'], ['dark', 'html:root.theme-dark, html:root.dark']]) {
   test(`${name} reading text, selections and diff colors retain normal-text contrast`, () => {
@@ -31,5 +34,12 @@ for (const [name, selector] of [['light', 'html:root'], ['dark', 'html:root.them
       const ratio = contrast(colors[text], colors[background])
       assert.ok(ratio >= 4.5, `${name}: ${text} / ${background} contrast is ${ratio.toFixed(2)}, expected at least 4.5`)
     }
+    for (const background of ['--app-color-history-bg', '--app-color-history-hover']) {
+      for (const opacity of [1, 0.65]) {
+        const text = mix(colors['--app-color-history-text'], colors[background], opacity)
+        assert.ok(contrast(text, colors[background]) >= 4.5, `${name}: neutral history text at ${opacity} opacity must remain readable`)
+      }
+    }
+
   })
 }

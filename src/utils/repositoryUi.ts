@@ -12,8 +12,7 @@ export interface RepositoryUiState {
   history?: {
     filters: Record<string, string>
     revision?: number
-    page: number
-    cursors: (number | undefined)[]
+    loadedCount?: number
     scroll: number
     inspectorTab?: 'commit' | 'changes' | 'tree'
     selectedPath?: string
@@ -60,9 +59,8 @@ try {
         state.history &&
         (!state.history.filters ||
           !Object.values(state.history.filters).every((value) => typeof value === 'string') ||
-          !Array.isArray(state.history.cursors) ||
-          !Number.isSafeInteger(state.history.page) ||
-          state.history.page < 0 ||
+          (state.history.loadedCount !== undefined &&
+            (!Number.isSafeInteger(state.history.loadedCount) || state.history.loadedCount < 0)) ||
           (state.history.inspectorTab !== undefined &&
             !['commit', 'changes', 'tree'].includes(state.history.inspectorTab)) ||
           (state.history.selectedPath !== undefined &&

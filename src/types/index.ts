@@ -28,6 +28,23 @@ export interface SvnLogPath {
   action: string
 }
 
+export interface RevisionPresence {
+  revision: number
+  state: 'included' | 'pending' | 'partial' | 'unknown'
+  included: number
+  pending: number
+  unknown: number
+  reasons?: string[]
+  basis?: 'range' | 'paths'
+}
+export interface HistoryPresence {
+  workingUrl: string
+  baseRevision: number
+  scopeMatches: boolean
+  baseFingerprint?: string | null
+  rows: RevisionPresence[]
+}
+
 export interface SvnInfo {
   path: string
   url: string

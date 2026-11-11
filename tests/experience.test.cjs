@@ -41,11 +41,11 @@ function commitHarness(options={}) {
   const draft=vue.reactive({key:'draft-a',message:'Summary\n\nDetails',clearIfUnchanged(key,message){if(this.key===key&&this.message===message)this.message=''}})
   const calls=[], emitted=[], storage=new Map()
   const flow=vue.reactive({busy:false,async perform(_title,operation){if(this.busy)throw new Error('busy');this.busy=true;try{return await operation()}finally{this.busy=false}}})
-  const api={svnStatus:async()=>workspace.rawStatusList,svnAdd:async(_path,files)=>{calls.push(['add',...files]); workspace.rawStatusList=workspace.rawStatusList.map(entry=>({...entry,status_code:'added'}));return{success:true}},svnCommit:async(...args)=>{calls.push(['commit',...args]);return options.commit ? options.commit(...args) : {success:true,output:'Committed',error:null}}}
-  const mocks={vue,'vue-i18n':{useI18n:()=>({t:key=>key})},'element-plus':{ElMessage:{success:message=>calls.push(['success',message])}},'@/stores/workspace':{useWorkspaceStore:()=>workspace},'@/stores/workflows':{useWorkflowStore:()=>flow},'@/stores/staging':{useStagingStore:()=>staging},'@/stores/commitDraft':{useCommitDraftStore:()=>draft},'@/composables/useSettings':{useSettings:()=>({settings:{}})},'@/api/svn':api}
+  const api={svnStatus:async()=>{throw new Error('Full workspace status must not be queried by commit UI')},svnAdd:async(_path,files)=>{calls.push(['add',...files]); workspace.rawStatusList=workspace.rawStatusList.map(entry=>({...entry,status_code:'added'}));return{success:true}},svnCommit:async(...args)=>{calls.push(['commit',...args]);if(options.commit)return options.commit(...args); const added=workspace.rawStatusList.some(e=>e.status_code==='unversioned'); if(added){calls.push(['add',...args[2]]); workspace.rawStatusList=workspace.rawStatusList.map(e=>({...e,status_code:'added'}))} return {success:true,output:'Committed',error:null,added}}}
+  const mocks={vue,'vue-i18n':{useI18n:()=>({t:key=>key})},'element-plus':{ElMessage:{success:message=>calls.push(['success',message]),warning:message=>calls.push(['warning',message])}},'@/stores/workspace':{useWorkspaceStore:()=>workspace},'@/stores/workflows':{useWorkflowStore:()=>flow},'@/stores/staging':{useStagingStore:()=>staging},'@/stores/commitDraft':{useCommitDraftStore:()=>draft},'@/composables/useWorkspace':{useWorkspace:()=>({applyCommitResult:async()=>true})},'@/composables/useSettings':{useSettings:()=>({settings:{}})},'@/api/svn':api}
   const source=fs.readFileSync('src/components/CommitReviewDialog.vue','utf8').match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1]
   const context={exports:{},defineProps:()=>({}),defineEmits:()=>event=>emitted.push(event),localStorage:{getItem:key=>storage.get(key),setItem:(key,value)=>storage.set(key,value)},require:name=>{assert.ok(name in mocks,name);return mocks[name]}}
-  vm.runInNewContext(ts.transpileModule(source+'\nexports.actions={submit,error,notice,files,changedContext,hidden};',{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText,context)
+  vm.runInNewContext(ts.transpileModule(source+'\nexports.actions={submit,error,notice,files,changedContext,hidden,commitPhase};',{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText,context)
   return {...context.exports.actions,workspace,staging,draft,flow,calls,emitted,api}
 }
 test('submission failure keeps selection and the complete message available for retry',async()=>{
@@ -61,11 +61,11 @@ test('new files are added and re-reviewed before a separate explicit submission'
   const h=commitHarness({entries:[{path:'new.txt',status_code:'unversioned',prop_status:'none'}]})
   await h.submit()
   assert.equal(h.calls.filter(call=>call[0]==='add').length,1)
-  assert.equal(h.calls.filter(call=>call[0]==='commit').length,0)
+  assert.equal(h.calls.filter(call=>call[0]==='commit').length,1)
   assert.equal(h.draft.message,'Summary\n\nDetails')
   assert.equal(h.notice.value,'commit.reviewAdded')
   await h.submit()
-  assert.equal(h.calls.filter(call=>call[0]==='commit').length,1)
+  assert.equal(h.calls.filter(call=>call[0]==='commit').length,2)
   assert.equal(h.draft.message,'')
   assert.deepEqual(Array.from(h.staging.paths),[])
 })
@@ -73,12 +73,13 @@ test('changing repositories invalidates the open submission review',async()=>{
   const h=commitHarness();h.workspace.currentPath='/synthetic/b';await h.submit()
   assert.equal(h.changedContext.value,true);assert.equal(h.calls.length,0)
 })
-test('a freshly missing or conflicting selected path blocks submission without clearing its draft',async()=>{
-  for(const fresh of [[],[{path:'a.txt',status_code:'conflicted',prop_status:'none'}]]) {
-    const h=commitHarness();h.api.svnStatus=async()=>fresh;await h.submit()
-    assert.equal(h.calls.length,0);assert.ok(h.error.value);assert.ok(h.draft.message)
-  }
+test('backend scope validation failure preserves the draft without a full workspace scan',async()=>{
+  const h=commitHarness({commit:async()=>{throw new Error('Selected path is no longer changed')}})
+  await h.submit()
+  assert.ok(h.error.value);assert.ok(h.draft.message)
+  assert.deepEqual(Array.from(h.staging.paths),['a.txt'])
 })
+
 test('duplicate clicks cannot submit twice and edits made while submitting keep the new draft',async()=>{
   let finish
   const h=commitHarness({commit:()=>new Promise(resolve=>{finish=resolve})})
@@ -95,4 +96,59 @@ test('all five locales provide the same new workflow controls',()=>{
   const keys=Object.keys(experienceLocales['en-US']).sort()
   assert.equal(Object.keys(experienceLocales).length,5)
   for(const messages of Object.values(experienceLocales))assert.deepEqual(Object.keys(messages).sort(),keys)
+})
+
+
+test('added directory review expands only actual backend-added roots', async () => {
+  const h = commitHarness({ entries: [
+    {path:'new',status_code:'unversioned',prop_status:'none'},
+    {path:'existing',status_code:'normal',prop_status:'modified'},
+  ] })
+  h.api.svnCommit = async () => {
+    h.workspace.rawStatusList = [
+      {path:'new',status_code:'added',prop_status:'none'},
+      {path:'new/a.txt',status_code:'added',prop_status:'none'},
+      {path:'existing',status_code:'normal',prop_status:'modified'},
+      {path:'existing/unselected.txt',status_code:'modified',prop_status:'none'},
+    ]
+    return {success:true,added:true,addedPaths:['new'],output:''}
+  }
+  await h.submit()
+  assert.deepEqual(Array.from(h.files.value), ['new','new/a.txt','existing'])
+  assert.ok(h.draft.message)
+  assert.deepEqual(h.emitted, [])
+})
+
+test('all five locales provide the same commit phases and refresh result message', () => {
+  const {commitFlowLocales} = load('src/i18n/commitFlow.ts')
+  const keys=Object.keys(commitFlowLocales['en-US']).sort()
+  assert.equal(Object.keys(commitFlowLocales).length,5)
+  for(const messages of Object.values(commitFlowLocales))assert.deepEqual(Object.keys(messages).sort(),keys)
+})
+
+
+test('commit progress distinguishes checking, submission, and the final local merge', () => {
+  const h = commitHarness()
+  assert.equal(h.commitPhase.value, 'checking')
+  h.flow.progress = { phase: 'committing' }
+  assert.equal(h.commitPhase.value, 'committing')
+  h.flow.progress = { phase: 'refreshing' }
+  assert.equal(h.commitPhase.value, 'refreshing')
+  h.flow.phase = 'refreshing'
+  h.flow.progress = { phase: 'committing' }
+  assert.equal(h.commitPhase.value, 'refreshing')
+})
+
+
+test('an add result from the previous workspace cannot stage paths in the newly opened workspace', async () => {
+  let complete
+  const h = commitHarness({commit: () => new Promise(resolve => {complete = resolve})})
+  const pending = h.submit()
+  h.workspace.currentPath = '/synthetic/b'
+  h.staging.key = 'b:dev'
+  h.staging.paths = ['keep.txt']
+  complete({success:true,added:true,addedPaths:['a.txt'],output:''})
+  await pending
+  assert.deepEqual(Array.from(h.staging.paths), ['keep.txt'])
+  assert.ok(h.draft.message)
 })

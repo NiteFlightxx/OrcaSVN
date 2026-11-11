@@ -5,6 +5,7 @@ export default {
     about: 'について',
   },
   common: {
+    retry: '再試行',
     confirm: '確認',
     cancel: 'キャンセル',
     save: '保存',

@@ -5,6 +5,7 @@ export default {
     about: '정보',
   },
   common: {
+    retry: '다시 시도',
     confirm: '확인',
     cancel: '취소',
     save: '저장',

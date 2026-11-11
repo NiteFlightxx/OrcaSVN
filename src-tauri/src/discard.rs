@@ -43,15 +43,8 @@ pub struct Outcome {
     pub error: Option<String>,
     pub status: Option<StatusPatch>,
 }
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct StatusPatch {
-    pub workspace: String,
-    pub expected_url: String,
-    pub paths: Vec<String>,
-    pub subtrees: Vec<String>,
-    pub entries: Vec<crate::SvnStatus>,
-}
+pub use crate::svn::StatusPatch;
+
 fn child(root: &Path, relative: &str) -> w::Result<PathBuf> {
     if relative == "." {
         Ok(root.to_path_buf())

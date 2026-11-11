@@ -120,9 +120,9 @@ async function mountCommitView(h, options = {}) {
     '@/stores/commitDraft': { useCommitDraftStore: () => h.draft }, '@/components/CommitMessageEditor.vue': {},
     '@/composables/useSettings': { useSettings: () => ({ settings: h.settings }) },
     '@/composables/useSvnStatus': {}, '@/utils/changeTree': treeUtils,
-    '@/composables/useWorkspace': { useWorkspace: () => ({ refreshStatusAfterMutation: options.refresh || (async () => true) }) },
+    '@/composables/useWorkspace': { useWorkspace: () => ({ refreshStatusAfterMutation: options.refresh || (async () => true), applyCommitResult: options.refresh || (async () => true) }) },
     '@/api/svn': {
-      svnCommit: async (...args) => { calls.push(args); if (options.commitError) throw new Error('commit failed'); return { success: true, output: 'committed' } },
+      svnCommit: async (...args) => { calls.push(args); if (options.commitError) throw new Error('commit failed'); return options.result || { success: true, output: 'committed' } },
       svnAdd: async (...args) => { addCalls.push(args) },
     },
   }
@@ -171,15 +171,28 @@ test('the Add-and-review step does not consume the commit description or submit 
   h.staging.stage([untracked.path])
   h.draft.subject = '新增源码'
   h.draft.description = 'Add 后先审阅，再确认提交'
-  const { state, calls, addCalls } = await mountCommitView(h, { refresh: async () => {
+  const { state, calls, addCalls } = await mountCommitView(h, { result: { success: true, added: true, addedPaths: [untracked.path] }, refresh: async () => {
     h.workspace.statusList = [entry(untracked.path, 'added')]
     h.workspace.rawStatusList = h.workspace.statusList
     return true
   } })
   await state.doCommit()
-  assert.equal(addCalls.length, 1)
-  assert.equal(calls.length, 0)
+  assert.equal(addCalls.length, 0)
+  assert.equal(calls.length, 1)
   assert.equal(h.draft.message, '新增源码\n\nAdd 后先审阅，再确认提交')
+  assert.equal(h.staging.paths.length, 1)
+  h.stop()
+})
+
+
+test('a returned command failure preserves the staged selection and full draft', async () => {
+  const h = harness()
+  h.staging.stage(['Content/Map.umap'])
+  h.draft.subject = 'Retry me'
+  h.draft.description = 'Keep details'
+  const { state } = await mountCommitView(h, { result: { success: false, error: 'hook rejected', output: '' } })
+  await state.doCommit()
+  assert.equal(h.draft.message, 'Retry me\n\nKeep details')
   assert.equal(h.staging.paths.length, 1)
   h.stop()
 })

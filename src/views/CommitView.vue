@@ -204,7 +204,7 @@ import { ElCheckbox } from 'element-plus/es/components/checkbox/index'
 import { ref, computed, nextTick, onMounted, watch } from 'vue'
 import { useRouter, useRoute, onBeforeRouteLeave } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
-import { svnAdd, svnCommit } from '@/api/svn'
+import { svnCommit } from '@/api/svn'
 import { useI18n } from 'vue-i18n'
 import { getStatusClass, getStatusLabelKey } from '@/composables/useSvnStatus'
 import { useWorkspace } from '@/composables/useWorkspace'
@@ -220,7 +220,7 @@ const route = useRoute()
 const workspaceStore = useWorkspaceStore()
 const staging = useStagingStore()
 const draft = useCommitDraftStore()
-const { openWorkspace: openWorkspaceDialog, refreshStatusAfterMutation } = useWorkspace()
+const { openWorkspace: openWorkspaceDialog, refreshStatusAfterMutation, applyCommitResult } = useWorkspace()
 const { settings } = useSettings()
 
 const RECENT_COMMIT_MESSAGES_KEY = 'orcasvn-recent-commit-messages'
@@ -366,7 +366,7 @@ const openWorkspace = async () => {
 }
 
 const doCommit = async () => {
-  if (!workspaceStore.currentPath || workspaceStore.statusIsStale || !commitMessage.value || selectedFiles.value.length === 0) {
+  if (loading.value || !workspaceStore.currentPath || workspaceStore.statusIsStale || !commitMessage.value || selectedFiles.value.length === 0) {
     return
   }
 
@@ -376,6 +376,7 @@ const doCommit = async () => {
   try {
     const selectionKey = staging.key
     const workspacePath = workspaceStore.currentPath
+    const workspaceUrl = workspaceStore.svnInfo?.url || ''
     const draftKey = draft.key
     const submittedMessage = commitMessage.value
     const availablePaths = new Set(allChangedFiles.value.map(file => file.path))
@@ -383,40 +384,38 @@ const doCommit = async () => {
     if (files.length === 0) return
 
     const targetFileSet = new Set(files)
-    const unversionedFiles = allChangedFiles.value
-      .filter(file => file.status_code === 'unversioned' && targetFileSet.has(file.path))
-      .map(file => file.path)
-
-    if (unversionedFiles.length > 0) {
-      await svnAdd(workspaceStore.currentPath, unversionedFiles)
-      await refreshStatusAfterMutation()
-      selectedFiles.value = allChangedFiles.value
-        .filter(file => targetFileSet.has(file.path) || unversionedFiles.some(parent => isWithinDirectory(file.path, parent)))
-        .map(file => file.path)
-      output.value = t('commit.reviewAdded')
-      return
-    }
-
     const result = await svnCommit(
       workspacePath,
       submittedMessage,
       files,
       settings.autoDeleteMissingOnCommit,
+      workspaceUrl,
     )
+    await applyCommitResult(workspacePath, workspaceUrl, result)
+    if (!result.success) {
+      output.value = `${t('common.error')}：${result.error || result.output}`
+      return
+    }
+    if (result.added && result.success) {
+      if (workspacePath !== workspaceStore.currentPath || workspaceUrl !== workspaceStore.svnInfo?.url || selectionKey !== staging.key) return
+      selectedFiles.value = allChangedFiles.value.filter(file => targetFileSet.has(file.path) || (result.addedPaths || []).some(parent => isWithinDirectory(file.path, parent))).map(file => file.path)
+      output.value = t('commit.reviewAdded')
+      return
+    }
     if (result.success) staging.unstage(files, selectionKey)
     if (result.success) {
       recordRecentMessage(workspacePath, submittedMessage)
       draft.clearIfUnchanged(draftKey, submittedMessage)
     }
     output.value = result.output
-    await refreshStatusAfterMutation()
+
 
     setTimeout(() => {
       router.push({ name: 'workspace' })
     }, 1500)
   } catch (err) {
     output.value = `${t('common.error')}：${err}`
-    await refreshStatusAfterMutation()
+    void refreshStatusAfterMutation()
   } finally {
     loading.value = false
   }

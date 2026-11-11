@@ -24,8 +24,89 @@ pub enum SvnError {
 }
 
 pub async fn execute_svn(args: &[&str], path: Option<&str>) -> Result<String, SvnError> {
+    #[cfg(test)]
+    if let Some(path) = path {
+        let mut capture = TEST_COMMANDS.lock().unwrap();
+        if let Some(commands) = capture.get_mut(path) {
+            commands.push(args.iter().map(|s| s.to_string()).collect());
+        }
+    }
     let executable = current_svn_executable()?;
-    execute_svn_inner(executable, args, path).await
+    let result = execute_svn_inner(executable, args, path).await;
+    #[cfg(test)]
+    if result.is_ok() && args.first() == Some(&"commit") {
+        let action = path.and_then(|p| AFTER_TEST_COMMIT.lock().unwrap().remove(p));
+        if let Some(action) = action {
+            action();
+        }
+    }
+    result
+}
+
+#[cfg(test)]
+type TestAction = Box<dyn FnOnce() + Send>;
+#[cfg(test)]
+static AFTER_TEST_COMMIT: std::sync::Mutex<std::collections::BTreeMap<String, TestAction>> =
+    std::sync::Mutex::new(std::collections::BTreeMap::new());
+#[cfg(test)]
+pub(crate) fn after_test_commit(root: &str, action: impl FnOnce() + Send + 'static) {
+    AFTER_TEST_COMMIT
+        .lock()
+        .unwrap()
+        .insert(root.into(), Box::new(action));
+}
+
+#[cfg(test)]
+static TEST_COMMANDS: std::sync::Mutex<std::collections::BTreeMap<String, Vec<Vec<String>>>> =
+    std::sync::Mutex::new(std::collections::BTreeMap::new());
+#[cfg(test)]
+pub(crate) fn capture_commands(root: &str) {
+    TEST_COMMANDS
+        .lock()
+        .unwrap()
+        .insert(root.into(), Vec::new());
+}
+#[cfg(test)]
+pub(crate) fn take_commands(root: &str) -> Vec<Vec<String>> {
+    TEST_COMMANDS
+        .lock()
+        .unwrap()
+        .remove(root)
+        .unwrap_or_default()
+}
+
+/// Use the companion belonging to the configured SVN installation. This reads
+/// local BASE metadata; it does not contact a repository or modify files.
+pub(super) async fn execute_svnversion(path: &str) -> Result<String, SvnError> {
+    let svn = current_svn_executable()?;
+    let name = if cfg!(windows) {
+        "svnversion.exe"
+    } else {
+        "svnversion"
+    };
+    let executable = svn
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .map(|p| p.join(name))
+        .unwrap_or_else(|| PathBuf::from(name));
+    let mut cmd = Command::new(executable);
+    cmd.args(["--no-newline", "."])
+        .current_dir(path)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    #[cfg(windows)]
+    cmd.creation_flags(0x08000000);
+    #[cfg(unix)]
+    cmd.env(
+        "LC_ALL",
+        if cfg!(target_os = "macos") {
+            "en_US.UTF-8"
+        } else {
+            "C.UTF-8"
+        },
+    );
+    collect_command_output(&mut cmd, SVN_TIMEOUT).await
 }
 
 pub async fn configure_svn_executable(executable: Option<&str>) -> Result<String, SvnError> {

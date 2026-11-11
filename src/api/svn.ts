@@ -3,6 +3,7 @@ import type {
   CommandResult,
   SvnStatus,
   SvnLogEntry,
+  HistoryPresence,
   SvnInfo,
   SvnAuthUser,
   DiffResult,
@@ -32,9 +33,10 @@ export async function svnCommit(
   path: string,
   message: string,
   files?: string[],
-  autoDeleteMissing = false
-): Promise<CommandResult> {
-  return invoke<CommandResult>('svn_commit', { path, message, files, autoDeleteMissing })
+  autoDeleteMissing = false,
+  expectedUrl?: string
+): Promise<CommitResult> {
+  return invoke<CommitResult>('svn_commit', { path, message, files, autoDeleteMissing, expectedUrl })
 }
 
 export async function svnStatus(path: string, force = false): Promise<SvnStatus[]> {
@@ -70,6 +72,14 @@ export async function svnIncomingLog(
   local: number
 ): Promise<SvnLogEntry[]> {
   return invoke<SvnLogEntry[]>('svn_incoming_log', { path, limit, head, local })
+}
+
+export async function svnHistoryBaseFingerprint(path: string): Promise<string | null> {
+  return invoke<string | null>('svn_history_base_fingerprint', { path })
+}
+
+export async function svnHistoryPresence(path: string, expectedUrl: string, source: string, entries: SvnLogEntry[]): Promise<HistoryPresence> {
+  return invoke<HistoryPresence>('svn_history_presence', { path, expectedUrl, source, entries })
 }
 
 export async function svnCurrentUser(path: string): Promise<SvnAuthUser | null> {
@@ -219,12 +229,21 @@ export interface DiscardPreview {
   id: string
   nodes: DiscardNode[]
 }
-export interface DiscardStatusPatch {
+export interface WorkspaceStatusPatch {
   workspace: string
   expectedUrl: string
   paths: string[]
   subtrees: string[]
   entries: SvnStatus[]
+}
+export type DiscardStatusPatch = WorkspaceStatusPatch
+export interface CommitResult extends CommandResult {
+  added?: boolean
+  addedPaths?: string[]
+  status?: WorkspaceStatusPatch | null
+  info?: SvnInfo | null
+  warning?: string | null
+  timings?: { checkMs: number; commitMs: number; refreshMs: number }
 }
 export interface DiscardOutcome {
   completedPaths: string[]

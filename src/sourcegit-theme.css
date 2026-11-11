@@ -59,7 +59,10 @@ html:root {
   --app-color-scrollbar: #b5c0b9;
   --app-color-history-selection-bg: #d8e4ec;
   --app-color-history-selection-text: #2b4659;
-  --app-color-history-timeline: #946b1d;
+  --app-color-history-bg: #ffffff;
+  --app-color-history-text: #1f1f1f;
+  --app-color-history-hover: #f5f5f5;
+  --app-color-history-timeline: #ffa500;
   --el-text-color-regular: var(--md-sys-color-on-surface);
   --el-text-color-secondary: var(--md-sys-color-on-surface-variant);
   --el-text-color-placeholder: #69747e;
@@ -98,7 +101,10 @@ html:root.theme-dark, html:root.dark {
   --app-color-scrollbar: #666666;
   --app-color-history-selection-bg: #2468c4;
   --app-color-history-selection-text: #ffffff;
-  --app-color-history-timeline: #d3a348;
+  --app-color-history-bg: #1c1c1c;
+  --app-color-history-text: #dfdfdf;
+  --app-color-history-hover: #333333;
+  --app-color-history-timeline: #ffa500;
   --el-text-color-regular: var(--md-sys-color-on-surface);
   --el-text-color-secondary: var(--md-sys-color-on-surface-variant);
   --el-text-color-placeholder: #a0a0a0;

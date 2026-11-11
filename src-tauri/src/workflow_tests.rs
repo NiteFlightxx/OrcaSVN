@@ -9,6 +9,275 @@ struct Fixture {
 }
 
 #[test]
+fn history_presence_checks_mixed_versions_and_never_changes_working_files() {
+    let f = Fixture::new();
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let source = format!("{}/dev", f.url);
+    let observer = f
+        .temp
+        .join("presence-observer")
+        .to_string_lossy()
+        .into_owned();
+    f.svn(None, &["checkout", &source, &observer]);
+    let base = f
+        .svn(Some(&observer), &["info", "--show-item", "revision"])
+        .trim()
+        .to_string();
+    fs::write(f.root().join("text.txt"), "new text\n").unwrap();
+    fs::write(f.root().join("asset.uasset"), [0, 9, 8, 7]).unwrap();
+    f.svn(Some(&f.dev), &["commit", "-m", "presence mixed fixture"]);
+    let entries = runtime
+        .block_on(crate::svn::log(
+            &source,
+            Some(1),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        ))
+        .unwrap();
+    let check = || {
+        runtime
+            .block_on(crate::svn::history_presence(
+                &observer, &source, &source, &entries,
+            ))
+            .unwrap()
+    };
+    let status = f.svn(Some(&observer), &["status", "--xml"]);
+    let original = fs::read(PathBuf::from(&observer).join("text.txt")).unwrap();
+    assert_eq!(check().rows[0].state, "pending");
+    assert_eq!(f.svn(Some(&observer), &["status", "--xml"]), status);
+    assert_eq!(
+        fs::read(PathBuf::from(&observer).join("text.txt")).unwrap(),
+        original
+    );
+    f.svn(Some(&observer), &["update", "text.txt"]);
+    assert_eq!(check().rows[0].state, "partial");
+    f.svn(Some(&observer), &["update"]);
+    assert_eq!(check().rows[0].state, "included");
+    // An advanced root cannot hide a deliberately older child BASE revision.
+    f.svn(Some(&observer), &["update", "-r", &base, "asset.uasset"]);
+    assert_eq!(check().rows[0].state, "partial");
+    f.svn(
+        Some(&observer),
+        &[
+            "switch",
+            &format!("{}/publish/asset.uasset", f.url),
+            "asset.uasset",
+        ],
+    );
+    assert_eq!(check().rows[0].state, "unknown");
+    let other = runtime
+        .block_on(crate::svn::history_presence(
+            &observer,
+            &source,
+            &format!("{}/publish", f.url),
+            &entries,
+        ))
+        .unwrap();
+    assert!(!other.scope_matches);
+    assert_eq!(other.rows[0].state, "unknown");
+    assert!(runtime
+        .block_on(crate::svn::history_presence(
+            &observer,
+            "file:///wrong/dev",
+            &source,
+            &entries
+        ))
+        .is_err());
+}
+
+#[test]
+fn history_presence_keeps_missing_deleted_and_sparse_paths_unconfirmed() {
+    let f = Fixture::new();
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let source = format!("{}/dev", f.url);
+    let observer = f
+        .temp
+        .join("presence-sparse")
+        .to_string_lossy()
+        .into_owned();
+    f.svn(None, &["checkout", &source, &observer]);
+    fs::write(f.root().join("new.txt"), "new\n").unwrap();
+    fs::write(f.root().join("text.txt"), "changed\n").unwrap();
+    f.svn(Some(&f.dev), &["add", "new.txt"]);
+    f.svn(Some(&f.dev), &["commit", "-m", "presence additions"]);
+    let entries = runtime
+        .block_on(crate::svn::log(
+            &source,
+            Some(1),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        ))
+        .unwrap();
+    f.svn(Some(&observer), &["update", "text.txt"]);
+    let result = runtime
+        .block_on(crate::svn::history_presence(
+            &observer, &source, &source, &entries,
+        ))
+        .unwrap();
+    assert_eq!(result.rows[0].state, "unknown");
+    assert_eq!(
+        result.rows[0].included, 1,
+        "one missing target cannot poison valid XML entries in its batch"
+    );
+    assert_eq!(result.rows[0].unknown, 1);
+    f.svn(Some(&observer), &["update"]);
+    assert_eq!(
+        runtime
+            .block_on(crate::svn::history_presence(
+                &observer, &source, &source, &entries
+            ))
+            .unwrap()
+            .rows[0]
+            .state,
+        "included"
+    );
+    f.svn(
+        Some(&observer),
+        &["update", "--set-depth", "exclude", "new.txt"],
+    );
+    assert_eq!(
+        runtime
+            .block_on(crate::svn::history_presence(
+                &observer, &source, &source, &entries
+            ))
+            .unwrap()
+            .rows[0]
+            .state,
+        "unknown"
+    );
+    f.svn(Some(&f.dev), &["delete", "delete.txt"]);
+    f.svn(Some(&f.dev), &["commit", "-m", "presence deletion"]);
+    let deleted = runtime
+        .block_on(crate::svn::log(
+            &source,
+            Some(1),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        ))
+        .unwrap();
+    f.svn(Some(&observer), &["update"]);
+    assert_eq!(
+        runtime
+            .block_on(crate::svn::history_presence(
+                &observer, &source, &source, &deleted
+            ))
+            .unwrap()
+            .rows[0]
+            .state,
+        "unknown"
+    );
+}
+
+#[test]
+fn history_presence_range_handles_deletions_directory_additions_and_edited_bytes() {
+    let f = Fixture::new();
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let source = format!("{}/dev", f.url);
+    let observer = f.temp.join("range-observer").to_string_lossy().into_owned();
+    f.svn(None, &["checkout", &source, &observer]);
+    f.svn(Some(&f.dev), &["delete", "delete.txt"]);
+    fs::create_dir_all(f.root().join("added-dir/empty")).unwrap();
+    fs::write(f.root().join("added-dir/new.uasset"), [0, 255, 10]).unwrap();
+    f.svn(Some(&f.dev), &["add", "added-dir"]);
+    f.svn(
+        Some(&f.dev),
+        &["commit", "-m", "range delete and directory"],
+    );
+    let entries = runtime
+        .block_on(crate::svn::log(
+            &source,
+            Some(1),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        ))
+        .unwrap();
+    let check = || {
+        runtime
+            .block_on(crate::svn::history_presence(
+                &observer, &source, &source, &entries,
+            ))
+            .unwrap()
+    };
+    assert_eq!(check().rows[0].state, "pending");
+    f.svn(Some(&observer), &["update"]);
+    let result = check();
+    assert_eq!(result.rows[0].state, "included");
+    assert_eq!(result.rows[0].basis, "range");
+    assert!(result.rows[0].reasons.is_empty());
+    // Harmless edits change disk bytes, not the BASE ancestry. No check may revert them.
+    let file = PathBuf::from(&observer).join("text.txt");
+    fs::write(&file, "uncommitted working bytes").unwrap();
+    let status = f.svn(Some(&observer), &["status"]);
+    assert_eq!(check().rows[0].state, "included");
+    assert_eq!(
+        fs::read_to_string(&file).unwrap(),
+        "uncommitted working bytes"
+    );
+    assert_eq!(f.svn(Some(&observer), &["status"]), status);
+    // A schedule change changes wc.db and must invalidate the cached complete range.
+    f.svn(Some(&observer), &["delete", "added-dir"]);
+    let scheduled = check();
+    assert_eq!(scheduled.rows[0].state, "unknown");
+    assert!(scheduled.rows[0].reasons.contains(&"scheduled"));
+}
+
+#[test]
+fn history_presence_finishes_large_mixed_revision_commits_without_truncating_paths() {
+    let f = Fixture::new();
+    f.seed_directory();
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let source = format!("{}/dev", f.url);
+    let observer = f.temp.join("large-presence").to_string_lossy().into_owned();
+    f.svn(None, &["checkout", &source, &observer]);
+    for index in 0..2055 {
+        fs::write(
+            f.root().join(format!("folder/presence-{index}.txt")),
+            "synthetic",
+        )
+        .unwrap();
+    }
+    f.svn(Some(&f.dev), &["add", "--force", "folder"]);
+    f.svn(Some(&f.dev), &["commit", "-m", "large synthetic presence"]);
+    let entries = runtime
+        .block_on(crate::svn::log(
+            &source,
+            Some(1),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        ))
+        .unwrap();
+    f.svn(Some(&observer), &["update", "folder"]);
+    let result = runtime
+        .block_on(crate::svn::history_presence(
+            &observer, &source, &source, &entries,
+        ))
+        .unwrap();
+    assert_eq!(result.rows[0].state, "included");
+    assert_eq!(result.rows[0].included, 2055);
+    assert_eq!(result.rows[0].unknown, 0);
+}
+
+#[test]
 fn revision_comparison_properties_and_external_diff_inputs_are_read_only() {
     let fixture = Fixture::new();
     let runtime = tokio::runtime::Runtime::new().unwrap();
@@ -2044,4 +2313,496 @@ fn keeping_current_binary_conflict_result_preserves_edits_and_backup_bytes() {
         }
         assert!(found, "resolution backup was not retained");
     });
+}
+
+#[test]
+fn scoped_submission_patches_only_selected_paths_and_avoids_recursive_status() {
+    let f = Fixture::new();
+    f.seed_directory();
+    fs::write(f.root().join("folder/a.txt"), "selected change").unwrap();
+    fs::write(f.root().join("asset.uasset"), [0, 19, 255]).unwrap();
+    f.svn(Some(&f.dev), &["propset", "synthetic-prop", "keep", "."]);
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    crate::svn::capture_commands(&f.dev);
+    let result = runtime
+        .block_on(crate::svn::commit_selection(
+            &f.dev,
+            "selected only",
+            &["folder/a.txt".into()],
+            Some(&format!("{}/dev", f.url)),
+            false,
+        ))
+        .unwrap();
+    let commands = crate::svn::take_commands(&f.dev);
+    assert!(result.success, "{result:?}");
+    let patch = result.status.unwrap();
+    assert!(patch.subtrees.is_empty());
+    assert!(patch.paths.contains(&"folder/a.txt".into()));
+    assert!(patch
+        .entries
+        .iter()
+        .any(|s| s.path == "." && s.prop_status == "modified"));
+    assert!(!patch.entries.iter().any(|s| s.path == "asset.uasset"));
+    let statuses: Vec<_> = commands.iter().filter(|a| a[0] == "status").collect();
+    assert_eq!(
+        statuses.len(),
+        2,
+        "one validation and one scoped patch: {commands:?}"
+    );
+    for args in statuses {
+        assert!(args.windows(2).any(|a| a == ["--depth", "empty"]));
+        let targets = &args[args.iter().position(|a| a == "--").unwrap() + 1..];
+        assert!(
+            targets
+                .iter()
+                .all(|p| [".", "folder@", "folder/a.txt@"].contains(&p.as_str())),
+            "{targets:?}"
+        );
+    }
+    let remaining = f.svn(Some(&f.dev), &["status"]);
+    assert!(remaining.contains("asset.uasset"));
+    assert!(!remaining.contains("a.txt"));
+    assert_eq!(
+        fs::read(f.root().join("asset.uasset")).unwrap(),
+        [0, 19, 255]
+    );
+}
+
+#[test]
+fn scoped_submission_adds_then_requires_explicit_review_and_retains_unselected_children() {
+    let f = Fixture::new();
+    f.seed_directory();
+    fs::create_dir(f.root().join("new-folder")).unwrap();
+    fs::write(f.root().join("new-folder/new.txt"), "new").unwrap();
+    fs::write(f.root().join("folder/a.txt"), "keep unselected").unwrap();
+    f.svn(
+        Some(&f.dev),
+        &[
+            "propset",
+            "synthetic-prop",
+            "selected directory property",
+            "folder",
+        ],
+    );
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let head = f.svn(None, &["info", "--show-item", "revision", &f.url]);
+    let first = runtime
+        .block_on(crate::svn::commit_selection(
+            &f.dev,
+            "add only",
+            &["new-folder".into(), "folder".into()],
+            None,
+            false,
+        ))
+        .unwrap();
+    assert!(first.success && first.added, "{first:?}");
+    assert_eq!(first.added_paths, ["new-folder"]);
+    assert_eq!(
+        f.svn(None, &["info", "--show-item", "revision", &f.url]),
+        head
+    );
+    assert!(first
+        .status
+        .unwrap()
+        .entries
+        .iter()
+        .any(|s| s.path == "new-folder/new.txt" && s.status_code == "added"));
+    let second = runtime
+        .block_on(crate::svn::commit_selection(
+            &f.dev,
+            "reviewed addition",
+            &[
+                "new-folder".into(),
+                "new-folder/new.txt".into(),
+                "folder".into(),
+            ],
+            None,
+            false,
+        ))
+        .unwrap();
+    assert!(second.success && !second.added, "{second:?}");
+    assert!(
+        f.svn(Some(&f.dev), &["status"]).contains("folder\\a.txt")
+            || f.svn(Some(&f.dev), &["status"]).contains("folder/a.txt")
+    );
+}
+
+#[test]
+fn scoped_submission_keeps_atomic_directory_guards_for_deleted_missing_replaced_and_copied() {
+    let f = Fixture::new();
+    f.seed_directory();
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let attempt = |files: &[String], auto| {
+        runtime.block_on(crate::svn::commit_selection(
+            &f.dev,
+            "directory scope",
+            files,
+            None,
+            auto,
+        ))
+    };
+    fs::remove_dir_all(f.root().join("folder")).unwrap();
+    let partial = attempt(&["folder".into()], true).unwrap();
+    assert!(
+        !partial.success,
+        "must reject an implicit recursive missing deletion: {partial:?}"
+    );
+    assert!(!f.root().join("folder").exists());
+    assert!(f.svn(Some(&f.dev), &["status"]).contains('!'));
+    f.svn(Some(&f.dev), &["revert", "-R", "folder"]);
+    f.svn(Some(&f.dev), &["delete", "folder"]);
+    assert!(!attempt(&["folder".into()], false).unwrap().success);
+    f.svn(Some(&f.dev), &["revert", "-R", "folder"]);
+    f.svn(Some(&f.dev), &["delete", "folder"]);
+    fs::create_dir(f.root().join("folder")).unwrap();
+    fs::write(f.root().join("folder/new.txt"), "replacement").unwrap();
+    f.svn(Some(&f.dev), &["add", "folder"]);
+    assert!(
+        !attempt(&["folder".into(), "folder/new.txt".into()], false)
+            .unwrap()
+            .success
+    );
+    f.svn(Some(&f.dev), &["revert", "-R", "folder"]);
+    // Revert can leave unversioned replacement files; the next copy is separate.
+    f.svn(Some(&f.dev), &["copy", "folder", "copy-folder"]);
+    assert!(!attempt(&["copy-folder".into()], false).unwrap().success);
+    f.svn(Some(&f.dev), &["revert", "-R", "copy-folder"]);
+    fs::remove_dir_all(f.root().join("folder")).unwrap();
+    let complete: Vec<String> = [
+        "folder",
+        "folder/a.txt",
+        "folder/b.uasset",
+        "folder/hidden.txt",
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .collect();
+    let result = attempt(&complete, true).unwrap();
+    assert!(result.success, "{result:?}");
+    assert!(
+        result.status.is_some(),
+        "directory removal must return a usable patch: {result:?}"
+    );
+    assert!(!f
+        .svn(None, &["list", &format!("{}/dev", f.url)])
+        .contains("folder/"));
+}
+
+#[test]
+fn scoped_submission_deletes_only_selected_missing_files_and_rejects_source_changes() {
+    let f = Fixture::new();
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    fs::remove_file(f.root().join("delete.txt")).unwrap();
+    fs::remove_file(f.root().join("asset.uasset")).unwrap();
+    let result = runtime
+        .block_on(crate::svn::commit_selection(
+            &f.dev,
+            "selected missing",
+            &["delete.txt".into()],
+            None,
+            true,
+        ))
+        .unwrap();
+    assert!(result.success, "{result:?}");
+    assert!(result.status.is_some(), "{result:?}");
+    assert!(f.svn(Some(&f.dev), &["status"]).contains("asset.uasset"));
+    fs::write(f.root().join("text.txt"), "local").unwrap();
+    let before = serde_json::to_value(
+        crate::svn::parse_status_xml(&f.svn(Some(&f.dev), &["status", "--xml"])).unwrap(),
+    )
+    .unwrap();
+    assert!(runtime
+        .block_on(crate::svn::commit_selection(
+            &f.dev,
+            "wrong branch",
+            &["text.txt".into()],
+            Some(&format!("{}/publish", f.url)),
+            false
+        ))
+        .is_err());
+    assert_eq!(
+        serde_json::to_value(
+            crate::svn::parse_status_xml(&f.svn(Some(&f.dev), &["status", "--xml"])).unwrap()
+        )
+        .unwrap(),
+        before
+    );
+}
+
+#[test]
+fn scoped_submission_rejects_file_externals_and_conflicts_without_writes() {
+    let f = Fixture::new();
+    f.svn(
+        Some(&f.dev),
+        &[
+            "propset",
+            "svn:externals",
+            "^/publish/text.txt external.txt",
+            ".",
+        ],
+    );
+    f.svn(Some(&f.dev), &["update"]);
+    fs::write(f.root().join("external.txt"), "external edit").unwrap();
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let before = serde_json::to_value(
+        crate::svn::parse_status_xml(&f.svn(Some(&f.dev), &["status", "--xml"])).unwrap(),
+    )
+    .unwrap();
+    let result = runtime.block_on(crate::svn::commit_selection(
+        &f.dev,
+        "external",
+        &["external.txt".into()],
+        None,
+        false,
+    ));
+    assert!(result.is_err(), "{result:?}");
+    assert_eq!(
+        serde_json::to_value(
+            crate::svn::parse_status_xml(&f.svn(Some(&f.dev), &["status", "--xml"])).unwrap()
+        )
+        .unwrap(),
+        before
+    );
+    let observer = f
+        .temp
+        .join("conflict-observer")
+        .to_string_lossy()
+        .into_owned();
+    f.svn(None, &["checkout", &format!("{}/dev", f.url), &observer]);
+    fs::write(PathBuf::from(&observer).join("text.txt"), "remote text").unwrap();
+    fs::write(PathBuf::from(&observer).join("asset.uasset"), [0, 88, 255]).unwrap();
+    f.svn(Some(&observer), &["commit", "-m", "conflicting change"]);
+    fs::write(f.root().join("text.txt"), "local text").unwrap();
+    fs::write(f.root().join("asset.uasset"), [0, 99, 255]).unwrap();
+    f.svn(Some(&f.dev), &["update"]);
+    for file in ["text.txt", "asset.uasset"] {
+        let bytes = fs::read(f.root().join(file)).unwrap();
+        let before = serde_json::to_value(
+            crate::svn::parse_status_xml(&f.svn(Some(&f.dev), &["status", "--xml"])).unwrap(),
+        )
+        .unwrap();
+        assert!(runtime
+            .block_on(crate::svn::commit_selection(
+                &f.dev,
+                "conflict",
+                &[file.into()],
+                None,
+                false
+            ))
+            .is_err());
+        assert_eq!(fs::read(f.root().join(file)).unwrap(), bytes);
+        assert_eq!(
+            serde_json::to_value(
+                crate::svn::parse_status_xml(&f.svn(Some(&f.dev), &["status", "--xml"])).unwrap()
+            )
+            .unwrap(),
+            before
+        );
+    }
+}
+
+#[test]
+#[ignore = "explicit local synthetic submission benchmark; never opens a user workspace"]
+fn benchmark_scoped_submission() {
+    use std::time::Instant;
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    for (tracked, untracked) in [(500, 500), (4000, 8000)] {
+        let f = Fixture::new();
+        fs::create_dir(f.root().join("tracked")).unwrap();
+        for i in 0..tracked {
+            fs::write(
+                f.root().join(format!("tracked/file-{i}.txt")),
+                vec![b'a'; 1024],
+            )
+            .unwrap();
+        }
+        f.svn(Some(&f.dev), &["add", "tracked"]);
+        f.svn(Some(&f.dev), &["commit", "-m", "synthetic benchmark seed"]);
+        fs::create_dir(f.root().join("untracked")).unwrap();
+        for i in 0..untracked {
+            fs::write(
+                f.root().join(format!("untracked/file-{i}.txt")),
+                b"untracked",
+            )
+            .unwrap();
+        }
+        let mut direct = Vec::new();
+        let mut legacy = Vec::new();
+        let mut scoped = Vec::new();
+        for round in 0..3 {
+            for strategy in ["direct", "legacy", "scoped"] {
+                fs::write(
+                    f.root().join("tracked/file-0.txt"),
+                    format!("{round}-{strategy}-{}", "x".repeat(1024)),
+                )
+                .unwrap();
+                let started = Instant::now();
+                match strategy {
+                    "direct" => {
+                        f.svn(
+                            Some(&f.dev),
+                            &[
+                                "commit",
+                                "--depth",
+                                "empty",
+                                "-m",
+                                "direct",
+                                "--",
+                                "tracked/file-0.txt",
+                            ],
+                        );
+                        direct.push(started.elapsed().as_secs_f64() * 1000.);
+                    }
+                    "legacy" => {
+                        runtime.block_on(async {
+                            // Reproduce the old foreground sequence: front-end
+                            // full status/inventory, backend full status, commit,
+                            // and a forced full post-mutation status/inventory.
+                            crate::svn::cached_status(&f.dev, true, None).await.unwrap();
+                            let writer = w::acquire(&f.dev).await.unwrap();
+                            crate::svn::status(&f.dev).await.unwrap();
+                            crate::svn::execute_svn(
+                                &[
+                                    "commit",
+                                    "--depth",
+                                    "empty",
+                                    "-m",
+                                    "legacy",
+                                    "--",
+                                    "tracked/file-0.txt",
+                                ],
+                                Some(&f.dev),
+                            )
+                            .await
+                            .unwrap();
+                            drop(writer);
+                            crate::svn::invalidate_status(&f.root()).unwrap();
+                            let revision_path = f.dev.clone();
+                            let revision = tokio::spawn(async move {
+                                crate::svn::local_revision(&revision_path).await
+                            });
+                            let info_path = f.dev.clone();
+                            let info =
+                                tokio::spawn(async move { crate::svn::info(&info_path).await });
+                            crate::svn::cached_status(&f.dev, true, None).await.unwrap();
+                            revision.await.unwrap().unwrap();
+                            info.await.unwrap().unwrap();
+                        });
+                        legacy.push(started.elapsed().as_secs_f64() * 1000.);
+                    }
+                    _ => {
+                        let result = runtime
+                            .block_on(crate::svn::commit_selection(
+                                &f.dev,
+                                "scoped",
+                                &["tracked/file-0.txt".into()],
+                                Some(&format!("{}/dev", f.url)),
+                                false,
+                            ))
+                            .unwrap();
+                        assert!(result.success && result.status.is_some(), "{result:?}");
+                        scoped.push(started.elapsed().as_secs_f64() * 1000.);
+                        println!("PHASE tracked={tracked} round={round} checkMs={:.3} commitMs={:.3} refreshMs={:.3}", result.timings.check_ms, result.timings.commit_ms, result.timings.refresh_ms);
+                    }
+                }
+            }
+        }
+        let median = |values: &mut Vec<f64>| {
+            values.sort_by(f64::total_cmp);
+            values[1]
+        };
+        println!("SYNTHETIC_SUBMISSION tracked={tracked} untracked={untracked} directMedianMs={:.3} legacyMedianMs={:.3} scopedMedianMs={:.3}", median(&mut direct), median(&mut legacy), median(&mut scoped));
+    }
+}
+
+#[test]
+#[cfg(windows)]
+fn scoped_submission_failed_hook_restores_missing_and_post_commit_edits_remain_visible() {
+    let f = Fixture::new();
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let hooks = f.temp.join("repository/hooks");
+    let pre = hooks.join("pre-commit.bat");
+    fs::write(&pre, "@echo off\r\nexit /b 1\r\n").unwrap();
+    fs::remove_file(f.root().join("delete.txt")).unwrap();
+    let head = f.svn(None, &["info", "--show-item", "revision", &f.url]);
+    let rejected = runtime
+        .block_on(crate::svn::commit_selection(
+            &f.dev,
+            "rejected",
+            &["delete.txt".into()],
+            None,
+            true,
+        ))
+        .unwrap();
+    assert!(!rejected.success, "{rejected:?}");
+    assert!(!f.root().join("delete.txt").exists());
+    assert!(rejected
+        .status
+        .unwrap()
+        .entries
+        .iter()
+        .any(|s| s.path == "delete.txt" && s.status_code == "missing"));
+    assert_eq!(
+        f.svn(None, &["info", "--show-item", "revision", &f.url]),
+        head
+    );
+    fs::remove_file(pre).unwrap();
+    // An editor can save immediately after SVN exits, before the local patch.
+    // Inject at that boundary: a server hook runs before client bookkeeping and
+    // is not a reliable simulation of a post-command filesystem edit.
+    let edited = f.root().join("text.txt");
+    crate::svn::after_test_commit(&f.dev, move || {
+        fs::write(edited, "edited while committing").unwrap();
+    });
+    fs::write(f.root().join("text.txt"), "submitted text").unwrap();
+    let accepted = runtime
+        .block_on(crate::svn::commit_selection(
+            &f.dev,
+            "with late edit",
+            &["text.txt".into()],
+            None,
+            false,
+        ))
+        .unwrap();
+    assert!(accepted.success, "{accepted:?}");
+    assert!(accepted
+        .status
+        .unwrap()
+        .entries
+        .iter()
+        .any(|s| s.path == "text.txt" && s.status_code == "modified"));
+    assert!(fs::read_to_string(f.root().join("text.txt"))
+        .unwrap()
+        .contains("edited while committing"));
+    assert_eq!(
+        f.svn(None, &["cat", &format!("{}/dev/text.txt", f.url)]),
+        "submitted text"
+    );
+}
+
+#[test]
+fn scoped_submission_cancelled_missing_addition_does_not_create_an_unrelated_commit() {
+    let f = Fixture::new();
+    fs::write(f.root().join("new.txt"), "new file").unwrap();
+    f.svn(Some(&f.dev), &["add", "new.txt"]);
+    fs::remove_file(f.root().join("new.txt")).unwrap();
+    fs::write(f.root().join("text.txt"), "keep local").unwrap();
+    let head = f.svn(None, &["info", "--show-item", "revision", &f.url]);
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let outcome = runtime
+        .block_on(crate::svn::commit_selection(
+            &f.dev,
+            "cancel addition",
+            &["new.txt".into()],
+            None,
+            true,
+        ))
+        .unwrap();
+    assert!(outcome.success && outcome.status.is_some(), "{outcome:?}");
+    assert_eq!(
+        f.svn(None, &["info", "--show-item", "revision", &f.url]),
+        head
+    );
+    assert!(f.svn(Some(&f.dev), &["status"]).contains("text.txt"));
+    assert!(!f.root().join("new.txt").exists());
 }

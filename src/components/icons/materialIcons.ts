@@ -69,6 +69,7 @@ export const GitBranch = icon(
 export const Warning = icon('Warning', 'm12 3 10 18H2zM12 9v5m0 3v.1')
 export const HomeFilled = icon('HomeFilled', 'm3 10 9-7 9 7M5 9v12h14V9M9 21v-8h6v8')
 export const InfoFilled = icon('InfoFilled', 'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0M12 11v6m0-10v.1')
+export const QuestionFilled = icon('QuestionFilled', 'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0M9.5 9a2.5 2.5 0 1 1 4 2c-1.5 1-1.5 1-1.5 3m0 3v.1')
 export const Link = icon(
   'Link',
   'm10 13 4-4m-6 7-1 1a4 4 0 0 1-6-6l4-4a4 4 0 0 1 6 0m2 1 1-1a4 4 0 0 1 6 6l-4 4a4 4 0 0 1-6 0'

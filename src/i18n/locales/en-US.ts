@@ -5,6 +5,7 @@ export default {
     about: 'About',
   },
   common: {
+    retry: 'Retry',
     confirm: 'Confirm',
     cancel: 'Cancel',
     save: 'Save',

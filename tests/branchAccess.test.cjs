@@ -5,7 +5,7 @@ const ts = require('typescript')
 const vm = require('node:vm')
 const vue = require('vue')
 
-function harness(overrides = {}, refreshStatusAfterMutation = async () => true) {
+function harness(overrides = {}, refreshStatusAfterMutation = async () => true, realWatch = false) {
   const root = 'https://example.test/svn/ugame'
   const identity = { root: '/wc', uuid: 'repo-uuid', url: `${root}/dev`, repositoryRoot: 'https://example.test/svn', revision: 1, depth: 'infinity' }
   const workspace = vue.reactive({ currentPath: '/wc', epoch: 0 })
@@ -20,7 +20,7 @@ function harness(overrides = {}, refreshStatusAfterMutation = async () => true) 
   }
   const mocks = {
     '@/utils/repositoryUi': { repositoryUi: () => ({}) },
-    vue: { ...vue, watch() {} },
+    vue: { ...vue, watch: realWatch ? vue.watch : () => {} },
     pinia: { defineStore: (_name, setup) => () => vue.reactive(setup()) },
     '@tauri-apps/api/event': { listen: async () => () => {} },
     '@/api/workflows': api,
@@ -31,7 +31,8 @@ function harness(overrides = {}, refreshStatusAfterMutation = async () => true) 
   const context = { exports: {}, localStorage: { getItem: key => storage.get(key) || null, setItem: (key, value) => storage.set(key, value) }, require: name => { assert.ok(name in mocks, name); return mocks[name] } }
   const code = ts.transpileModule(fs.readFileSync('src/stores/workflows.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText
   vm.runInNewContext(code, context)
-  return { flow: context.exports.useWorkflowStore(), root, identity, workspace, calls, storage }
+  const scope = vue.effectScope()
+  return { flow: scope.run(() => context.exports.useWorkflowStore()), root, identity, workspace, calls, storage, stop: () => scope.stop() }
 }
 
 test('denied parent listing retains current branch, local stashes, and attempted directory', async () => {
@@ -141,4 +142,24 @@ test('late branch validation cannot save into a different workspace', async () =
   finish()
   await assert.rejects(pending, /Workspace changed/)
   assert.equal(h.flow.knownBranches.length, 1)
+})
+
+
+test('a mutation refreshes branch metadata once via epoch; scoped commits refresh neither branches nor stashes', async () => {
+  let reads = 0
+  const id = {root:'/wc',uuid:'repo-uuid',url:'https://example.test/svn/ugame/dev',repositoryRoot:'https://example.test/svn',revision:1,depth:'infinity'}
+  const h = harness({ repositoryIdentity: async () => { reads++; return id }, repositoryList: async () => [] }, async () => { h.workspace.epoch++; return true }, true)
+  const tick = () => new Promise(resolve => setImmediate(resolve))
+  await tick()
+  const initial = reads
+  await h.flow.perform('update', async () => 'done')
+  await tick()
+  assert.equal(reads, initial + 1)
+  const afterUpdate = reads
+  await h.flow.perform('commit', async () => ({success:true, output:'committed', warning:'refresh failed'}), true, false)
+  await tick()
+  assert.equal(reads, afterUpdate)
+  assert.equal(h.flow.activities[0].failed, false)
+  assert.equal(h.flow.busy, false)
+  h.stop()
 })

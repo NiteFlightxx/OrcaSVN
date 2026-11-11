@@ -5,15 +5,19 @@ const ts = require('typescript')
 const vm = require('node:vm')
 const vue = require('vue')
 
-function harness(fetch, diff = async () => ({ diff: '' })) {
-  const calls = [], uiState = {}
+function harness(fetch, diff = async () => ({ diff: '' }), live = false) {
+  const calls = [], uiState = {}, hooks = { activated: [], deactivated: [] }
   const flow = vue.reactive({ browsingUrl: '', identity: null })
-  const store = vue.reactive({ currentPath: '/wc', epoch: 0, setError(error) { this.error = error } })
+  const store = vue.reactive({ currentPath: '/wc', epoch: 0, isLoading: false, ...(live ? { svnInfo: { url: 'file:///repo/dev', repository_root: 'file:///repo' } } : {}), setError(error) { this.error = error } })
   const route = vue.reactive({ query: {} })
+  const cacheContext = { exports: {} }
+  vm.runInNewContext(ts.transpileModule(fs.readFileSync('src/utils/historyCache.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText, cacheContext)
   const mocks = {
+    '@/utils/historyCache': cacheContext.exports,
+    '@/composables/useHistoryPresence': { useHistoryPresence: () => ({ rows: vue.ref({}), checking: vue.ref(false), error: vue.ref(''), baseRevision: vue.ref(null), scopeMatches: vue.ref(null), state: () => 'unknown', refresh() {} }) },
     '@/utils/changeSelection': { readPanelSize: (_key,fallback) => fallback },
     '@/utils/repositoryUi': { repositoryUi: () => uiState },
-    vue: { ...vue, watch() {}, onMounted() {}, onActivated() {}, onDeactivated() {}, onUnmounted() {} },
+    vue: { ...vue, watch: live ? vue.watch : () => {}, onMounted() {}, onActivated(fn) { hooks.activated.push(fn) }, onDeactivated(fn) { hooks.deactivated.push(fn) }, onUnmounted() {} },
     '@/stores/workflows': { useWorkflowStore: () => flow },
     '@/api/workflows': {},
     '@/components/DiffViewer.vue': {},
@@ -26,10 +30,11 @@ function harness(fetch, diff = async () => ({ diff: '' })) {
     'vue-router': { useRouter: () => ({}), useRoute: () => route },
   }
   const script = fs.readFileSync('src/views/LogView.vue', 'utf8').match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1]
-  const context = { exports: {}, sessionStorage: { removeItem() {} }, require: name => { assert.ok(name in mocks, name); return mocks[name] } }
-  const code = ts.transpileModule(script + '\nexports.state = { reloadLogs, fetchLogPage, logs, pageIndex, pageCursors, hasMore, loading, filters, saveHistoryView, restoreHistoryView, inspectorTab, selectedRevisionPath, selectedLog, inlineDiff, handleRowClick, previewChangedPath, closeInspector, selectHistoryRow, selectedRevisions, navigateHistory, comparison, historyViewport };', { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText
-  vm.runInNewContext(code, context)
-  return { ...context.exports.state, calls, store, flow, route }
+  const context = { exports: {}, window: { setTimeout, clearTimeout }, sessionStorage: { getItem() { return null }, removeItem() {} }, require: name => { assert.ok(name in mocks, name); return mocks[name] } }
+  const code = ts.transpileModule(script + '\nexports.state = { reloadLogs, loadMoreLogs, handleHistoryScroll, syncHistoryContext, logs, nextCursor, historyLoadError, hasMore, loading, filters, saveHistoryView, restoreHistoryView, inspectorTab, selectedRevisionPath, selectedLog, inlineDiff, handleRowClick, previewChangedPath, closeInspector, selectHistoryRow, selectedRevisions, navigateHistory, comparison, historyViewport };', { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText
+  const scope = vue.effectScope()
+  scope.run(() => vm.runInNewContext(code, context))
+  return { ...context.exports.state, calls, store, flow, route, deactivate() { hooks.deactivated.forEach(fn => fn()) }, activate() { hooks.activated.forEach(fn => fn()) }, stop() { scope.stop() } }
 }
 const entries = Array.from({ length: 130 }, (_, index) => ({
   revision: 300 - index * 2, author: index % 2 ? 'alice' : 'bob', message: 'change', date: '', changed_paths: [],
@@ -37,47 +42,46 @@ const entries = Array.from({ length: 130 }, (_, index) => ({
 const query = (_path, limit, cursor, _end, _keyword, author) => entries
   .filter(entry => (cursor === undefined || entry.revision <= cursor) && (!author || entry.author === author)).slice(0, limit)
 
-test('explicit pages replace rows, use revision cursors without gaps, and restore previous pages from cache', async () => {
+test('continuous history appends revision batches without gaps or repeated cached queries', async () => {
   const h = harness(query)
   await h.reloadLogs()
-  assert.equal(h.logs.value.length, 50)
+  assert.equal(h.logs.value.length, 100)
   assert.equal(h.hasMore.value, true)
-  assert.equal(h.calls[0][1], 51)
+  assert.equal(h.calls[0][1], 101)
   const first = Array.from(h.logs.value, entry => entry.revision)
-  await h.fetchLogPage(1)
-  const second = Array.from(h.logs.value, entry => entry.revision)
+  await h.loadMoreLogs()
   assert.equal(h.calls[1][2], first.at(-1) - 1)
-  assert.equal(new Set([...first, ...second]).size, 100)
-  await h.fetchLogPage(2)
-  assert.equal(h.logs.value.length, 30)
+  assert.equal(h.logs.value.length, 130)
+  assert.equal(new Set(h.logs.value.map(e => e.revision)).size, 130)
   assert.equal(h.hasMore.value, false)
-  await h.fetchLogPage(0)
-  assert.deepEqual(Array.from(h.logs.value, entry => entry.revision), first)
-  assert.equal(h.calls.length, 3)
+  await h.reloadLogs()
+  assert.equal(h.calls.length, 2)
+  assert.equal(h.logs.value.length, 130)
 })
 
-test('filtered results remain bounded and a filter reload resets the page cursor', async () => {
+test('filtered results remain bounded and cache reuse preserves the filter context', async () => {
   const h = harness(query)
   await h.reloadLogs()
-  await h.fetchLogPage(1)
   h.filters.author = 'alice'
-  await h.reloadLogs(true, true)
-  assert.equal(h.pageIndex.value, 0)
-  assert.equal(h.logs.value.length, 50)
+  await h.reloadLogs(false, true)
+  assert.equal(h.logs.value.length, 65)
   assert.ok(h.logs.value.every(entry => entry.author === 'alice'))
-  assert.equal(h.calls.at(-1)[1], 51)
+  assert.equal(h.calls.at(-1)[1], 101)
   assert.equal(h.calls.at(-1)[2], undefined)
-  await h.fetchLogPage(1)
-  assert.equal(h.logs.value.length, 15)
-  assert.equal(h.hasMore.value, false)
+  h.filters.author = ''
+  await h.reloadLogs(false, true)
+  assert.equal(h.logs.value.length, 100)
+  assert.equal(h.calls.length, 2)
 })
 
-test('empty and exact-size pages do not offer another page', async () => {
-  for (const count of [0, 50]) {
+test('empty and exact-size histories stop automatic loading', async () => {
+  for (const count of [0, 100]) {
     const h = harness(() => entries.slice(0, count))
     await h.reloadLogs()
     assert.equal(h.logs.value.length, count)
     assert.equal(h.hasMore.value, false)
+    await h.loadMoreLogs()
+    assert.equal(h.calls.length, 1)
   }
 })
 
@@ -120,17 +124,15 @@ test('file history reads its selected URL and drops the scope after a branch or 
   assert.equal(h.calls.at(-1)[0], 'file:///repo/other')
 })
 
-test('restoring repository history retains the actual revision cursor page and selection', async () => {
+test('restoring repository history retains all loaded rows without querying again', async () => {
   const h = harness(query)
   await h.reloadLogs()
-  await h.fetchLogPage(1)
+  await h.loadMoreLogs()
   const expected = Array.from(h.logs.value, entry => entry.revision)
   h.saveHistoryView()
-  await h.reloadLogs()
-  assert.equal(h.pageIndex.value,0)
   await h.restoreHistoryView()
-  assert.equal(h.pageIndex.value,1)
-  assert.deepEqual(Array.from(h.logs.value,entry=>entry.revision),expected)
+  assert.deepEqual(Array.from(h.logs.value, entry => entry.revision), expected)
+  assert.equal(h.calls.length, 2)
 })
 
 test('history selection opens metadata without eagerly fetching a file diff', async () => {
@@ -194,16 +196,16 @@ test('Ctrl-click compares two actual revisions and a plain click clears the comp
   assert.equal(h.selectedRevisions.value.length, 0)
 })
 
-test('history keyboard navigation scrolls to the selected row and pagination selects a visible revision', async () => {
+test('history keyboard navigation retains its selection when older commits append', async () => {
   const h = harness(query), scrolled = []
   h.historyViewport.value = { scrollToIndex: index => scrolled.push(index), resetScroll() {} }
   await h.reloadLogs()
   const target = {}
   h.navigateHistory({ key: 'End', target, currentTarget: target, preventDefault() {} })
-  assert.equal(h.selectedLog.value.revision, entries[49].revision)
-  assert.equal(scrolled.at(-1), 49)
-  await h.fetchLogPage(1)
-  assert.equal(h.selectedLog.value.revision, entries[50].revision)
+  assert.equal(h.selectedLog.value.revision, entries[99].revision)
+  assert.equal(scrolled.at(-1), 99)
+  await h.loadMoreLogs()
+  assert.equal(h.selectedLog.value.revision, entries[99].revision)
 })
 
 test('history view restoration uses the virtual list scroll position', async () => {
@@ -214,7 +216,104 @@ test('history view restoration uses the virtual list scroll position', async () 
   element.scrollTop = 420
   h.saveHistoryView()
   await h.reloadLogs()
-  assert.equal(element.scrollTop, 0)
+  assert.equal(element.scrollTop, 420)
   await h.restoreHistoryView()
   assert.equal(element.scrollTop, 420)
+})
+
+
+test('scroll prefetch deduplicates in-flight loads and preserves the selected commit and scroll', async () => {
+  let finish
+  const h = harness((...args) => args[2] === undefined ? query(...args) : new Promise(resolve => { finish = resolve }))
+  await h.reloadLogs()
+  const viewport = { scrollTop: 2250, scrollHeight: 2800, clientHeight: 500 }
+  h.handleHistoryScroll({ currentTarget: viewport })
+  h.handleHistoryScroll({ currentTarget: viewport })
+  assert.equal(h.calls.length, 2)
+  finish(entries.slice(100))
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(h.logs.value.length, 130)
+  assert.equal(h.selectedLog.value.revision, entries[0].revision)
+  assert.equal(viewport.scrollTop, 2250)
+})
+
+test('failed append preserves the list and retries the same cursor', async () => {
+  let fail = true
+  const h = harness((...args) => { if (args[2] !== undefined && fail) throw new Error('fixture offline'); return query(...args) })
+  await h.reloadLogs()
+  await h.loadMoreLogs()
+  assert.equal(h.logs.value.length, 100)
+  assert.match(h.historyLoadError.value, /fixture offline/)
+  const cursor = h.calls.at(-1)[2]
+  fail = false
+  await h.loadMoreLogs()
+  assert.equal(h.calls.at(-1)[2], cursor)
+  assert.equal(h.logs.value.length, 130)
+  assert.equal(h.historyLoadError.value, '')
+})
+
+test('cache keys isolate working copies and branch sources without using the transient workspace epoch', async () => {
+  const h = harness(query)
+  h.store.svnInfo = { url: 'file:///repo/dev', repository_root: 'file:///repo' }
+  h.flow.browsingUrl = h.store.svnInfo.url
+  await h.reloadLogs()
+  await h.loadMoreLogs()
+  h.store.currentPath = '/wc-other'
+  h.store.epoch++
+  await h.reloadLogs()
+  assert.equal(h.calls.length, 3)
+  h.store.currentPath = '/wc'
+  h.store.epoch++
+  await h.reloadLogs()
+  assert.equal(h.calls.length, 3)
+  assert.equal(h.logs.value.length, 130)
+  h.flow.browsingUrl = 'file:///repo/publish'
+  await h.reloadLogs()
+  assert.equal(h.calls.length, 4)
+})
+
+test('explicit refresh invalidates filter caches for the same working copy and source', async () => {
+  const h = harness(query)
+  await h.reloadLogs()
+  h.filters.author = 'alice'
+  await h.reloadLogs(false, true)
+  await h.reloadLogs(true)
+  h.filters.author = ''
+  await h.reloadLogs(false, true)
+  assert.equal(h.calls.length, 4)
+})
+
+
+test('actual lifecycle watchers reuse history on navigation and refresh once after an explicit workspace refresh', async () => {
+  const h = harness(query, undefined, true)
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(h.calls.length, 1)
+  h.deactivate()
+  h.activate()
+  await h.restoreHistoryView()
+  assert.equal(h.calls.length, 1)
+  h.store.isLoading = true
+  h.store.epoch++
+  await vue.nextTick()
+  assert.equal(h.calls.length, 1)
+  h.store.isLoading = false
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(h.calls.length, 2)
+  h.stop()
+})
+
+test('deactivating an initial request rejects its reply and reactivation retries instead of leaving an empty history', async () => {
+  let finish
+  const h = harness(() => new Promise(resolve => { finish = resolve }), undefined, true)
+  assert.equal(h.calls.length, 1)
+  h.deactivate()
+  finish(entries.slice(0, 101))
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(h.logs.value.length, 0)
+  h.activate()
+  assert.equal(h.calls.length, 2)
+  finish(entries.slice(0, 101))
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(h.logs.value.length, 100)
+  h.stop()
 })

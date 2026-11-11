@@ -65,6 +65,32 @@ pub fn parse_info_revisions_xml(xml: &str) -> Result<Vec<(String, u64)>, SvnErro
     Ok(revisions)
 }
 
+/// Include scheduled additions too; they may not have a numeric BASE revision.
+pub(super) fn parse_info_paths_xml(xml: &str) -> Result<Vec<String>, SvnError> {
+    let mut paths = Vec::new();
+    let mut reader = Reader::from_str(xml);
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) if e.name().as_ref() == b"entry" => {
+                if let Some(attr) = e
+                    .try_get_attribute("path")
+                    .map_err(|e| SvnError::ParseError(e.to_string()))?
+                {
+                    paths.push(
+                        attr.unescape_value()
+                            .map_err(|e| SvnError::ParseError(e.to_string()))?
+                            .into_owned(),
+                    );
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(error) => return Err(SvnError::ParseError(error.to_string())),
+            _ => {}
+        }
+    }
+    Ok(paths)
+}
+
 pub fn parse_status_xml(xml: &str) -> Result<Vec<SvnStatus>, SvnError> {
     let mut statuses = Vec::new();
     let mut reader = Reader::from_str(xml);

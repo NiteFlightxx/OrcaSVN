@@ -22,6 +22,7 @@
     <CommitMessageEditor :disabled="flow.busy" compact />
     <p v-if="error" class="error" role="alert">{{ error }}</p>
     <p v-if="notice" role="status">{{ notice }}</p>
+    <p v-if="flow.busy" role="status">{{ $t('commitFlow.' + commitPhase) }}</p>
     <pre v-if="flow.busy && flow.commandOutput">{{ flow.commandOutput }}</pre>
     <template #footer
       ><el-button :disabled="flow.busy" @click="close">{{ $t('common.cancel') }}</el-button
@@ -46,7 +47,8 @@ import { useWorkflowStore } from '@/stores/workflows'
 import { useStagingStore } from '@/stores/staging'
 import { useCommitDraftStore } from '@/stores/commitDraft'
 import { useSettings } from '@/composables/useSettings'
-import { svnAdd, svnCommit, svnStatus } from '@/api/svn'
+import { svnCommit } from '@/api/svn'
+import { useWorkspace } from '@/composables/useWorkspace'
 import CommitMessageEditor from './CommitMessageEditor.vue'
 const props = defineProps<{ visibleFiles?: string[] }>()
 const emit = defineEmits<{ close: []; submitted: [] }>()
@@ -56,6 +58,14 @@ const { t } = useI18n(),
   flow = useWorkflowStore(),
   draft = useCommitDraftStore(),
   { settings } = useSettings()
+const { applyCommitResult } = useWorkspace()
+const commitPhase = computed(() =>
+  flow.phase === 'refreshing'
+    ? 'refreshing'
+    : ['checking', 'committing', 'refreshing', 'adding'].includes(flow.progress?.phase || '')
+      ? flow.progress!.phase
+      : 'checking'
+)
 const root = workspace.currentPath!,
   branch = workspace.svnInfo?.url || '',
   key = staging.key
@@ -86,41 +96,43 @@ async function submit() {
   notice.value = ''
   const message = draft.message,
     draftKey = draft.key,
-    selected = [...files.value],
-    toAdd = [...unversioned.value]
+    selected = [...files.value]
   try {
-    const result = await flow.perform(t('menu.commit'), async () => {
-      const fresh = await svnStatus(root, true)
-      if (changedContext.value) throw new Error(t('branchUI.contextChanged'))
-      const available = new Set(
-        fresh
-          .filter(
-            (entry) => entry.status_code !== 'conflicted' && entry.prop_status !== 'conflicted'
-          )
-          .map((entry) => entry.path)
-      )
-      if (selected.some((file) => !available.has(file)))
-        throw new Error(t('branchUI.contextChanged'))
-      if (toAdd.length) return { added: true, result: await svnAdd(root, toAdd) }
-      return {
-        added: false,
-        result: await svnCommit(root, message, selected, settings.autoDeleteMissingOnCommit),
-      }
-    })
+    const result = await flow.perform(
+      t('menu.commit'),
+      async () => {
+        const result = await svnCommit(
+          root,
+          message,
+          selected,
+          settings.autoDeleteMissingOnCommit,
+          branch
+        )
+        flow.phase = 'refreshing'
+        const refreshed = await applyCommitResult(root, branch, result)
+        flow.refreshWarning = !refreshed
+        if (result.success && (!refreshed || result.warning))
+          ElMessage.warning(t('commitFlow.refreshWarning'))
+        return result
+      },
+      true,
+      false
+    )
+    if (!result.success) {
+      error.value = result.error || result.output
+      return
+    }
     if (result.added) {
+      if (changedContext.value) return
       files.value = (workspace.rawStatusList || [])
         .filter(
           (entry) =>
             selected.includes(entry.path) ||
-            toAdd.some((parent) => entry.path.startsWith(parent + '/'))
+            (result.addedPaths || []).some((parent) => entry.path.startsWith(parent + '/'))
         )
         .map((entry) => entry.path)
       staging.stage(files.value)
       notice.value = t('commit.reviewAdded')
-      return
-    }
-    if (!result.result.success) {
-      error.value = result.result.error || result.result.output
       return
     }
     staging.unstage(selected, key)

@@ -10,9 +10,9 @@ function deferred() {
   return { promise, resolve, reject }
 }
 function harness() {
-  const requests = [], snapshots = new Map(), writes = [], invalidations = [], publications = [], revisionReads = []
+  const requests = [], snapshots = new Map(), writes = [], invalidations = [], publications = [], revisionReads = [], historyInvalidations = []
   const store = {
-    currentPath: '/a', statusList: [], rawStatusList: null, svnInfo: null, gitignorePatterns: [], epoch: 0,
+    currentPath: '/a', statusList: [], rawStatusList: null, svnInfo: null, gitignorePatterns: [], epoch: 0, historyEpoch: 0, advanceHistoryEpoch() { this.historyEpoch++ },
     advanceEpoch() { this.epoch++ },
     setCurrentPath(path) { this.currentPath = path },
     setStatusList(list) { publications.push(list); this.statusList = list },
@@ -40,16 +40,17 @@ function harness() {
     '@tauri-apps/plugin-dialog': {},
     '@/composables/useSettings': { useSettings: () => ({ settings: { gitignoreEnabled: false } }) },
     '@/i18n': { default: { global: { t: key => key } } },
+    '@/utils/historyCache': { invalidateHistoryForSource: (...args) => historyInvalidations.push(args) },
     '@/utils/gitignore': {},
     '@/utils/statusPatch': (() => { const context = { exports: {} }; vm.runInNewContext(ts.transpileModule(fs.readFileSync('src/utils/statusPatch.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText, context); return context.exports })(),
     '@/utils/gitignoreWorker': { filterByGitignoreAsync: list => filter(list) },
     '@/utils/workspaceSnapshot': { getWorkspaceSnapshot: path => snapshots.get(path) || null, cacheWorkspaceSnapshot: (...args) => writes.push(args), invalidateWorkspaceSnapshot: path => { invalidations.push(path); snapshots.delete(path) } },
-    '@/utils/svnInfoCache': { getCachedSvnInfoMetadata: () => ({ url: 'file:///repo' }), invalidateSvnInfoMetadata() {} },
+    '@/utils/svnInfoCache': { getCachedSvnInfoMetadata: () => ({ url: 'file:///repo' }), invalidateSvnInfoMetadata() {}, cacheSvnInfoMetadata() {} },
   }
-  const context = { exports: {}, require: name => { assert.ok(name in mocks, name); return mocks[name] } }
+  const context = { exports: {}, queueMicrotask, require: name => { assert.ok(name in mocks, name); return mocks[name] } }
   const code = ts.transpileModule(fs.readFileSync('src/composables/useWorkspace.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText
   vm.runInNewContext(code, context)
-  return { store, requests, snapshots, writes, invalidations, publications, revisionReads, useWorkspace: context.exports.useWorkspace, setFilter: value => { filter = value }, setLocalRevision: value => { localRevision = value } }
+  return { store, requests, snapshots, writes, invalidations, publications, revisionReads, historyInvalidations, useWorkspace: context.exports.useWorkspace, setFilter: value => { filter = value }, setLocalRevision: value => { localRevision = value } }
 }
 
 test('separate consumers share an in-flight refresh and background polls reuse fresh state', async () => {
@@ -451,4 +452,86 @@ test('a refresh with a failed revision read updates status, keeps the revision a
   assert.equal(await retry, true)
   assert.equal(h.store.svnInfo.revision, 12)
   assert.equal(h.store.error, null)
+})
+
+
+test('commit merges only verified paths, preserves hidden changes and advances only history', async () => {
+  const h = harness(), patch = prepareDiscard(h)
+  h.setFilter(async list => list.filter(file => !file.path.includes('hidden')))
+  const outcome = { success: true, status: patch, info: { url: patch.expectedUrl, revision: 12 } }
+  assert.equal(await h.useWorkspace().applyCommitResult('/a', patch.expectedUrl, outcome), true)
+  assert.equal(h.requests.length, 0)
+  assert.equal(h.revisionReads.length, 0)
+  assert.equal(h.store.epoch, 0)
+  assert.equal(h.store.historyEpoch, 1)
+  assert.deepEqual(h.historyInvalidations, [['/a', patch.expectedUrl]])
+  assert.deepEqual(Array.from(h.store.rawStatusList, e => e.path), ['folder/hidden.txt', 'other.txt'])
+  assert.deepEqual(Array.from(h.store.statusList, e => e.path), ['other.txt'])
+  assert.equal(h.store.statusIsStale, false)
+})
+
+test('add review and failed commits do not invalidate history, and retain post-command modifications', async () => {
+  for (const outcome of [{ success: true, added: true }, { success: false, error: 'hook rejected' }]) {
+    const h = harness(), patch = prepareDiscard(h)
+    patch.entries = [changed('folder/a.txt')]
+    assert.equal(await h.useWorkspace().applyCommitResult('/a', patch.expectedUrl, { ...outcome, status: patch }), true)
+    assert.equal(h.store.historyEpoch, 0)
+    assert.equal(h.historyInvalidations.length, 0)
+    assert.equal(h.requests.length, 0)
+    assert.ok(h.store.rawStatusList.some(e => e.path === 'folder/a.txt'))
+  }
+})
+
+test('late commit patches cannot overwrite a newly opened workspace but invalidate the old history cache', async () => {
+  const h = harness(), patch = prepareDiscard(h)
+  h.store.currentPath = '/b'
+  assert.equal(await h.useWorkspace().applyCommitResult('/a', patch.expectedUrl, { success: true, status: patch }), false)
+  assert.equal(h.store.historyEpoch, 0)
+  assert.equal(h.requests.length, 0)
+  assert.deepEqual(h.historyInvalidations, [['/a', patch.expectedUrl]])
+  assert.equal(h.store.rawStatusList.length, 3)
+})
+
+test('a commit patch supersedes an older scan and is itself superseded by a newer explicit refresh', async () => {
+  const h = harness(), patch = prepareDiscard(h), workspace = h.useWorkspace()
+  const older = workspace.refreshStatus()
+  assert.equal(await workspace.applyCommitResult('/a', patch.expectedUrl, { success: true, status: patch }), true)
+  h.requests[0].resolve([changed('obsolete.txt')])
+  assert.equal(await older, false)
+  assert.ok(!h.store.rawStatusList.some(e => e.path === 'obsolete.txt'))
+  assert.equal(h.store.isLoading, false)
+  const gate = deferred()
+  h.setFilter(() => gate.promise)
+  const merge = workspace.applyCommitResult('/a', patch.expectedUrl, { success: true, status: patch })
+  await new Promise(resolve => setImmediate(resolve))
+  h.setFilter(async list => list)
+  const manual = workspace.refreshStatus()
+  h.requests[1].resolve([changed('latest.txt')])
+  assert.equal(await manual, true)
+  gate.resolve([])
+  assert.equal(await merge, false)
+  assert.deepEqual(Array.from(h.store.rawStatusList, e => e.path), ['latest.txt'])
+})
+
+test('missing commit patches return immediately while recovery runs in the background', async () => {
+  const h = harness(), patch = prepareDiscard(h)
+  assert.equal(await h.useWorkspace().applyCommitResult('/a', patch.expectedUrl, { success: true, status: null }), false)
+  assert.equal(h.requests.length, 1)
+  assert.equal(h.store.statusIsStale, true)
+  h.requests[0].resolve([changed('unrelated.txt')])
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(h.store.statusIsStale, false)
+})
+
+test('a failed commit display filter starts recovery without changing the completed command result', async () => {
+  const h = harness(), patch = prepareDiscard(h)
+  h.setFilter(async () => { throw new Error('worker unavailable') })
+  const outcome = { success: true, status: patch }
+  assert.equal(await h.useWorkspace().applyCommitResult('/a', patch.expectedUrl, outcome), false)
+  assert.equal(outcome.success, true)
+  assert.equal(h.requests.length, 1)
+  h.setFilter(async list => list)
+  h.requests[0].resolve([])
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(h.store.statusIsStale, false)
 })

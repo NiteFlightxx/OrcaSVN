@@ -5,6 +5,7 @@ export default {
     about: '關於',
   },
   common: {
+    retry: '重試',
     confirm: '確認',
     cancel: '取消',
     save: '儲存',

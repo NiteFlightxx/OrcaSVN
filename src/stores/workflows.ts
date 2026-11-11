@@ -255,13 +255,14 @@ export const useWorkflowStore = defineStore('workflows', () => {
     refreshWarning.value = false
     const path = workspace.currentPath
     operationWorkspace.value = path || ''
+    const startingEpoch = workspace.epoch
     let finalPhase = 'completed'
     try {
       const result = await operation()
       const failure =
         result && typeof result === 'object'
           ? (result as { error?: string; warning?: string }).error ||
-            (result as { warning?: string }).warning
+            ((result as { success?: boolean }).success === true ? '' : (result as { warning?: string }).warning)
           : ''
       const operationResult = result as { id?: string; kind?: string; output?: string }
       const conflicts = (result as { conflicts?: string[] } | null)?.conflicts
@@ -302,7 +303,9 @@ export const useWorkflowStore = defineStore('workflows', () => {
         busy.value = false
         phase.value = finalPhase
       }
-      if (mutation && refreshLocal && workspace.currentPath === path) void refresh()
+      // A real local refresh advances epoch and its watcher refreshes metadata.
+      // Keep a fallback for refresh failures that did not advance the epoch.
+      if (mutation && refreshLocal && workspace.currentPath === path && workspace.epoch === startingEpoch) void refresh()
     }
   }
   watch(

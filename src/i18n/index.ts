@@ -1,3 +1,4 @@
+import { commitFlowLocales } from './commitFlow'
 import { experienceLocales } from './experience'
 import { branchUiLocales } from './branchUi'
 import { conflictDialogLocales } from './conflictDialog'
@@ -6,6 +7,7 @@ import { workflowLocales } from './workflows'
 import { changeLocales } from './changes'
 import { commitDetailLocales } from './commitDetails'
 import { fileMenuLocales } from './fileMenu'
+import { historyPresenceLocales } from './historyPresence'
 import { watch } from 'vue'
 import { createI18n } from 'vue-i18n'
 import zhCN from './locales/zh-CN'
@@ -74,6 +76,8 @@ const i18n = createI18n({
       changes: changeLocales['zh-CN'],
       commitDetails: commitDetailLocales['zh-CN'],
       fileMenu: fileMenuLocales['zh-CN'],
+      historyPresence: historyPresenceLocales['zh-CN'],
+      commitFlow: commitFlowLocales['zh-CN'],
     },
     'zh-TW': {
       experience: experienceLocales['zh-TW'],
@@ -85,6 +89,8 @@ const i18n = createI18n({
       changes: changeLocales['zh-TW'],
       commitDetails: commitDetailLocales['zh-TW'],
       fileMenu: fileMenuLocales['zh-TW'],
+      historyPresence: historyPresenceLocales['zh-TW'],
+      commitFlow: commitFlowLocales['zh-TW'],
     },
     'ja-JP': {
       experience: experienceLocales['ja-JP'],
@@ -96,6 +102,8 @@ const i18n = createI18n({
       changes: changeLocales['ja-JP'],
       commitDetails: commitDetailLocales['ja-JP'],
       fileMenu: fileMenuLocales['ja-JP'],
+      historyPresence: historyPresenceLocales['ja-JP'],
+      commitFlow: commitFlowLocales['ja-JP'],
     },
     'ko-KR': {
       experience: experienceLocales['ko-KR'],
@@ -107,6 +115,8 @@ const i18n = createI18n({
       changes: changeLocales['ko-KR'],
       commitDetails: commitDetailLocales['ko-KR'],
       fileMenu: fileMenuLocales['ko-KR'],
+      historyPresence: historyPresenceLocales['ko-KR'],
+      commitFlow: commitFlowLocales['ko-KR'],
     },
     'en-US': {
       experience: experienceLocales['en-US'],
@@ -118,6 +128,8 @@ const i18n = createI18n({
       changes: changeLocales['en-US'],
       commitDetails: commitDetailLocales['en-US'],
       fileMenu: fileMenuLocales['en-US'],
+      historyPresence: historyPresenceLocales['en-US'],
+      commitFlow: commitFlowLocales['en-US'],
     },
   },
 })

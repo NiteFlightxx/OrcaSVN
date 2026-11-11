@@ -1,5 +1,6 @@
 import { useWorkspaceStore } from '@/stores/workspace'
-import { svnStatus, svnInfo, svnLocalRevision, readGitignore, type DiscardStatusPatch } from '@/api/svn'
+import { svnStatus, svnInfo, svnLocalRevision, readGitignore, type DiscardStatusPatch, type CommitResult } from '@/api/svn'
+import { invalidateHistoryForSource } from '@/utils/historyCache'
 import { open } from '@tauri-apps/plugin-dialog'
 import { useSettings } from '@/composables/useSettings'
 import i18n from '@/i18n'
@@ -328,6 +329,54 @@ export function useWorkspace() {
     })
   }
 
+  async function applyCommitResult(path: string, url: string, outcome: CommitResult): Promise<boolean> {
+    if (outcome.success && !outcome.added) invalidateHistoryForSource(path, url)
+    if (path !== workspaceStore.currentPath || url !== workspaceStore.svnInfo?.url) return false
+    if (outcome.success && !outcome.added) workspaceStore.advanceHistoryEpoch()
+    const patch = outcome.status
+    if (!patch || patch.workspace !== path || patch.expectedUrl !== url || workspaceStore.rawStatusList === null) {
+      workspaceStore.setStatusIsStale(true)
+      // The commit result is final. Recovery of a failed local status query must
+      // not turn a successful commit into another long foreground submission.
+      void refreshStatusAfterMutation()
+      return false
+    }
+    invalidateWorkspaceSnapshot(path)
+    invalidateSvnInfoMetadata(path)
+    const generation = ++workspaceRequestGeneration
+    const isCurrent = () => generation === workspaceRequestGeneration && path === workspaceStore.currentPath && url === workspaceStore.svnInfo?.url
+    const status = mergeDiscardStatus(workspaceStore.rawStatusList, patch)
+    workspaceStore.setStatusIsStale(true)
+    return trackRequest(path, async () => {
+      try {
+        await loadGitignoreIfNeeded(path, workspaceStore, isCurrent)
+        if (!isCurrent()) return false
+        const filtered = await filterByGitignoreAsync(status, workspaceStore.gitignorePatterns)
+        if (!isCurrent()) return false
+        workspaceStore.setRawStatusList(status)
+        workspaceStore.setStatusList(filtered)
+        if (outcome.info?.url === url) {
+          workspaceStore.setSvnInfo(outcome.info)
+          cacheSvnInfoMetadata(path, toSvnInfoMetadata(outcome.info))
+        }
+        workspaceStore.setStatusIsStale(false)
+        if (workspaceStore.svnInfo) cacheWorkspaceSnapshot(path, filtered, workspaceStore.svnInfo, useSettings().settings.gitignoreEnabled)
+        return true
+      } catch (error) {
+        if (isCurrent()) {
+          reportStatusError(path, String(error))
+          // Start after trackRequest publishes this request, so a recovery scan
+          // cannot be replaced by the failed merge's pending-request marker.
+          queueMicrotask(() => { if (isCurrent()) void refreshStatusAfterMutation() })
+        }
+        return false
+      } finally {
+        // A superseded foreground scan must not leave its loading state behind.
+        if (isCurrent()) workspaceStore.setLoading(false)
+      }
+    })
+  }
+
   function refreshStatusIfStale(maxAgeMs: number): Promise<boolean> {
     const path = workspaceStore.currentPath
     if (!path) return Promise.resolve(false)
@@ -346,5 +395,5 @@ export function useWorkspace() {
     if (launchPath && launchError && !workspaceStore.error) reportStatusError(launchPath, launchError)
   }
 
-  return { loadWorkspace, openWorkspace, restoreLastWorkspace, openStartupWorkspace, refreshStatus, refreshStatusAfterMutation, refreshStatusAfterDiscard, refreshStatusIfStale }
+  return { loadWorkspace, openWorkspace, restoreLastWorkspace, openStartupWorkspace, refreshStatus, refreshStatusAfterMutation, refreshStatusAfterDiscard, applyCommitResult, refreshStatusIfStale }
 }

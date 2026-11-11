@@ -245,13 +245,33 @@ pub async fn remote_info(path: &str) -> Result<SvnInfo, SvnError> {
     parse_info_xml(&output)
 }
 
+fn normalize_commit_path(file: &str) -> String {
+    let path = normalize_svn_path(file);
+    path.strip_prefix("./")
+        .unwrap_or(&path)
+        .trim_end_matches('/')
+        .to_string()
+}
+
 pub async fn commit(
     path: &str,
     message: &str,
     files: Option<&[String]>,
 ) -> Result<String, SvnError> {
-    let mut args: Vec<String> = vec!["commit".to_string(), "-m".to_string(), message.to_string()];
+    let statuses = match files {
+        Some(files) => super::commit_selection::selection_status(path, files).await?,
+        None => Vec::new(),
+    };
+    commit_prepared(path, message, files, &statuses).await
+}
 
+async fn commit_prepared(
+    path: &str,
+    message: &str,
+    files: Option<&[String]>,
+    statuses: &[SvnStatus],
+) -> Result<String, SvnError> {
+    let mut args: Vec<String> = vec!["commit".to_string(), "-m".to_string(), message.to_string()];
     if let Some(file_list) = files {
         if file_list.is_empty() {
             return Err(SvnError::InvalidArguments(
@@ -260,18 +280,12 @@ pub async fn commit(
         }
         // SVN directory deletion/replacement is atomic even with --depth empty.
         // Validate against fresh status so deselected descendants cannot slip in.
-        let statuses = status(path).await?;
         let selected: HashSet<String> = file_list
             .iter()
-            .map(|file| {
-                normalize_svn_path(file)
-                    .trim_start_matches("./")
-                    .trim_end_matches('/')
-                    .to_string()
-            })
+            .map(|file| normalize_commit_path(file))
             .collect();
 
-        for entry in &statuses {
+        for entry in statuses {
             let target = normalize_svn_path(&entry.path);
             if !selected.contains(&target) {
                 continue;
@@ -314,18 +328,27 @@ pub async fn commit_with_options(
     files: Option<&[String]>,
     auto_delete_missing: bool,
 ) -> Result<String, SvnError> {
+    let statuses = match files {
+        Some(files) => super::commit_selection::selection_status(path, files).await?,
+        None if auto_delete_missing => status(path).await?,
+        None => Vec::new(),
+    };
+    commit_from_status(path, message, files, auto_delete_missing, &statuses).await
+}
+
+pub(super) async fn commit_from_status(
+    path: &str,
+    message: &str,
+    files: Option<&[String]>,
+    auto_delete_missing: bool,
+    statuses: &[SvnStatus],
+) -> Result<String, SvnError> {
     if !auto_delete_missing || files.is_some_and(<[String]>::is_empty) {
-        return commit(path, message, files).await;
+        return commit_prepared(path, message, files, statuses).await;
     }
-    let statuses = status(path).await?;
     let selected: Option<HashSet<String>> = files.map(|list| {
         list.iter()
-            .map(|file| {
-                normalize_svn_path(file)
-                    .trim_start_matches("./")
-                    .trim_end_matches('/')
-                    .to_string()
-            })
+            .map(|file| normalize_commit_path(file))
             .collect()
     });
     let is_selected = |target: &str| selected.as_ref().is_none_or(|set| set.contains(target));
@@ -336,7 +359,7 @@ pub async fn commit_with_options(
         .filter(|target| is_selected(target))
         .collect();
     if missing.is_empty() {
-        return commit(path, message, files).await;
+        return commit_prepared(path, message, files, statuses).await;
     }
     for target in &missing {
         let prefix = format!("{target}/");
@@ -356,7 +379,11 @@ pub async fn commit_with_options(
     }
     // Deleting a file that was only scheduled for addition cancels the add, so
     // it is no longer versioned and cannot be a commit target.
-    let scheduled = match status(path).await {
+    let fresh = match files {
+        Some(files) => super::commit_selection::selection_status(path, files).await,
+        None => status(path).await,
+    };
+    let scheduled = match fresh {
         Ok(fresh) => fresh
             .iter()
             .map(|entry| normalize_svn_path(&entry.path))
@@ -372,7 +399,7 @@ pub async fn commit_with_options(
                 let file = normalize_svn_path(file);
                 !cancelled
                     .iter()
-                    .any(|target| *target == file.trim_start_matches("./").trim_end_matches('/'))
+                    .any(|target| *target == normalize_commit_path(&file))
             })
             .cloned()
             .collect()
@@ -380,7 +407,7 @@ pub async fn commit_with_options(
     if targets.as_ref().is_some_and(Vec::is_empty) {
         return Ok(String::new());
     }
-    match commit(path, message, targets.as_deref()).await {
+    match commit_prepared(path, message, targets.as_deref(), statuses).await {
         Ok(output) => Ok(output),
         Err(error) => restore_missing(path, &scheduled, error).await,
     }
@@ -729,7 +756,7 @@ pub async fn local_revision(path: &str) -> Result<u64, SvnError> {
         .map_err(|_| SvnError::ParseError(format!("无法解析本地工作副本版本：{output}")))
 }
 
-fn percent_decode(value: &str) -> Option<String> {
+pub(super) fn percent_decode(value: &str) -> Option<String> {
     let bytes = value.as_bytes();
     let mut decoded = Vec::with_capacity(bytes.len());
     let mut index = 0;

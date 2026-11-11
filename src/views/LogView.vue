@@ -134,6 +134,7 @@
           :aria-colcount="4"
           :aria-activedescendant="selectedLog ? 'history-row-' + selectedLog.revision : undefined"
           @keydown="navigateHistory"
+          @scroll="handleHistoryScroll"
         >
           <template #default="{ start, end }">
             <div
@@ -144,7 +145,20 @@
               :class="{
                 current: selectedLog?.revision === row.revision,
                 selected: selectedRevisions.includes(row.revision),
+                'history-base-row': isBaseRevision(row.revision),
               }"
+              :data-presence="presence.state(row.revision)"
+              :aria-label="
+                [
+                  commitSubject(row.message),
+                  'r' + row.revision,
+                  presenceLabel(row.revision),
+                  isBaseRevision(row.revision) ? $t('historyPresence.baseTag') : '',
+                ]
+                  .filter(Boolean)
+                  .join(' · ')
+              "
+              :title="presenceHint(row.revision)"
               :style="{ height: historyRowHeight + 'px' }"
               role="row"
               :aria-rowindex="start + offset + 1"
@@ -154,10 +168,42 @@
               @click="selectHistoryRow(row, $event)"
               @contextmenu="contextMenu(row, null, $event)"
             >
-              <span class="history-subject" role="gridcell" :title="row.message"
-                ><i class="revision-dot" aria-hidden="true"></i
-                ><span>{{ commitSubject(row.message) }}</span></span
-              >
+              <span
+                class="history-subject"
+                role="gridcell"
+                :title="row.message + '\n' + presenceHint(row.revision)"
+                ><i
+                  class="revision-dot"
+                  aria-hidden="true"
+                  :title="
+                    isBaseRevision(row.revision)
+                      ? $t('historyPresence.baseHint')
+                      : presenceHint(row.revision)
+                  "
+                ></i
+                ><span>{{ commitSubject(row.message) }}</span>
+                <el-icon
+                  v-if="presence.state(row.revision) === 'checking'"
+                  class="presence-indicator checking"
+                  :title="presenceHint(row.revision)"
+                  aria-hidden="true"
+                  ><Loading
+                /></el-icon>
+                <el-icon
+                  v-else-if="presence.state(row.revision) === 'unknown'"
+                  class="presence-indicator"
+                  :title="presenceHint(row.revision)"
+                  aria-hidden="true"
+                  ><QuestionFilled
+                /></el-icon>
+                <el-icon
+                  v-else-if="presence.state(row.revision) === 'partial'"
+                  class="presence-indicator"
+                  :title="presenceHint(row.revision)"
+                  aria-hidden="true"
+                  ><InfoFilled
+                /></el-icon>
+              </span>
               <span class="history-author" role="gridcell" :title="row.author"
                 ><span class="author-avatar small-avatar" aria-hidden="true">{{
                   authorInitials(row.author)
@@ -204,24 +250,27 @@
             <el-icon><Connection /></el-icon
             ><span v-if="selectedRevisions.length">{{ selectedRevisions.length }}</span>
           </button>
-          <span class="history-result" role="status">{{
-            loading ? $t('log.querying') : logResultSummary
+          <span class="history-result" role="status">{{ logResultSummary }}</span>
+          <span
+            v-if="presence.baseRevision.value !== null"
+            class="history-base-summary"
+            :title="$t('historyPresence.baseHint')"
+            >{{ $t('historyPresence.base', { revision: presence.baseRevision.value }) }}</span
+          >
+          <span v-if="loading" class="history-load-status" role="status">{{
+            logs.length ? $t('log.loadingMore') : $t('log.querying')
           }}</span>
-          <el-button
-            size="small"
-            :disabled="loading || pageIndex === 0"
-            @click="changePage(pageIndex - 1)"
+          <button
+            v-else-if="historyLoadError"
+            class="history-retry"
+            :title="historyLoadError"
+            @click="retryHistory"
           >
-            {{ $t('log.previousPage') }}
-          </el-button>
-          <span>{{ $t('log.pageNumber', { page: pageIndex + 1 }) }}</span>
-          <el-button
-            size="small"
-            :disabled="loading || !hasMore"
-            @click="changePage(pageIndex + 1)"
-          >
-            {{ $t('log.nextPage') }}
-          </el-button>
+            {{ $t('common.retry') }}
+          </button>
+          <span v-else-if="!hasMore && logs.length" class="history-load-status">{{
+            $t('log.allLoaded')
+          }}</span>
         </div>
       </div>
 
@@ -315,7 +364,19 @@
                   r{{ selectedLog.revision }}<el-icon><CopyDocument /></el-icon>
                 </button>
               </dd>
+              <dt>{{ $t('historyPresence.localState') }}</dt>
+              <dd :title="presenceHint(selectedLog.revision)">
+                {{ presenceLabel(selectedLog.revision) }}
+              </dd>
             </dl>
+            <p
+              v-if="
+                presence.rows.value[selectedLog.revision]?.reasons?.length || presence.error.value
+              "
+              class="history-presence-explanation"
+            >
+              {{ presenceReasons(selectedLog.revision) }}
+            </p>
             <pre class="revision-message">{{ selectedLog.message }}</pre>
             <div class="revision-files-heading">
               <span
@@ -439,6 +500,13 @@ import { svnCurrentUser, svnLog } from '@/api/svn'
 import type { SvnLogEntry, SvnLogPath } from '@/types'
 import { useI18n } from 'vue-i18n'
 import { useWorkspace } from '@/composables/useWorkspace'
+import { useHistoryPresence } from '@/composables/useHistoryPresence'
+import {
+  historyCacheKey,
+  getHistorySnapshot,
+  setHistorySnapshot,
+  invalidateHistoryForSource,
+} from '@/utils/historyCache'
 import { useRouter, useRoute } from 'vue-router'
 
 const { t, locale } = useI18n()
@@ -457,7 +525,7 @@ const logSource = computed(() => {
   return flow.browsingUrl || workspaceStore.svnInfo?.url || workspaceStore.currentPath || ''
 })
 const inlineDiff = ref('')
-const historyRowHeight = 28
+const historyRowHeight = 26
 const historyViewport = ref<InstanceType<typeof VirtualViewport> | null>(null)
 const historySearch = ref<{ focus: () => void } | null>(null)
 const filtersVisible = ref(false)
@@ -598,12 +666,12 @@ function saveHistoryView() {
       revision: selectedLog.value?.revision,
       inspectorTab: inspectorTab.value,
       selectedPath: selectedRevisionPath.value,
-      page: pageIndex.value,
-      cursors: [...pageCursors.value],
+      loadedCount: logs.value.length,
       scroll: historyViewport.value?.element?.scrollTop || logScroller.value?.scrollTop || 0,
     }
 }
 async function restoreHistoryView() {
+  if (!historyActive) return
   const path = workspaceStore.currentPath
   if (!path) return
   const state = repositoryUi(path).history
@@ -618,13 +686,13 @@ async function restoreHistoryView() {
       filterReloadTimer = undefined
     }
     if (path !== workspaceStore.currentPath) return
-    pageCursors.value = [...state.cursors]
-    await fetchLogPage(Math.min(state.page, pageCursors.value.length - 1), true)
+    await reloadLogs()
     if (path !== workspaceStore.currentPath) return
     await nextTick()
-    if (historyViewport.value?.element) historyViewport.value.element.scrollTop = state.scroll
-    else if (logScroller.value) logScroller.value.scrollTop = state.scroll
     const entry = logs.value.find((log) => log.revision === state.revision)
+    const scroll = entry || (state.loadedCount ?? 0) <= logs.value.length ? state.scroll : 0
+    if (historyViewport.value?.element) historyViewport.value.element.scrollTop = scroll
+    else if (logScroller.value) logScroller.value.scrollTop = scroll
     if (entry) {
       selectedLog.value = entry
       dialogVisible.value = true
@@ -703,27 +771,57 @@ async function previewChangedPath(row: SvnLogPath) {
 const { openWorkspace: openWorkspaceDialog } = useWorkspace()
 
 const logs = ref<SvnLogEntry[]>([])
+const visibleHistoryStart = ref(0)
+const visibleHistory = computed(() =>
+  logs.value.slice(visibleHistoryStart.value, visibleHistoryStart.value + 100)
+)
+const presence = useHistoryPresence(visibleHistory, logSource)
+function presenceLabel(revision: number) {
+  return t('historyPresence.' + presence.state(revision))
+}
+function presenceHint(revision: number) {
+  if (presence.state(revision) === 'other') return t('historyPresence.otherHint')
+  const row = presence.rows.value[revision]
+  return [
+    presenceLabel(revision),
+    row ? t('historyPresence.counts', { ...row }) : '',
+    ...(row?.reasons || []).map((reason) => t('historyPresence.reasons.' + reason)),
+    row?.basis === 'range' ? t('historyPresence.rangeBasis') : '',
+    t('historyPresence.hint'),
+    presence.error.value,
+  ]
+    .filter(Boolean)
+    .join(' · ')
+}
+function presenceReasons(revision: number) {
+  return [
+    ...(presence.rows.value[revision]?.reasons || []).map((reason) =>
+      t('historyPresence.reasons.' + reason)
+    ),
+    presence.error.value,
+  ]
+    .filter(Boolean)
+    .join(' · ')
+}
+function isBaseRevision(revision: number) {
+  return presence.scopeMatches.value === true && presence.baseRevision.value === revision
+}
 const loading = ref(false)
 const hasMore = ref(true)
 const logScroller = ref<HTMLElement | null>(null)
 let requestGeneration = 0
 let authorRequestGeneration = 0
-const pageIndex = ref(0)
-const pageCursors = ref<(number | undefined)[]>([undefined])
+const nextCursor = ref<number | undefined>()
+const historyLoadError = ref('')
+let activeHistoryKey = ''
+let pendingLogRequest: Promise<void> | null = null
+let historyActive = true
+let failedAppend = false
 const FILTER_RELOAD_DELAY_MS = 250
 let filterReloadTimer: number | undefined
 const dialogVisible = ref(false)
 const selectedLog = ref<SvnLogEntry | null>(null)
-const LOG_CACHE_TTL_MS = 5 * 60 * 1000
-const LOG_CACHE_KEY_VERSION = 'v4'
-const DEFAULT_LOG_PAGE_SIZE = 50
-const MAX_CACHE_SIZE = 50
-type LogCacheEntry = {
-  entries: SvnLogEntry[]
-  cachedAt: number
-}
-const logPageCache = new Map<string, LogCacheEntry>()
-const logCacheVersion = ref(0)
+const LOG_BATCH_SIZE = 100
 const currentAuthor = ref('')
 
 const getDefaultFilters = () => ({
@@ -735,6 +833,7 @@ const getDefaultFilters = () => ({
 
 const filters = reactive({
   ...getDefaultFilters(),
+  ...(workspaceStore.currentPath ? repositoryUi(workspaceStore.currentPath).history?.filters : {}),
 })
 const hasActiveFilters = computed(() => {
   return Boolean(
@@ -777,106 +876,9 @@ const normalizeLogEntries = (entries: SvnLogEntry[]) => {
   return sortLogEntries(uniqueEntries.map(cloneLogEntry))
 }
 
-const getLogCacheKey = (
-  path: string,
-  limit: number | undefined,
-  startRev?: number,
-  endRev?: number,
-  keyword?: string,
-  author?: string,
-  dateFrom?: string,
-  dateTo?: string
-) => {
-  return `${LOG_CACHE_KEY_VERSION}|${workspaceStore.epoch}|${path}|${limit}|${startRev ?? ''}|${endRev ?? ''}|${keyword ?? ''}|${author ?? ''}|${dateFrom ?? ''}|${dateTo ?? ''}`
-}
-
-const getCachedLogPage = (
-  path: string,
-  limit: number | undefined,
-  startRev?: number,
-  endRev?: number,
-  keyword?: string,
-  author?: string,
-  dateFrom?: string,
-  dateTo?: string
-) => {
-  const key = getLogCacheKey(path, limit, startRev, endRev, keyword, author, dateFrom, dateTo)
-  const cached = logPageCache.get(key)
-  if (!cached) return null
-  if (Date.now() - cached.cachedAt > LOG_CACHE_TTL_MS) {
-    logPageCache.delete(key)
-    return null
-  }
-  return normalizeLogEntries(cached.entries)
-}
-
-const setCachedLogPage = (
-  path: string,
-  limit: number | undefined,
-  entries: SvnLogEntry[],
-  startRev?: number,
-  endRev?: number,
-  keyword?: string,
-  author?: string,
-  dateFrom?: string,
-  dateTo?: string
-) => {
-  // 缓存达到上限时淘汰最旧的条目
-  if (logPageCache.size >= MAX_CACHE_SIZE) {
-    let oldestKey: string | undefined
-    let oldestTime = Infinity
-    for (const [k, v] of logPageCache) {
-      if (v.cachedAt < oldestTime) {
-        oldestTime = v.cachedAt
-        oldestKey = k
-      }
-    }
-    if (oldestKey) logPageCache.delete(oldestKey)
-  }
-
-  const key = getLogCacheKey(path, limit, startRev, endRev, keyword, author, dateFrom, dateTo)
-  logPageCache.set(key, {
-    entries: normalizeLogEntries(entries),
-    cachedAt: Date.now(),
-  })
-  logCacheVersion.value += 1
-}
-
-const clearLogCacheForPath = (path: string) => {
-  const prefix = `${LOG_CACHE_KEY_VERSION}|${path}|`
-  let changed = false
-  for (const key of logPageCache.keys()) {
-    if (key.startsWith(prefix)) {
-      logPageCache.delete(key)
-      changed = true
-    }
-  }
-  if (changed) logCacheVersion.value += 1
-}
-
-const getCachedAuthorsForPath = (path: string | null) => {
-  if (!path) return []
-  logCacheVersion.value
-
-  const prefix = `${LOG_CACHE_KEY_VERSION}|${path}|`
-  const authors = new Set<string>()
-  for (const [key, cached] of logPageCache.entries()) {
-    if (!key.startsWith(prefix)) continue
-    cached.entries.forEach((entry) => {
-      if (entry.author) authors.add(entry.author)
-    })
-  }
-  return [...authors]
-}
-
-const knownAuthors = computed(() => {
-  const authors = new Set<string>()
-  logs.value.forEach((entry) => {
-    if (entry.author) authors.add(entry.author)
-  })
-  getCachedAuthorsForPath(workspaceStore.currentPath).forEach((author) => authors.add(author))
-  return [...authors]
-})
+const knownAuthors = computed(() => [
+  ...new Set(logs.value.map((entry) => entry.author).filter(Boolean)),
+])
 
 const authorOptions = computed(() => {
   const self = currentAuthor.value
@@ -913,70 +915,81 @@ const openWorkspace = async () => {
 
 let lastLogError: string | null = null
 
-const fetchLogPage = async (index: number, refreshCache = false) => {
-  const requestedPath = workspaceStore.currentPath
-  const requestedSource = logSource.value
-  const epoch = workspaceStore.epoch
+const currentHistoryKey = () =>
+  workspaceStore.currentPath
+    ? historyCacheKey(workspaceStore.currentPath, logSource.value, filters)
+    : ''
+
+const fetchLogBatch = async (append: boolean) => {
+  const requestedPath = workspaceStore.currentPath,
+    requestedSource = logSource.value
+  const epoch = workspaceStore.epoch,
+    key = currentHistoryKey()
   if (!requestedPath || !requestedSource) return
   const generation = ++requestGeneration
-  const startRev = pageCursors.value[index]
+  const startRev = append ? nextCursor.value : undefined
   const endRev = startRev === undefined ? undefined : 1
-  // One extra match determines whether there is another page, including filters.
-  const limit = DEFAULT_LOG_PAGE_SIZE + 1
-  const kw = filters.keyword.trim() || undefined
-  const author = filters.author.trim() || undefined
-  const df = filters.dateFrom || undefined
-  const dt = filters.dateTo || undefined
+  const isCurrent = () =>
+    generation === requestGeneration &&
+    requestedPath === workspaceStore.currentPath &&
+    requestedSource === logSource.value &&
+    epoch === workspaceStore.epoch &&
+    key === currentHistoryKey()
   loading.value = true
+  historyLoadError.value = ''
   try {
-    const cached = refreshCache
-      ? null
-      : getCachedLogPage(requestedSource, limit, startRev, endRev, kw, author, df, dt)
-    const batch =
-      cached ||
-      normalizeLogEntries(
-        await svnLog(requestedSource, limit, startRev, endRev, kw, author, df, dt)
+    const batch = normalizeLogEntries(
+      await svnLog(
+        requestedSource,
+        LOG_BATCH_SIZE + 1,
+        startRev,
+        endRev,
+        filters.keyword.trim() || undefined,
+        filters.author.trim() || undefined,
+        filters.dateFrom || undefined,
+        filters.dateTo || undefined
       )
-    if (
-      generation !== requestGeneration ||
-      requestedPath !== workspaceStore.currentPath ||
-      requestedSource !== logSource.value ||
-      epoch !== workspaceStore.epoch
     )
-      return
-    if (!cached)
-      setCachedLogPage(requestedSource, limit, batch, startRev, endRev, kw, author, df, dt)
+    if (!isCurrent()) return
     const repositoryRoot = workspaceStore.svnInfo?.repository_root || ''
     const relativeSource =
-      repositoryRoot && requestedSource.startsWith(repositoryRoot)
+      repositoryRoot && requestedSource.startsWith(repositoryRoot + '/')
         ? decodeURIComponent(requestedSource.slice(repositoryRoot.length)).replace(/\/+$/, '')
         : ''
-    logs.value = batch.slice(0, DEFAULT_LOG_PAGE_SIZE).map((entry) => ({
+    const loaded = batch.slice(0, LOG_BATCH_SIZE).map((entry) => ({
       ...entry,
       changed_paths: relativeSource
         ? entry.changed_paths.filter(
-            (p) => p.path === relativeSource || p.path.startsWith(`${relativeSource}/`)
+            (p) => p.path === relativeSource || p.path.startsWith(relativeSource + '/')
           )
         : entry.changed_paths,
     }))
+    const knownRevisions = new Set(append ? logs.value.map((entry) => entry.revision) : [])
+    logs.value = append
+      ? [...logs.value, ...loaded.filter((entry) => !knownRevisions.has(entry.revision))]
+      : loaded
+    hasMore.value = batch.length > LOG_BATCH_SIZE
+    nextCursor.value = loaded.length ? loaded[loaded.length - 1].revision - 1 : undefined
+    if (nextCursor.value === 0) hasMore.value = false
+    setHistorySnapshot(key, {
+      entries: logs.value,
+      nextCursor: nextCursor.value,
+      hasMore: hasMore.value,
+    })
     if (!logs.value.some((entry) => entry.revision === selectedLog.value?.revision)) {
       selectedRevisions.value = []
       if (logs.value.length) handleRowClick(logs.value[0])
       else closeInspector()
     }
-    hasMore.value = batch.length > DEFAULT_LOG_PAGE_SIZE
-    pageIndex.value = index
-    if (hasMore.value) pageCursors.value[index + 1] = logs.value[logs.value.length - 1].revision - 1
-    await nextTick()
-    historyViewport.value?.resetScroll()
-    if (logScroller.value) logScroller.value.scrollTop = 0
     if (lastLogError !== null) {
       if (workspaceStore.error === lastLogError) workspaceStore.setError(null)
       lastLogError = null
     }
   } catch (err) {
-    if (generation === requestGeneration) {
-      lastLogError = String(err)
+    if (isCurrent()) {
+      failedAppend = append
+      historyLoadError.value = String(err)
+      lastLogError = historyLoadError.value
       workspaceStore.setError(lastLogError)
     }
   } finally {
@@ -985,35 +998,76 @@ const fetchLogPage = async (index: number, refreshCache = false) => {
 }
 
 const reloadLogs = async (refreshCache = false, restart = false) => {
-  if (!restart && !refreshCache && loading.value) return
-  if (refreshCache && workspaceStore.currentPath) clearLogCacheForPath(workspaceStore.currentPath)
-  pageIndex.value = 0
-  pageCursors.value = [undefined]
-  logs.value = []
-  hasMore.value = false
-  await fetchLogPage(0, refreshCache)
+  const key = currentHistoryKey()
+  if (!key) return
+  if (!refreshCache && !restart && loading.value && activeHistoryKey === key) {
+    await pendingLogRequest
+    return
+  }
+  requestGeneration++
+  const changed = activeHistoryKey !== key
+  activeHistoryKey = key
+  loading.value = false
+  historyLoadError.value = ''
+  if (refreshCache && workspaceStore.currentPath)
+    invalidateHistoryForSource(workspaceStore.currentPath, logSource.value)
+  const cached = getHistorySnapshot(key)
+  if (changed || restart) {
+    logs.value = []
+    nextCursor.value = undefined
+    hasMore.value = false
+    visibleHistoryStart.value = 0
+    historyViewport.value?.resetScroll()
+  }
+  if (cached) {
+    logs.value = cached.entries
+    nextCursor.value = cached.nextCursor
+    hasMore.value = cached.hasMore
+    if (!logs.value.some((entry) => entry.revision === selectedLog.value?.revision)) {
+      if (logs.value[0]) handleRowClick(logs.value[0])
+      else closeInspector()
+    }
+    return
+  }
+  pendingLogRequest = fetchLogBatch(false)
+  await pendingLogRequest
 }
 
-const changePage = (index: number) => {
+const loadMoreLogs = async () => {
   if (
     loading.value ||
+    !hasMore.value ||
     filterReloadTimer !== undefined ||
-    index < 0 ||
-    index >= pageCursors.value.length
+    activeHistoryKey !== currentHistoryKey()
   )
     return
-  void fetchLogPage(index)
+  pendingLogRequest = fetchLogBatch(true)
+  await pendingLogRequest
+}
+function handleHistoryScroll(event: Event) {
+  const viewport = event.currentTarget as HTMLElement
+  visibleHistoryStart.value =
+    Math.floor(Math.max(0, Math.floor(viewport.scrollTop / historyRowHeight) - 10) / 50) * 50
+  if (
+    !historyLoadError.value &&
+    viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < historyRowHeight * 15
+  )
+    void loadMoreLogs()
+}
+function retryHistory() {
+  if (failedAppend) void loadMoreLogs()
+  else void reloadLogs(true)
 }
 
 const scheduleFilterReload = () => {
-  if (restoringHistory) return
+  if (restoringHistory || !historyActive) return
   if (!workspaceStore.currentPath) return
   if (filterReloadTimer !== undefined) {
     window.clearTimeout(filterReloadTimer)
   }
   filterReloadTimer = window.setTimeout(() => {
     filterReloadTimer = undefined
-    void reloadLogs(true, true)
+    void reloadLogs(false, true)
   }, FILTER_RELOAD_DELAY_MS)
 }
 
@@ -1103,38 +1157,65 @@ const formatDate = (dateStr: string): string => {
   return date.toLocaleString(locale.value)
 }
 
+let settledHistoryContext = '',
+  settledHistoryEpoch = ''
+async function syncHistoryContext() {
+  if (!historyActive || workspaceStore.isLoading) return
+  const path = workspaceStore.currentPath
+  if (!path) {
+    requestGeneration++
+    authorRequestGeneration++
+    logs.value = []
+    activeHistoryKey = ''
+    settledHistoryContext = ''
+    currentAuthor.value = ''
+    loading.value = false
+    hasMore.value = false
+    return
+  }
+  if (!workspaceStore.svnInfo?.url) return
+  const context = JSON.stringify([path, logSource.value])
+  const changed = context !== settledHistoryContext
+  const historyEpoch = `${workspaceStore.epoch}:${workspaceStore.historyEpoch || 0}`
+  const invalidated = !changed && historyEpoch !== settledHistoryEpoch
+  if (!changed && !invalidated) {
+    if (!logs.value.length && !loading.value) await reloadLogs()
+    return
+  }
+  settledHistoryContext = context
+  settledHistoryEpoch = historyEpoch
+  if (changed) {
+    historyOwner = path
+    currentAuthor.value = ''
+    void loadCurrentAuthor(path)
+    comparison.value = null
+    selectedRevisions.value = []
+    diffGeneration++
+    inlineDiff.value = ''
+    dialogVisible.value = false
+    selectedLog.value = null
+    selectedRevisionPath.value = ''
+  }
+  await reloadLogs(invalidated, changed)
+}
 watch(
-  () => workspaceStore.currentPath,
-  (path, oldPath) => {
-    if (path && path !== oldPath) {
-      currentAuthor.value = ''
-      loadCurrentAuthor(path)
-      reloadLogs(true)
-    }
-    if (!path) {
-      requestGeneration += 1
-      authorRequestGeneration += 1
-      logs.value = []
-      currentAuthor.value = ''
-      hasMore.value = true
-      loading.value = false
-      pageIndex.value = 0
-      pageCursors.value = [undefined]
-    }
+  [
+    () => workspaceStore.currentPath,
+    logSource,
+    () => workspaceStore.epoch,
+    () => workspaceStore.historyEpoch,
+    () => workspaceStore.isLoading,
+    () => workspaceStore.svnInfo?.url,
+  ],
+  () => {
+    void syncHistoryContext()
   },
   { immediate: true }
 )
-
-watch([logSource, () => workspaceStore.epoch], () => {
-  comparison.value = null
-  selectedRevisions.value = []
+onDeactivated(() => {
+  historyActive = false
   requestGeneration++
-  diffGeneration++
-  inlineDiff.value = ''
-  dialogVisible.value = false
-  selectedLog.value = null
-  selectedRevisionPath.value = ''
-  void reloadLogs(true, true)
+  loading.value = false
 })
 
 watch(
@@ -1143,6 +1224,8 @@ watch(
 )
 
 onActivated(() => {
+  historyActive = true
+  void syncHistoryContext()
   const saved = sessionStorage.getItem('orca_log_selection')
   if (saved && !dialogVisible.value) {
     const revision = Number(saved)
@@ -1159,6 +1242,9 @@ onActivated(() => {
 })
 
 onUnmounted(() => {
+  historyActive = false
+  requestGeneration++
+  authorRequestGeneration++
   sessionStorage.removeItem('orca_log_selection')
   if (filterReloadTimer !== undefined) {
     window.clearTimeout(filterReloadTimer)
@@ -1171,8 +1257,10 @@ onUnmounted(() => {
   min-width: 0;
   min-height: 0;
   flex: 1;
+  background: var(--app-color-history-bg);
 }
 .history-row {
+  --history-opacity: 1;
   display: grid;
   grid-template-columns: minmax(200px, 1fr) 126px 82px 156px;
   align-items: center;
@@ -1180,14 +1268,28 @@ onUnmounted(() => {
   font-size: var(--app-font-size-sm);
   cursor: default;
   user-select: none;
+  color: var(--app-color-history-text);
+}
+.history-row[data-presence='pending'] {
+  --history-opacity: 0.65;
 }
 .history-row:hover {
-  background: var(--md-sys-color-surface-container-high);
+  background: var(--app-color-history-hover);
 }
 .history-row.current,
 .history-row.selected {
+  --history-opacity: 1;
   background: var(--app-color-history-selection-bg);
   color: var(--app-color-history-selection-text);
+}
+.history-row > .history-author,
+.history-row > .history-revision,
+.history-row > .history-date,
+.history-subject > span {
+  opacity: var(--history-opacity);
+}
+.history-base-row > [role='gridcell'] {
+  font-weight: 700;
 }
 .history-row > [role='gridcell'] {
   min-width: 0;
@@ -1219,12 +1321,80 @@ onUnmounted(() => {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--app-color-history-timeline);
+  box-sizing: border-box;
+  background: var(--app-color-history-bg);
+  border: 2px solid var(--app-color-history-timeline);
 }
 .history-subject > span {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.presence-indicator {
+  flex-shrink: 0;
+  margin-left: 6px;
+  font-size: 13px;
+  color: inherit;
+}
+.presence-indicator.checking {
+  animation: presence-spin 1s linear infinite;
+}
+@keyframes presence-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .presence-indicator.checking {
+    animation: none;
+  }
+}
+.history-base-row .revision-dot {
+  left: 3px;
+  top: calc(50% - 7px);
+  width: 14px;
+  height: 14px;
+}
+.history-base-row .revision-dot::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--app-color-history-timeline);
+}
+.history-base-summary {
+  min-width: 0;
+  max-width: 160px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--md-sys-color-on-surface-variant);
+}
+.history-load-status {
+  font-size: var(--app-font-size-xs);
+  color: var(--md-sys-color-on-surface-variant);
+}
+.history-presence-explanation {
+  margin: 0 0 12px;
+  font-size: var(--app-font-size-xs);
+  line-height: 1.6;
+  color: var(--md-sys-color-on-surface-variant);
+  overflow-wrap: anywhere;
+}
+.history-retry {
+  border: 0;
+  background: none;
+  color: var(--md-sys-color-primary);
+  cursor: pointer;
+  font: inherit;
+}
+.log-pagination {
+  flex-wrap: wrap;
 }
 .history-author {
   display: flex;
@@ -1245,8 +1415,8 @@ onUnmounted(() => {
   font-weight: 500;
 }
 .small-avatar {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   font-size: 10px;
 }
 .large-avatar {
@@ -1257,14 +1427,11 @@ onUnmounted(() => {
 .history-date,
 .history-revision {
   font-size: var(--app-font-size-xs);
-  color: var(--md-sys-color-on-surface-variant);
+  color: inherit;
   font-variant-numeric: tabular-nums;
 }
-.history-row.current .history-date,
-.history-row.current .history-revision,
-.history-row.selected .history-date,
-.history-row.selected .history-revision {
-  color: inherit;
+.history-revision {
+  font-family: var(--app-font-family-mono);
 }
 .history-footer-tool {
   display: inline-flex;
@@ -1447,6 +1614,7 @@ onUnmounted(() => {
   place-items: center;
 }
 .log-content {
+  container-type: inline-size;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -1687,6 +1855,8 @@ onUnmounted(() => {
   overflow-wrap: anywhere;
 }
 @media (max-width: 1050px) {
-  .revision-message { padding-left: 0; }
+  .revision-message {
+    padding-left: 0;
+  }
 }
 </style>

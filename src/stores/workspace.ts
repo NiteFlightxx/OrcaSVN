@@ -25,6 +25,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const recentWorkspaces = ref<string[]>(readRecentWorkspaces())
   const svnInfo = ref<SvnInfo | null>(null)
   const epoch = ref(0)
+  const historyEpoch = ref(0)
+  function advanceHistoryEpoch() { historyEpoch.value++ }
   function advanceEpoch() { epoch.value++ }
   const statusList = ref<SvnStatus[]>([])
   const rawStatusList = ref<SvnStatus[] | null>(null)
@@ -146,6 +148,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   return {
     currentPath,
     epoch,
+    historyEpoch,
+    advanceHistoryEpoch,
     advanceEpoch,
     recentWorkspaces,
     svnInfo,

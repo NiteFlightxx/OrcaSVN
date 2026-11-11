@@ -644,7 +644,18 @@ async fn svn_commit(
     message: String,
     files: Option<Vec<String>>,
     auto_delete_missing: Option<bool>,
-) -> Result<CommandResult, String> {
+    expected_url: Option<String>,
+) -> Result<svn::CommitOutcome, String> {
+    if let Some(files) = files.as_ref() {
+        return svn::commit_selection(
+            &path,
+            &message,
+            files,
+            expected_url.as_deref(),
+            auto_delete_missing.unwrap_or(false),
+        )
+        .await;
+    }
     let _writer = workflows::acquire(&path).await?;
     svn::commit_with_options(
         &path,
@@ -653,7 +664,7 @@ async fn svn_commit(
         auto_delete_missing.unwrap_or(false),
     )
     .await
-    .map(success_output)
+    .map(svn::CommitOutcome::whole)
     .map_err(|e| e.to_string())
 }
 
@@ -699,6 +710,21 @@ async fn svn_log(
     )
     .await
     .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn svn_history_base_fingerprint(path: String) -> Option<String> {
+    svn::history_base_fingerprint(&path)
+}
+
+#[tauri::command]
+async fn svn_history_presence(
+    path: String,
+    expected_url: String,
+    source: String,
+    entries: Vec<SvnLogEntry>,
+) -> Result<svn::HistoryPresence, String> {
+    svn::history_presence(&path, &expected_url, &source, &entries).await
 }
 
 #[tauri::command]
@@ -986,6 +1012,8 @@ fn main() {
             svn_status,
             svn_log,
             svn_incoming_log,
+            svn_history_presence,
+            svn_history_base_fingerprint,
             svn_current_user,
             svn_info,
             svn_local_revision,
