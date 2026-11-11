@@ -27,11 +27,7 @@ Switch, Merge, Resolve 및 버전 관리 대상 파일의 삭제 예약은 현�
 
 ### Windows
 
-```powershell
-winget install OrcaSVN.OrcaSVN
-```
-
-[GitHub Releases](https://github.com/wustites/OrcaSVN/releases)에서 Windows, macOS 및 Linux용 설치 파일을 다운로드할 수도 있습니다.
+[GitHub Releases](https://github.com/NiteFlightxx/OrcaSVN/releases)에서 Windows, macOS 및 Linux용 설치 파일을 다운로드할 수도 있습니다.
 
 설치 후 SVN CLI를 사용할 수 있는지 확인하세요.
 

@@ -29,7 +29,7 @@ git push origin v0.6.3
 1. 校验所有版本文件和发布说明，创建或复用 GitHub Release 草稿；已公开的同名版本拒绝重新发布。
 2. Windows、macOS、Linux 安装 SVN 测试工具，运行 `npm run check`，打包并将安装包上传至同一个草稿。
 3. 所有平台成功后才公开为正式版并标记 Latest。
-4. 尝试提交 WinGet 更新。WinGet 使用单独的 `WINGET_TOKEN`；该步骤失败不撤销已经公开的 GitHub Release，其审核和可用时间独立于 GitHub 发布。
+本 Fork 只发布到 `NiteFlightxx/OrcaSVN` 的 GitHub Releases，不执行原项目的 WinGet 发布任务，也不需要配置 `WINGET_TOKEN`。
 
 Windows 固定使用 SlikSVN 1.14.5，核验 svn 与 svnadmin 后加入 PATH；正式版本生成 NSIS EXE 和 MSI。macOS 使用 `macos-latest` 的原生架构，当前为 Apple Silicon；Linux 使用 Ubuntu x64。
 

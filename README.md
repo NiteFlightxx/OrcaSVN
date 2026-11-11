@@ -25,11 +25,7 @@ Switch、Merge、Resolve 和受控文件安排删除目前需使用其他 SVN �
 
 ### Windows
 
-```powershell
-winget install OrcaSVN.OrcaSVN
-```
-
-也可以从 [GitHub Releases](https://github.com/wustites/OrcaSVN/releases) 下载 Windows、macOS 或 Linux 安装包。
+也可以从 [GitHub Releases](https://github.com/NiteFlightxx/OrcaSVN/releases) 下载 Windows、macOS 或 Linux 安装包。
 
 安装后请确认 SVN CLI 可用：
 

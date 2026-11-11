@@ -27,11 +27,7 @@ Switch, Merge, Resolve, and scheduling deletion of versioned files currently req
 
 ### Windows
 
-```powershell
-winget install OrcaSVN.OrcaSVN
-```
-
-You can also download installers for Windows, macOS, and Linux from [GitHub Releases](https://github.com/wustites/OrcaSVN/releases).
+You can also download installers for Windows, macOS, and Linux from [GitHub Releases](https://github.com/NiteFlightxx/OrcaSVN/releases).
 
 After installation, make sure the SVN CLI is available:
 

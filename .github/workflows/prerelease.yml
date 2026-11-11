@@ -40,14 +40,20 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
+          notes_args=()
+          create_notes_args=(--generate-notes)
+          if [ -f "docs/releases/$RELEASE_TAG.md" ]; then
+            notes_args=(--notes-file "docs/releases/$RELEASE_TAG.md")
+            create_notes_args=("${notes_args[@]}")
+          fi
           if gh release view "$RELEASE_TAG" --json id >/dev/null 2>&1; then
             if [ "$(gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft')" != "true" ]; then
               echo "::error::This prerelease is already published. Use a new tag for another release."
               exit 1
             fi
-            gh release edit "$RELEASE_TAG" --prerelease --latest=false
+            gh release edit "$RELEASE_TAG" --prerelease --latest=false "${notes_args[@]}"
           else
-            gh release create "$RELEASE_TAG" --verify-tag --draft --prerelease --latest=false --generate-notes --title "OrcaSVN $RELEASE_TAG"
+            gh release create "$RELEASE_TAG" --verify-tag --draft --prerelease --latest=false "${create_notes_args[@]}" --title "OrcaSVN $RELEASE_TAG"
           fi
           # A newly created draft can take a moment to appear in the REST list.
           release_id=""

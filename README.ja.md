@@ -27,11 +27,7 @@ Switch、Merge、Resolve、およびバージョン管理対象のファイル�
 
 ### Windows
 
-```powershell
-winget install OrcaSVN.OrcaSVN
-```
-
-[GitHub Releases](https://github.com/wustites/OrcaSVN/releases) から Windows、macOS、Linux 用のインストーラーをダウンロードすることもできます。
+[GitHub Releases](https://github.com/NiteFlightxx/OrcaSVN/releases) から Windows、macOS、Linux 用のインストーラーをダウンロードすることもできます。
 
 インストール後、SVN CLI が利用できることを確認してください。
 
