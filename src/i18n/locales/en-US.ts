@@ -344,6 +344,7 @@ export default {
     viewRelease: 'View new release',
   },
   forkUI: {
+    copyRevision: 'Copy revision',
     filters: 'Filters',
     localChanges: 'Local Changes',
     allCommits: 'All Commits',

@@ -6,6 +6,8 @@
       '--files-width': `${filesWidth}px`,
     }"
     @click="contextVisible = false"
+    @keydown.ctrl.f.prevent="focusHistorySearch"
+    @keydown.meta.f.prevent="focusHistorySearch"
   >
     <div
       v-if="scopedHistory || (logSource && logSource !== flow.identity?.url)"
@@ -55,8 +57,9 @@
       </div>
 
       <div v-else ref="logScroller" class="log-content">
-        <div class="log-filters">
+        <div v-if="filtersVisible || hasActiveFilters" class="log-filters">
           <el-input
+            ref="historySearch"
             v-model="filters.keyword"
             :placeholder="$t('log.searchKeyword')"
             :aria-label="$t('log.searchKeyword')"
@@ -118,71 +121,60 @@
           ></el-button>
         </div>
 
-        <div class="log-query-state">
-          <el-button size="small" @click="openComparison()"
-            >{{ $t('experience.compare')
-            }}<span v-if="selectedRevisions.length">
-              ({{ selectedRevisions.length }})</span
-            ></el-button
-          >
-          <span v-if="loading" class="query-status">
-            <el-icon class="is-loading"><Loading /></el-icon>
-            {{ $t('log.querying') }}
-          </span>
-          <span v-else>{{ logResultSummary }}</span>
-          <el-tag v-if="hasActiveFilters" size="small" effect="plain" type="info">
-            {{ $t('log.filtered') }}
-          </el-tag>
-        </div>
-
-        <el-table
-          :data="logs"
-          v-loading="loading"
-          :element-loading-text="$t('log.querying')"
-          style="width: 100%"
-          @selection-change="
-            (rows: SvnLogEntry[]) => (selectedRevisions = rows.map((row) => row.revision))
-          "
-          @row-click="handleRowClick"
-          @row-contextmenu="contextMenu"
-          row-key="revision"
-          highlight-current-row
-          class="log-table"
+        <VirtualViewport
+          v-if="logs.length"
+          ref="historyViewport"
+          class="history-list"
+          :item-count="logs.length"
+          :row-height="historyRowHeight"
+          :content-width="640"
+          role="grid"
+          :aria-label="$t('forkUI.allCommits')"
+          :aria-rowcount="logs.length"
+          :aria-colcount="4"
+          :aria-activedescendant="selectedLog ? 'history-row-' + selectedLog.revision : undefined"
+          @keydown="navigateHistory"
         >
-          <el-table-column type="selection" width="36" />
-          <el-table-column prop="message" :label="$t('log.commitMessage')" min-width="220">
-            <template #default="{ row }">
-              <span class="message-text" :title="row.message">{{ row.message }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column
-            prop="revision"
-            :label="$t('log.revision')"
-            width="90"
-            sortable
-            align="center"
-          >
-            <template #default="{ row }">
-              <el-tag type="primary" size="small" effect="plain">r{{ row.revision }}</el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="author" :label="$t('log.author')" width="110">
-            <template #default="{ row }">
-              <div class="author-cell">
-                <el-icon><User /></el-icon>
-                <span :title="row.author">{{ row.author }}</span>
-              </div>
-            </template>
-          </el-table-column>
-          <el-table-column prop="date" :label="$t('log.date')" width="150" sortable>
-            <template #default="{ row }">
-              <div class="date-cell">
-                <el-icon><Calendar /></el-icon>
-                <span>{{ formatDate(row.date) }}</span>
-              </div>
-            </template>
-          </el-table-column>
-        </el-table>
+          <template #default="{ start, end }">
+            <div
+              v-for="(row, offset) in logs.slice(start, end)"
+              :id="'history-row-' + row.revision"
+              :key="row.revision"
+              class="history-row"
+              :class="{
+                current: selectedLog?.revision === row.revision,
+                selected: selectedRevisions.includes(row.revision),
+              }"
+              :style="{ height: historyRowHeight + 'px' }"
+              role="row"
+              :aria-rowindex="start + offset + 1"
+              :aria-selected="
+                selectedLog?.revision === row.revision || selectedRevisions.includes(row.revision)
+              "
+              @click="selectHistoryRow(row, $event)"
+              @contextmenu="contextMenu(row, null, $event)"
+            >
+              <span class="history-subject" role="gridcell" :title="row.message"
+                ><i class="revision-dot" aria-hidden="true"></i
+                ><span>{{ commitSubject(row.message) }}</span></span
+              >
+              <span class="history-author" role="gridcell" :title="row.author"
+                ><span class="author-avatar small-avatar" aria-hidden="true">{{
+                  authorInitials(row.author)
+                }}</span
+                ><span>{{ row.author }}</span></span
+              >
+              <span class="history-revision" role="gridcell">r{{ row.revision }}</span>
+              <time
+                class="history-date"
+                role="gridcell"
+                :title="formatDate(row.date)"
+                :datetime="row.date"
+                >{{ compactDate(row.date) }}</time
+              >
+            </div>
+          </template>
+        </VirtualViewport>
         <el-empty
           v-if="!loading && logs.length === 0"
           class="empty-log-result"
@@ -194,6 +186,27 @@
           </el-button>
         </el-empty>
         <div class="log-pagination">
+          <button
+            class="history-footer-tool"
+            :title="$t('log.searchKeyword') + ' · Ctrl+F'"
+            :aria-label="$t('log.searchKeyword')"
+            :aria-pressed="filtersVisible"
+            @click="toggleHistorySearch"
+          >
+            <el-icon><Search /></el-icon>
+          </button>
+          <button
+            class="history-footer-tool"
+            :title="$t('experience.compare')"
+            :aria-label="$t('experience.compare')"
+            @click="openComparison()"
+          >
+            <el-icon><Connection /></el-icon
+            ><span v-if="selectedRevisions.length">{{ selectedRevisions.length }}</span>
+          </button>
+          <span class="history-result" role="status">{{
+            loading ? $t('log.querying') : logResultSummary
+          }}</span>
           <el-button
             size="small"
             :disabled="loading || pageIndex === 0"
@@ -241,6 +254,28 @@
           >
             {{ $t(tab.label) }}
           </button>
+          <el-dropdown v-if="selectedLog" trigger="click" @command="revisionCommand"
+            ><button
+              class="quiet-icon revision-menu"
+              :title="$t('common.action')"
+              :aria-label="$t('common.action')"
+            >
+              <el-icon><MoreFilled /></el-icon></button
+            ><template #dropdown
+              ><el-dropdown-menu
+                ><el-dropdown-item command="compare">{{
+                  $t('experience.compare')
+                }}</el-dropdown-item
+                ><el-dropdown-item
+                  command="pick"
+                  :disabled="flow.busy || scopedHistory || logSource === flow.identity?.url"
+                  >{{ $t('flow.cherryPick') }}</el-dropdown-item
+                ><el-dropdown-item command="copy">{{
+                  $t('log.revision')
+                }}</el-dropdown-item></el-dropdown-menu
+              ></template
+            ></el-dropdown
+          >
         </div>
         <div v-if="!selectedLog" class="inspector-empty">
           {{ $t('forkUI.selectCommit') }}
@@ -252,43 +287,68 @@
           role="tabpanel"
           :aria-labelledby="'history-tab-' + inspectorTab"
         >
-          <div class="revision-actions">
-            <strong>r{{ selectedLog.revision }}</strong
-            ><el-button
-              size="small"
-              :disabled="flow.busy || scopedHistory || logSource === flow.identity?.url"
-              @click="cherryPick"
-              >{{ $t('flow.cherryPick') }}</el-button
-            ><button
-              class="quiet-icon"
-              :title="$t('common.close')"
-              :aria-label="$t('common.close')"
-              @click="closeInspector"
-            >
-              <el-icon><Close /></el-icon>
-            </button>
-          </div>
           <section v-show="inspectorTab === 'commit'" class="revision-overview">
-            <dl>
-              <dt>{{ $t('log.author') }}</dt>
-              <dd>{{ selectedLog.author }}</dd>
-              <dt>{{ $t('log.date') }}</dt>
-              <dd>{{ formatDate(selectedLog.date) }}</dd>
-              <dt>{{ $t('forkUI.repository') }}</dt>
-              <dd :title="logSource">{{ logSource }}</dd>
+            <div class="revision-author-block">
+              <span class="author-avatar large-avatar" aria-hidden="true">{{
+                authorInitials(selectedLog.author)
+              }}</span>
+              <div>
+                <small>{{ $t('log.author') }}</small
+                ><strong>{{ selectedLog.author || '—' }}</strong
+                ><time :datetime="selectedLog.date">{{ formatDate(selectedLog.date) }}</time>
+              </div>
+            </div>
+            <dl class="revision-facts">
+              <dt>{{ $t('flow.source') }}</dt>
+              <dd>
+                <span class="revision-source-tag" :title="logSource"
+                  ><el-icon><GitBranch /></el-icon>{{ historySourceLabel(logSource) }}</span
+                >
+              </dd>
+              <dt>{{ $t('log.revision') }}</dt>
+              <dd>
+                <button
+                  class="revision-copy"
+                  :title="$t('forkUI.copyRevision')"
+                  @click="copyRevision"
+                >
+                  r{{ selectedLog.revision }}<el-icon><CopyDocument /></el-icon>
+                </button>
+              </dd>
             </dl>
             <pre class="revision-message">{{ selectedLog.message }}</pre>
-            <h4>
-              {{ $t('log.changedFiles') }} ·
-              {{ selectedLog.changed_paths?.length || 0 }}
-            </h4>
-            <RevisionPathTree
-              :key="selectedLog.revision"
-              :paths="selectedLog.changed_paths || []"
-              :selected="selectedRevisionPath"
-              @select="showRevisionFile"
-              @open="openChangedPathDiff"
-            />
+            <div class="revision-files-heading">
+              <span
+                >{{ $t('log.changedFiles') }} · {{ selectedLog.changed_paths?.length || 0 }}</span
+              ><button @click="inspectorTab = 'tree'">{{ $t('forkUI.fileTree') }}</button>
+            </div>
+            <div class="revision-summary-files">
+              <button
+                v-for="row in selectedLog.changed_paths || []"
+                :key="row.path"
+                :title="row.path"
+                @click="showRevisionFile(row)"
+                @dblclick="openChangedPathDiff(row)"
+              >
+                <el-icon><ChevronRight /></el-icon
+                ><span class="revision-status" :class="'action-' + row.action">{{
+                  row.action
+                }}</span
+                ><el-icon><component :is="fileIconName(row.path)" /></el-icon
+                ><span class="revision-summary-path"
+                  ><span v-if="row.path !== '/'" class="revision-directory">{{
+                    revisionDisplayPath(
+                      row.path,
+                      logSource,
+                      workspaceStore.svnInfo?.repository_root || ''
+                    ).replace(/[^/]+$/, '')
+                  }}</span
+                  ><span class="revision-basename">{{
+                    row.path.split('/').pop() || '/'
+                  }}</span></span
+                >
+              </button>
+            </div>
           </section>
           <section v-show="inspectorTab !== 'commit'" class="revision-changes">
             <div class="revision-file-browser" :style="{ flexBasis: filesWidth + 'px' }">
@@ -360,6 +420,14 @@ import { repositoryPreview } from '@/api/workflows'
 import { svnDiff } from '@/api/svn'
 import { ElMessage } from 'element-plus'
 import PanelSplitter from '@/components/PanelSplitter.vue'
+import VirtualViewport from '@/components/VirtualViewport.vue'
+import {
+  commitSubject,
+  authorInitials,
+  historySourceLabel,
+  revisionDisplayPath,
+} from '@/utils/historyPresentation'
+import { fileIconName } from '@/utils/filePresentation'
 import RevisionCompareDialog from '@/components/RevisionCompareDialog.vue'
 import { readPanelSize } from '@/utils/changeSelection'
 import { repositoryUi } from '@/utils/repositoryUi'
@@ -389,6 +457,81 @@ const logSource = computed(() => {
   return flow.browsingUrl || workspaceStore.svnInfo?.url || workspaceStore.currentPath || ''
 })
 const inlineDiff = ref('')
+const historyRowHeight = 28
+const historyViewport = ref<InstanceType<typeof VirtualViewport> | null>(null)
+const historySearch = ref<{ focus: () => void } | null>(null)
+const filtersVisible = ref(false)
+async function focusHistorySearch() {
+  filtersVisible.value = true
+  await nextTick()
+  historySearch.value?.focus()
+}
+function toggleHistorySearch() {
+  if (filtersVisible.value) filtersVisible.value = false
+  else void focusHistorySearch()
+}
+function compactDate(value: string) {
+  return value
+    ? new Date(value).toLocaleString(locale.value, {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      })
+    : ''
+}
+function revisionCommand(command: string) {
+  if (command === 'pick') void cherryPick()
+  else if (command === 'copy') void copyRevision()
+  else openComparison()
+}
+function selectHistoryRow(
+  row: SvnLogEntry,
+  event: Pick<MouseEvent, 'ctrlKey' | 'metaKey' | 'shiftKey'>
+) {
+  if (
+    event.shiftKey &&
+    selectedLog.value &&
+    logs.value.some((entry) => entry.revision === selectedLog.value!.revision)
+  ) {
+    const first = logs.value.findIndex((entry) => entry.revision === selectedLog.value!.revision)
+    const last = logs.value.findIndex((entry) => entry.revision === row.revision)
+    selectedRevisions.value = logs.value
+      .slice(Math.min(first, last), Math.max(first, last) + 1)
+      .map((entry) => entry.revision)
+  } else if (event.ctrlKey || event.metaKey) {
+    const previous = selectedLog.value?.revision
+    const selected = new Set(
+      selectedRevisions.value.length ? selectedRevisions.value : previous ? [previous] : []
+    )
+    if (selected.has(row.revision)) selected.delete(row.revision)
+    else selected.add(row.revision)
+    selectedRevisions.value = [...selected]
+  } else selectedRevisions.value = []
+  handleRowClick(row)
+}
+function navigateHistory(event: KeyboardEvent) {
+  if (event.target !== event.currentTarget || !logs.value.length) return
+  if (event.key === 'Enter' && selectedRevisions.value.length === 2) {
+    event.preventDefault()
+    openComparison()
+    return
+  }
+  if (!['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return
+  event.preventDefault()
+  const current = logs.value.findIndex((entry) => entry.revision === selectedLog.value?.revision)
+  const next =
+    event.key === 'Home'
+      ? 0
+      : event.key === 'End'
+        ? logs.value.length - 1
+        : Math.max(0, Math.min(logs.value.length - 1, current + (event.key === 'ArrowUp' ? -1 : 1)))
+  selectHistoryRow(logs.value[next], event)
+  historyViewport.value?.scrollToIndex(next)
+}
+
 const selectedRevisionPath = ref('')
 const inspectorTab = ref<'commit' | 'changes' | 'tree'>('commit')
 const inspectorTabs = [
@@ -424,7 +567,7 @@ function closeInspector() {
   onDialogClose()
 }
 
-const historySplit = ref(readPanelSize('orcasvn-history-columns', 60, 40, 75)),
+const historySplit = ref(readPanelSize('orcasvn-history-columns', 68, 40, 75)),
   filesWidth = ref(readPanelSize('orcasvn-history-file-height', 180, 90, 400))
 watch([historySplit, filesWidth], () => {
   try {
@@ -457,7 +600,7 @@ function saveHistoryView() {
       selectedPath: selectedRevisionPath.value,
       page: pageIndex.value,
       cursors: [...pageCursors.value],
-      scroll: logScroller.value?.scrollTop || 0,
+      scroll: historyViewport.value?.element?.scrollTop || logScroller.value?.scrollTop || 0,
     }
 }
 async function restoreHistoryView() {
@@ -479,7 +622,8 @@ async function restoreHistoryView() {
     await fetchLogPage(Math.min(state.page, pageCursors.value.length - 1), true)
     if (path !== workspaceStore.currentPath) return
     await nextTick()
-    if (logScroller.value) logScroller.value.scrollTop = state.scroll
+    if (historyViewport.value?.element) historyViewport.value.element.scrollTop = state.scroll
+    else if (logScroller.value) logScroller.value.scrollTop = state.scroll
     const entry = logs.value.find((log) => log.revision === state.revision)
     if (entry) {
       selectedLog.value = entry
@@ -508,6 +652,11 @@ const contextVisible = ref(false),
 let diffGeneration = 0
 function contextMenu(row: SvnLogEntry, _column: unknown, event: MouseEvent) {
   event.preventDefault()
+  if (
+    !selectedRevisions.value.includes(row.revision) &&
+    selectedLog.value?.revision !== row.revision
+  )
+    selectedRevisions.value = []
   handleRowClick(row)
   contextX.value = Math.min(event.clientX, window.innerWidth - 250)
   contextY.value = Math.min(event.clientY, window.innerHeight - 100)
@@ -567,7 +716,7 @@ const dialogVisible = ref(false)
 const selectedLog = ref<SvnLogEntry | null>(null)
 const LOG_CACHE_TTL_MS = 5 * 60 * 1000
 const LOG_CACHE_KEY_VERSION = 'v4'
-const DEFAULT_LOG_PAGE_SIZE = 20
+const DEFAULT_LOG_PAGE_SIZE = 50
 const MAX_CACHE_SIZE = 50
 type LogCacheEntry = {
   entries: SvnLogEntry[]
@@ -810,10 +959,16 @@ const fetchLogPage = async (index: number, refreshCache = false) => {
           )
         : entry.changed_paths,
     }))
+    if (!logs.value.some((entry) => entry.revision === selectedLog.value?.revision)) {
+      selectedRevisions.value = []
+      if (logs.value.length) handleRowClick(logs.value[0])
+      else closeInspector()
+    }
     hasMore.value = batch.length > DEFAULT_LOG_PAGE_SIZE
     pageIndex.value = index
     if (hasMore.value) pageCursors.value[index + 1] = logs.value[logs.value.length - 1].revision - 1
     await nextTick()
+    historyViewport.value?.resetScroll()
     if (logScroller.value) logScroller.value.scrollTop = 0
     if (lastLogError !== null) {
       if (workspaceStore.error === lastLogError) workspaceStore.setError(null)
@@ -1012,6 +1167,256 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.history-list {
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+}
+.history-row {
+  display: grid;
+  grid-template-columns: minmax(200px, 1fr) 126px 82px 156px;
+  align-items: center;
+  padding: 0 6px 0 0;
+  font-size: var(--app-font-size-sm);
+  cursor: default;
+  user-select: none;
+}
+.history-row:hover {
+  background: var(--md-sys-color-surface-container-high);
+}
+.history-row.current,
+.history-row.selected {
+  background: var(--app-color-history-selection-bg);
+  color: var(--app-color-history-selection-text);
+}
+.history-row > [role='gridcell'] {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.history-subject {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding-left: 26px;
+  padding-right: 12px;
+}
+.history-subject::before {
+  content: '';
+  position: absolute;
+  left: 9px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--app-color-history-timeline);
+}
+.revision-dot {
+  position: absolute;
+  left: 7px;
+  top: calc(50% - 3px);
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--app-color-history-timeline);
+}
+.history-subject > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.history-author {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.history-author > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.author-avatar {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  border-radius: 3px;
+  background: var(--md-sys-color-surface-container-highest);
+  color: var(--md-sys-color-on-surface);
+  font-weight: 500;
+}
+.small-avatar {
+  width: 18px;
+  height: 18px;
+  font-size: 10px;
+}
+.large-avatar {
+  width: 44px;
+  height: 44px;
+  font-size: 18px;
+}
+.history-date,
+.history-revision {
+  font-size: var(--app-font-size-xs);
+  color: var(--md-sys-color-on-surface-variant);
+  font-variant-numeric: tabular-nums;
+}
+.history-row.current .history-date,
+.history-row.current .history-revision,
+.history-row.selected .history-date,
+.history-row.selected .history-revision {
+  color: inherit;
+}
+.history-footer-tool {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: none;
+  color: inherit;
+  width: 25px;
+  height: 24px;
+  cursor: pointer;
+}
+.history-footer-tool:hover {
+  background: var(--md-sys-color-surface-container-high);
+}
+.history-result {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.revision-menu {
+  width: 28px;
+  height: 32px;
+}
+.revision-author-block {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 0 15px 58px;
+}
+.revision-author-block > div {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+.revision-author-block small {
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: var(--app-font-size-xs);
+}
+.revision-author-block strong {
+  font-size: var(--app-font-size-label);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.revision-author-block time {
+  font-size: var(--app-font-size-xs);
+  color: var(--md-sys-color-on-surface-variant);
+}
+.revision-source-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 6px;
+  border: 1px solid var(--md-sys-color-outline);
+  border-radius: 3px;
+}
+.revision-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: none;
+  color: var(--md-sys-color-primary);
+  cursor: pointer;
+  font: inherit;
+}
+.revision-files-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 0 7px;
+  font-size: var(--app-font-size-xs);
+}
+.revision-files-heading button {
+  border: 0;
+  background: none;
+  color: var(--md-sys-color-on-surface-variant);
+  cursor: pointer;
+  font: inherit;
+}
+.revision-summary-files > button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  width: 100%;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--app-font-size-sm);
+  padding: 3px 0;
+}
+.revision-summary-files > button:hover {
+  background: var(--md-sys-color-surface-container-high);
+}
+.revision-summary-files .el-icon {
+  flex-shrink: 0;
+}
+.revision-summary-path {
+  display: flex;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.revision-directory {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.revision-basename {
+  flex-shrink: 0;
+  max-width: 75%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.revision-status {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  border-radius: 2px;
+  font-size: 11px;
+  background: var(--app-color-status-modified-bg);
+  color: var(--app-color-status-modified-text);
+}
+.revision-status.action-A {
+  background: var(--app-color-status-added-bg);
+  color: var(--app-color-status-added-text);
+}
+.revision-status.action-D {
+  background: var(--app-color-status-error-bg);
+  color: var(--app-color-status-error-text);
+}
+@media (max-width: 1050px) {
+  .revision-author-block {
+    padding-left: 0;
+  }
+  .revision-message {
+    padding-left: 0;
+  }
+}
+
 .log-view {
   height: 100%;
   min-height: 0;
@@ -1044,7 +1449,7 @@ onUnmounted(() => {
 .log-content {
   min-width: 0;
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
 }
@@ -1101,55 +1506,9 @@ onUnmounted(() => {
 .log-filters :deep(.el-input) {
   width: 100%;
 }
-.log-query-state {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 3px 8px;
-  font-size: var(--app-font-size-xs);
-}
-.query-status {
-  display: flex;
-  gap: 5px;
-  align-items: center;
-}
-.log-table {
-  flex: 1;
-  min-height: 140px;
-}
-.log-table :deep(.el-table__cell) {
-  padding: 2px 0;
-  height: 30px;
-}
-.log-table :deep(.cell) {
-  font-size: var(--app-font-size-label);
-  line-height: 20px;
-}
-.log-table :deep(.el-tag) {
-  border: 0;
-  background: transparent;
-  font-size: var(--app-font-size-xs);
-}
-.message-text {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.author-cell,
-.date-cell {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  overflow: hidden;
-  white-space: nowrap;
-}
-.author-cell span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 .log-pagination {
   margin-top: auto;
+  flex-shrink: 0;
   display: flex;
   justify-content: flex-end;
   align-items: center;
@@ -1195,18 +1554,6 @@ onUnmounted(() => {
   flex: 1;
   overflow: hidden;
 }
-.revision-actions {
-  min-height: 32px;
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  padding: 3px 8px;
-  border-bottom: 1px solid var(--md-sys-color-outline-variant);
-}
-.revision-actions strong {
-  flex: 1;
-  font-size: var(--app-font-size-sm);
-}
 .quiet-icon {
   display: grid;
   place-items: center;
@@ -1216,7 +1563,7 @@ onUnmounted(() => {
   cursor: pointer;
 }
 .revision-overview {
-  padding: 10px;
+  padding: 12px 16px;
   overflow: auto;
   flex: 1;
   min-height: 0;
@@ -1225,6 +1572,7 @@ onUnmounted(() => {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   gap: 7px 12px;
+  grid-template-columns: 58px minmax(0, 1fr);
   margin: 0;
   font-size: var(--app-font-size-xs);
 }
@@ -1240,7 +1588,7 @@ onUnmounted(() => {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   margin: 12px 0;
-  padding: 10px 0;
+  padding: 12px 0 12px 70px;
   border-block: 1px solid var(--md-sys-color-outline-variant);
   font: inherit;
   font-size: var(--app-font-size-label);
@@ -1337,5 +1685,8 @@ onUnmounted(() => {
   font-size: var(--app-font-size-2xs);
   border-bottom: 1px solid var(--md-sys-color-outline-variant);
   overflow-wrap: anywhere;
+}
+@media (max-width: 1050px) {
+  .revision-message { padding-left: 0; }
 }
 </style>

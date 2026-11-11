@@ -345,6 +345,7 @@ export default {
     viewRelease: '新しいバージョンを表示',
   },
   forkUI: {
+    copyRevision: 'リビジョンをコピー',
     filters: '絞り込み',
     localChanges: 'ローカル変更',
     allCommits: 'すべてのコミット',

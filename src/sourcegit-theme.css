@@ -57,6 +57,9 @@ html:root {
   --app-color-diff-meta-text: #516678;
   --app-color-folder: #89703c;
   --app-color-scrollbar: #b5c0b9;
+  --app-color-history-selection-bg: #d8e4ec;
+  --app-color-history-selection-text: #2b4659;
+  --app-color-history-timeline: #946b1d;
   --el-text-color-regular: var(--md-sys-color-on-surface);
   --el-text-color-secondary: var(--md-sys-color-on-surface-variant);
   --el-text-color-placeholder: #69747e;
@@ -93,6 +96,9 @@ html:root.theme-dark, html:root.dark {
   --app-color-diff-meta-text: #bdbdbd;
   --app-color-folder: #b8b8b8;
   --app-color-scrollbar: #666666;
+  --app-color-history-selection-bg: #2468c4;
+  --app-color-history-selection-text: #ffffff;
+  --app-color-history-timeline: #d3a348;
   --el-text-color-regular: var(--md-sys-color-on-surface);
   --el-text-color-secondary: var(--md-sys-color-on-surface-variant);
   --el-text-color-placeholder: #a0a0a0;

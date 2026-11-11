@@ -25,6 +25,7 @@ for (const [name, selector] of [['light', 'html:root'], ['dark', 'html:root.them
     pairs.push(['--md-sys-color-on-primary', '--md-sys-color-primary'], ['--md-sys-color-on-primary-container', '--md-sys-color-primary-container'])
     for (const kind of ['added', 'error', 'modified', 'unversioned']) pairs.push([`--app-color-status-${kind}-text`, `--app-color-status-${kind}-bg`])
     pairs.push(['--app-color-diff-meta-text', '--app-color-diff-meta-bg'])
+    pairs.push(['--app-color-history-selection-text', '--app-color-history-selection-bg'])
     for (const [text, background] of pairs) {
       assert.ok(colors[text] && colors[background], `${name}: missing color for ${text} / ${background}`)
       const ratio = contrast(colors[text], colors[background])

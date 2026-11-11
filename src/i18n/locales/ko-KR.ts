@@ -345,6 +345,7 @@ export default {
     viewRelease: '새 버전 보기',
   },
   forkUI: {
+    copyRevision: '리비전 복사',
     filters: '필터',
     localChanges: '로컬 변경',
     allCommits: '모든 커밋',

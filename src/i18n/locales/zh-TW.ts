@@ -342,6 +342,7 @@ export default {
     viewRelease: '查看新版本',
   },
   forkUI: {
+    copyRevision: '複製版本號',
     filters: '篩選',
     localChanges: '本機變更',
     allCommits: '全部提交',
