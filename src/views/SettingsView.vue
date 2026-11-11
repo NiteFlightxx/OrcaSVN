@@ -1,13 +1,38 @@
 <template>
   <div class="settings-view">
-    <el-card class="settings-card animate-fade-in">
-      <el-form :model="settings" label-width="180px" class="settings-form" label-position="left">
-        <div class="settings-section">
-          <h3 class="section-title">
-            <el-icon><Monitor /></el-icon>
-            {{ $t('settings.appearance') }}
-          </h3>
-
+    <nav class="preferences-tabs" role="tablist" :aria-label="$t('menu.settings')">
+      <button
+        v-for="(tab, index) in preferenceTabs"
+        :key="tab.name"
+        :id="`${preferenceId}-preference-${tab.name}`"
+        role="tab"
+        :aria-selected="activeTab === tab.name"
+        :aria-controls="`${preferenceId}-preference-panel-${tab.name}`"
+        :tabindex="activeTab === tab.name ? 0 : -1"
+        :class="{ active: activeTab === tab.name }"
+        @click="activeTab = tab.name"
+        @keydown="handleTabKeydown($event, index)"
+      >
+        {{ $t(tab.label) }}
+      </button>
+    </nav>
+    <div class="preferences-content">
+      <section
+        v-for="tab in preferenceTabs"
+        v-show="activeTab === tab.name"
+        :key="tab.name"
+        :id="`${preferenceId}-preference-panel-${tab.name}`"
+        role="tabpanel"
+        :aria-labelledby="`${preferenceId}-preference-${tab.name}`"
+        tabindex="0"
+      >
+        <el-form
+          v-if="tab.name === 'general'"
+          :model="settings"
+          label-width="172px"
+          class="settings-form"
+          label-position="right"
+        >
           <el-form-item :label="$t('language.label')" class="form-item">
             <el-select
               v-model="currentLanguage"
@@ -22,7 +47,14 @@
               />
             </el-select>
           </el-form-item>
-
+        </el-form>
+        <el-form
+          v-else-if="tab.name === 'appearance'"
+          :model="settings"
+          label-width="172px"
+          class="settings-form"
+          label-position="right"
+        >
           <el-form-item :label="$t('settings.theme')" class="form-item">
             <el-radio-group v-model="settings.theme" @change="applyTheme" class="theme-group">
               <el-radio value="light" class="theme-radio">
@@ -45,16 +77,14 @@
               </el-radio>
             </el-radio-group>
           </el-form-item>
-        </div>
-
-        <el-divider />
-
-        <div class="settings-section">
-          <h3 class="section-title">
-            <el-icon><FolderOpened /></el-icon>
-            {{ $t('settings.svnSettings') }}
-          </h3>
-
+        </el-form>
+        <el-form
+          v-else-if="tab.name === 'svn'"
+          :model="settings"
+          label-width="172px"
+          class="settings-form"
+          label-position="right"
+        >
           <el-form-item :label="$t('settings.svnPath')" class="form-item">
             <el-input
               v-model="settings.svnPath"
@@ -90,67 +120,56 @@
             <el-switch v-model="settings.autoDeleteMissingOnCommit" />
             <span class="form-item-hint">{{ $t('settings.autoDeleteMissingOnCommitHint') }}</span>
           </el-form-item>
-        </div>
-      </el-form>
-
-      <el-divider />
-
-      <details class="external-tool-options">
-        <summary>
-          <el-icon><Terminal /></el-icon>{{ $t('experience.tools') }}
-        </summary>
-        <ToolSettings />
-      </details>
-      <div class="about-section">
-        <h3 class="section-title">
-          <el-icon><InfoFilled /></el-icon>
-          {{ $t('nav.about') }}
-        </h3>
-        <div class="about-content">
-          <div class="about-logo">
-            <div class="logo-mark">
-              <el-icon><FolderOpened /></el-icon>
+        </el-form>
+        <ToolSettings v-else-if="tab.name === 'tools'" />
+        <div v-else class="about-section">
+          <div class="about-content">
+            <div class="about-logo">
+              <div class="logo-mark">
+                <el-icon><FolderOpened /></el-icon>
+              </div>
+              <div class="about-info">
+                <h4>OrcaSVN</h4>
+                <p class="about-subtitle">{{ $t('settings.aboutSubtitle') }}</p>
+              </div>
             </div>
-            <div class="about-info">
-              <h4>OrcaSVN</h4>
-              <p class="about-subtitle">{{ $t('settings.aboutSubtitle') }}</p>
-            </div>
-          </div>
-          <div class="about-details">
-            <div class="detail-item">
-              <span class="detail-label">{{ $t('common.version') }}：</span>
-              <el-tag size="small" type="primary">{{ appVersion }}</el-tag>
-              <el-button
-                v-if="updateState === 'available'"
-                size="small"
-                type="primary"
-                link
-                @click="openReleasePage"
-              >
-                {{ $t('appUpdate.available', { version: latestVersion }) }}
-              </el-button>
-              <span v-else-if="updateState !== 'idle'" class="update-status">
-                {{ $t(`appUpdate.${updateState}`) }}
-              </span>
-              <el-button
-                v-if="updateState !== 'checking'"
-                size="small"
-                link
-                @click="checkForUpdates"
-              >
-                {{ $t('appUpdate.check') }}
-              </el-button>
+            <div class="about-details">
+              <div class="detail-item">
+                <span class="detail-label">{{ $t('common.version') }}：</span>
+                <el-tag size="small" type="primary">{{ appVersion }}</el-tag>
+                <el-button
+                  v-if="updateState === 'available'"
+                  size="small"
+                  type="primary"
+                  link
+                  @click="openReleasePage"
+                >
+                  {{ $t('appUpdate.available', { version: latestVersion }) }}
+                </el-button>
+                <span v-else-if="updateState !== 'idle'" class="update-status">
+                  {{ $t(`appUpdate.${updateState}`) }}
+                </span>
+                <el-button
+                  v-if="updateState !== 'checking'"
+                  size="small"
+                  link
+                  @click="checkForUpdates"
+                >
+                  {{ $t('appUpdate.check') }}
+                </el-button>
+              </div>
             </div>
           </div>
         </div>
-      </div>
-    </el-card>
+      </section>
+    </div>
+    <p class="preferences-hint">{{ $t('settings.appliedImmediately') }}</p>
   </div>
 </template>
 
 <script setup lang="ts">
 import ToolSettings from '@/components/ToolSettings.vue'
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref, useId } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus/es/components/message/index'
 import { configureSvnExecutable } from '@/api/svn'
@@ -161,6 +180,28 @@ import { useWorkspace } from '@/composables/useWorkspace'
 import { useUpdateCheck } from '@/composables/useUpdateCheck'
 
 const { t } = useI18n()
+const preferenceId = useId()
+const activeTab = ref('general')
+const preferenceTabs = [
+  { name: 'general', label: 'settings.general' },
+  { name: 'appearance', label: 'settings.appearance' },
+  { name: 'svn', label: 'settings.svnSettings' },
+  { name: 'tools', label: 'experience.tools' },
+  { name: 'about', label: 'nav.about' },
+]
+function handleTabKeydown(event: KeyboardEvent, index: number) {
+  let next = index
+  if (event.key === 'ArrowRight') next = (index + 1) % preferenceTabs.length
+  else if (event.key === 'ArrowLeft')
+    next = (index + preferenceTabs.length - 1) % preferenceTabs.length
+  else if (event.key === 'Home') next = 0
+  else if (event.key === 'End') next = preferenceTabs.length - 1
+  else return
+  event.preventDefault()
+  activeTab.value = preferenceTabs[next].name
+  const tablist = (event.currentTarget as HTMLElement).parentElement
+  ;(tablist?.children[next] as HTMLElement)?.focus()
+}
 const { setLocale } = useLocale()
 const { settings } = useSettings()
 const { refreshStatusAfterMutation } = useWorkspace()
@@ -206,192 +247,143 @@ onMounted(() => {
 
 <style scoped>
 .settings-view {
-  max-width: 700px;
-  margin: 0 auto;
-}
-
-.settings-card {
-  border-radius: var(--app-radius-lg);
-}
-
-.settings-form {
-  margin-top: 0;
-}
-
-.settings-section {
-  margin-bottom: var(--app-spacing-md);
-}
-
-.section-title {
   display: flex;
-  align-items: center;
-  gap: var(--app-spacing-sm);
-  margin-bottom: var(--app-spacing-lg);
-  font-size: var(--app-font-size-subtitle);
-  font-weight: var(--app-font-weight-bold);
-  color: var(--el-text-color-primary);
+  flex-direction: column;
+  min-width: 0;
+  color: var(--md-sys-color-on-surface);
 }
-
-.form-item {
-  margin-bottom: var(--app-spacing-md);
+.preferences-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  overflow-x: auto;
+  flex-shrink: 0;
 }
-
-.settings-form :deep(.el-form-item__label) {
-  align-items: center;
-  justify-content: flex-start;
-  min-height: var(--app-size-field);
-  padding-right: var(--app-spacing-md);
-  line-height: 1.35;
+.preferences-tabs button {
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--md-sys-color-on-surface-variant);
+  padding: 9px 14px;
   white-space: nowrap;
-  word-break: keep-all;
+  font: inherit;
+  cursor: pointer;
 }
-
+.preferences-tabs button:hover {
+  background: var(--md-sys-state-hover);
+}
+.preferences-tabs button.active {
+  color: var(--md-sys-color-primary);
+  border-bottom-color: var(--md-sys-color-primary);
+}
+.preferences-tabs button:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: -2px;
+}
+.preferences-content {
+  padding: 22px 8px 8px;
+  min-height: 280px;
+}
+.preferences-content > section:focus-visible {
+  outline: 1px solid var(--md-sys-color-outline);
+  outline-offset: 4px;
+}
+.settings-form :deep(.el-form-item) {
+  margin-bottom: 16px;
+}
+.settings-form :deep(.el-form-item__label) {
+  line-height: 1.35;
+  align-items: center;
+  padding-right: 16px;
+  min-height: 30px;
+}
 .settings-form :deep(.el-form-item__content) {
   min-width: 0;
+  line-height: 1.5;
 }
-
 .settings-control {
-  width: 260px;
-  max-width: 100%;
+  width: 100%;
+  max-width: 360px;
 }
-
 .form-item-hint {
-  margin-left: var(--app-spacing-sm);
-  font-size: var(--app-font-size-sm);
-  color: var(--el-text-color-secondary);
+  display: block;
+  flex-basis: 100%;
+  margin-top: 4px;
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: var(--app-font-size-xs);
+  line-height: 1.6;
 }
-
-.settings-path-input {
-  width: 260px;
-}
-
 .theme-group {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--app-spacing-sm);
+  gap: 12px;
 }
-
 .theme-radio {
   margin-right: 0;
-  min-height: var(--app-size-control-compact);
-  padding: 0 10px;
-  border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: var(--app-radius-sm);
-  background: var(--md-sys-color-surface-container-low);
-  transition:
-    background-color var(--app-transition-fast),
-    border-color var(--app-transition-fast);
 }
-
-.theme-radio:hover {
-  border-color: var(--md-sys-color-outline);
-  background: var(--md-sys-color-surface-container-high);
-}
-
-.theme-radio.is-checked {
-  border-color: var(--md-sys-color-primary);
-  background: var(--md-sys-color-primary-container);
-}
-
 .theme-option {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
 }
-
-.theme-option .el-icon {
-  font-size: var(--app-size-icon-sm);
+.preferences-hint {
+  margin: 8px 8px 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: var(--app-font-size-xs);
 }
-
-.about-section {
-  padding: var(--app-spacing-md) 0;
-}
-
 .about-content {
-  display: flex;
-  flex-direction: column;
-  gap: var(--app-spacing-lg);
-  margin-top: var(--app-spacing-md);
+  display: grid;
+  gap: 22px;
+  padding: 8px 16px;
 }
-
 .about-logo {
   display: flex;
   align-items: center;
-  gap: var(--app-spacing-md);
+  gap: 16px;
 }
-
 .logo-mark {
   display: grid;
   place-items: center;
-  width: 48px;
-  height: 48px;
-  border-radius: var(--app-radius);
-  background: linear-gradient(
-    135deg,
-    var(--md-sys-color-primary-container),
-    var(--md-sys-color-secondary-container)
-  );
+  width: 44px;
+  height: 44px;
+  font-size: 28px;
   color: var(--md-sys-color-primary);
-  font-size: 24px;
-  box-shadow: var(--md-sys-elevation-1);
 }
-
 .about-info h4 {
   margin: 0;
-  font-size: var(--app-font-size-title);
-  font-weight: 800;
-  color: var(--el-text-color-primary);
+  font-size: 20px;
+  font-weight: 600;
 }
-
 .about-subtitle {
-  margin: 2px 0 0;
-  color: var(--el-text-color-secondary);
-  font-size: var(--app-font-size-label);
+  margin: 4px 0 0;
+  color: var(--md-sys-color-on-surface-variant);
 }
-
-.about-details {
-  display: flex;
-  flex-direction: column;
-  gap: var(--app-spacing-sm);
-}
-
 .detail-item {
   display: flex;
   align-items: center;
-  gap: var(--app-spacing-sm);
+  flex-wrap: wrap;
+  gap: 8px;
 }
-
 .update-status {
-  color: var(--el-text-color-secondary);
-  font-size: var(--app-font-size-xs);
+  color: var(--md-sys-color-on-surface-variant);
 }
-
-.detail-label {
-  font-weight: 600;
-  color: var(--el-text-color-regular);
-}
-
-.detail-value {
-  color: var(--el-text-color-primary);
-}
-
-@media (max-width: 640px) {
-  .settings-view {
-    padding: 0 var(--app-spacing);
+@media (max-width: 600px) {
+  .preferences-content {
+    padding: 16px 0 4px;
   }
-
+  .preferences-tabs button {
+    padding: 9px 10px;
+  }
   .settings-form :deep(.el-form-item) {
-    flex-direction: column;
+    display: block;
   }
-
   .settings-form :deep(.el-form-item__label) {
+    display: block;
+    width: auto !important;
     text-align: left;
-    padding-bottom: 4px;
-  }
-
-  .settings-control,
-  .settings-path-input {
-    width: 100%;
+    padding-bottom: 6px;
   }
 }
 </style>

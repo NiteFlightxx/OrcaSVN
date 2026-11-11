@@ -24,7 +24,7 @@ function shellHarness() {
     '@/composables/useSvnUpdate': { useSvnUpdate: () => ({ updateWorkspace: async () => calls.push(['update']), updating: vue.ref(false) }) },
     '@/components/BranchSidebar.vue': {}, '@/components/OperationDialog.vue': {}, '@/components/ActivityPanel.vue': {}, '@/components/LanguageSwitcher.vue': {}, '@/components/icons/materialIcons': {},
   }
-  const h = setup('src/layouts/MainLayout.vue', 'openTabs, selectRepositoryTab, closeRepositoryTab, handleShellKeydown, showSidebar, toggleSidebar, updateWorkspace, openStash, handleShellCommand', mocks, { document: { dispatchEvent() {} }, Event: class Event {}, localStorage: { getItem: key => storage.get(key) || null, setItem: (key, value) => storage.set(key, value) } })
+  const h = setup('src/layouts/MainLayout.vue', 'openTabs, selectRepositoryTab, closeRepositoryTab, handleShellKeydown, showSidebar, toggleSidebar, updateWorkspace, openStash, handleShellCommand, preferencesVisible, navigateTo, navigationPages, startResize, resizeSidebar, finishResize, sidebarWidth, compactNavigation, mobileSidebarOpen, focusBranches', mocks, { document: { dispatchEvent() {} }, Event: class Event {}, localStorage: { getItem: key => storage.get(key) || null, setItem: (key, value) => storage.set(key, value) } })
   return { ...h, workspace, storage, calls, route, fail: value => { fail = value } }
 }
 test('repository tabs switch and close adjacent tabs without removing recent repositories', async () => {
@@ -141,6 +141,60 @@ test('repository menu update stays in place and sidebar stashes select the reque
   h.openStash('synthetic-stash')
   assert.equal(h.calls.at(-1)[1].name, 'stash')
   assert.equal(h.calls.at(-1)[1].query.id, 'synthetic-stash')
+  assert.equal(h.showSidebar.value, true)
+  h.stop()
+})
+
+
+test('preferences opens independently without replacing the repository page or issuing commands', async () => {
+  const h = shellHarness()
+  h.route.name = 'log'
+  await h.handleShellCommand('settings')
+  assert.equal(h.preferencesVisible.value, true)
+  assert.equal(h.route.name, 'log')
+  assert.deepEqual(h.calls, [])
+  assert.equal(h.showSidebar.value, true)
+  h.handleShellKeydown({ ctrlKey: true, key: '2', preventDefault() {} })
+  assert.equal(h.route.name, 'log')
+  assert.deepEqual(h.calls, [])
+  h.preferencesVisible.value = false
+  h.handleShellKeydown({ ctrlKey: true, key: ',', preventDefault() {} })
+  assert.equal(h.preferencesVisible.value, true)
+  assert.deepEqual(h.calls, [])
+  h.preferencesVisible.value = false
+  await h.navigateTo('workspace')
+  assert.equal(h.route.name, 'workspace')
+  h.stop()
+})
+
+test('navigation badges react to changes and resizing follows the Fork sidebar edge', () => {
+  const h = shellHarness()
+  h.workspace.statusList = [{ path: 'Synthetic.txt', status_code: 'modified' }]
+  assert.equal(h.navigationPages.value.find(page => page.name === 'workspace').count, 1)
+  const separator = { previousElementSibling: { getBoundingClientRect: () => ({ left: 0 }) }, setPointerCapture() {} }
+  h.startResize({ currentTarget: separator, pointerId: 1, preventDefault() {} })
+  h.resizeSidebar({ currentTarget: separator, clientX: 300 })
+  assert.equal(h.sidebarWidth.value, 300)
+  h.finishResize()
+  h.resizeSidebar({ currentTarget: separator, clientX: 449 })
+  assert.equal(h.sidebarWidth.value, 300)
+  h.stop()
+})
+
+
+test('narrow navigation opens the branch drawer without changing desktop sidebar preference', async () => {
+  const h = shellHarness()
+  h.compactNavigation.value = true
+  h.toggleSidebar()
+  assert.equal(h.mobileSidebarOpen.value, true)
+  assert.equal(h.showSidebar.value, true)
+  h.toggleSidebar()
+  assert.equal(h.mobileSidebarOpen.value, false)
+  await h.focusBranches()
+  assert.equal(h.mobileSidebarOpen.value, true)
+  h.route.name = 'log'
+  await vue.nextTick()
+  assert.equal(h.mobileSidebarOpen.value, false)
   assert.equal(h.showSidebar.value, true)
   h.stop()
 })

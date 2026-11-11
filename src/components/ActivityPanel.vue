@@ -1,15 +1,19 @@
 <template>
   <div v-if="flow.busy || flow.activities.length || history.length" class="activity-panel">
-    <button class="activity-trigger" @click="expanded = !expanded">
+    <button class="activity-trigger" @click="toggleActivity">
+      <el-icon v-if="flow.busy" class="is-loading"><Loading /></el-icon>
       {{ flow.title || $t('flow.activity') }} · {{ $t(`experience.${flow.phase}`) }}
       <el-icon><ArrowDown v-if="expanded" /><ChevronRight v-else /></el-icon>
     </button>
     <p v-if="flow.refreshWarning" role="alert">{{ $t('experience.refreshFailed') }}</p>
-    <div v-if="flow.busy && flow.progress" class="operation-progress">
-      <span>{{ flow.progress.file }}</span
+    <div v-if="flow.busy" class="operation-progress" role="status">
+      <span>{{
+        flow.progress?.file ||
+        (updateFeedback.running ? $t('updateProgress.running') : $t('flow.running'))
+      }}</span
       ><progress
-        :value="flow.progress.total ? flow.progress.current : undefined"
-        :max="flow.progress.total || 1"
+        :value="flow.progress?.total ? flow.progress.current : undefined"
+        :max="flow.progress?.total || 1"
       />
     </div>
     <div v-if="expanded" class="activity-records">
@@ -41,6 +45,7 @@
 </template>
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { svnUpdateFeedback as updateFeedback } from '@/composables/useSvnUpdate'
 import { useWorkflowStore } from '@/stores/workflows'
 import { repositoryActivities, repositoryUndo } from '@/api/workflows'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -49,6 +54,10 @@ const flow = useWorkflowStore(),
   expanded = ref(false),
   history = ref<Record<string, unknown>[]>([])
 const { t } = useI18n()
+function toggleActivity() {
+  if (updateFeedback.running) updateFeedback.visible = true
+  else expanded.value = !expanded.value
+}
 function savedUndoId(record: Record<string, unknown>): string | null {
   const plan = record.plan as { id?: string; kind?: string } | undefined
   return record.phase === 'finished' && plan?.kind === 'cherry-pick' ? plan.id || null : null
@@ -72,6 +81,23 @@ onMounted(async () => {
 })
 </script>
 <style scoped>
+.operation-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 10px 8px;
+  font-size: var(--app-font-size-xs);
+}
+.operation-progress span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.operation-progress progress {
+  width: 180px;
+  height: 6px;
+  accent-color: var(--md-sys-color-primary);
+}
 .activity-panel {
   border-top: 1px solid var(--md-sys-color-outline-variant);
   background: var(--md-sys-color-surface-container-lowest);

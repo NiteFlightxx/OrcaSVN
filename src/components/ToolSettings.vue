@@ -25,19 +25,36 @@ const { settings } = useSettings()
 </script>
 <style scoped>
 .tool-settings {
-  padding: 12px;
-  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  padding: 0 8px 12px;
   display: grid;
-  gap: 8px;
-  font-size: 12px;
+  gap: 12px;
+  font-size: var(--app-font-size-sm);
 }
 .tool-settings label {
   display: grid;
-  grid-template-columns: 150px 1fr;
+  grid-template-columns: 156px minmax(0, 1fr);
   align-items: center;
   gap: 8px;
 }
 .tool-settings p {
   color: var(--md-sys-color-on-surface-variant);
+}
+.tool-settings small {
+  padding-left: 164px;
+  color: var(--md-sys-color-on-surface-variant);
+  overflow-wrap: anywhere;
+}
+.tool-settings strong {
+  padding-top: 8px;
+  font-weight: 600;
+}
+@media (max-width: 600px) {
+  .tool-settings label {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+  .tool-settings small {
+    padding-left: 0;
+  }
 }
 </style>

@@ -19,7 +19,7 @@ function harness() {
     svnInfo: {url:'file:///synthetic/dev'}, statusIsStale: false, error: null, setError(error) { this.error = error } })
   const storage = new Map()
   const mocks = {
-    vue: { ...vue, watch() {} },
+    vue: { ...vue, watch() { return () => {} } },
     pinia: { defineStore: (_name, setup) => () => vue.reactive(setup()) },
     '@tauri-apps/api/event': { listen: async () => () => {} },
     '@/utils/repositoryUi': { repositoryUi: () => ({}) },

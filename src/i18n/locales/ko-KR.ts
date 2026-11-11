@@ -48,6 +48,8 @@ export default {
     enUS: 'English',
   },
   settings: {
+    general: '일반',
+    appliedImmediately: '설정은 자동으로 저장되고 즉시 적용됩니다.',
     appearance: '모양',
     svnSettings: 'SVN 설정',
     svnPath: 'SVN 실행 파일',

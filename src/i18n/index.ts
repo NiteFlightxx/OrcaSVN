@@ -1,3 +1,4 @@
+import { updateProgressLocales } from './updateProgress'
 import { historyMenuLocales } from './historyMenu'
 import { commitFlowLocales } from './commitFlow'
 import { experienceLocales } from './experience'
@@ -80,6 +81,7 @@ const i18n = createI18n({
       historyPresence: historyPresenceLocales['zh-CN'],
       commitFlow: commitFlowLocales['zh-CN'],
       historyMenu: historyMenuLocales['zh-CN'],
+      updateProgress: updateProgressLocales['zh-CN'],
     },
     'zh-TW': {
       experience: experienceLocales['zh-TW'],
@@ -94,6 +96,7 @@ const i18n = createI18n({
       historyPresence: historyPresenceLocales['zh-TW'],
       commitFlow: commitFlowLocales['zh-TW'],
       historyMenu: historyMenuLocales['zh-TW'],
+      updateProgress: updateProgressLocales['zh-TW'],
     },
     'ja-JP': {
       experience: experienceLocales['ja-JP'],
@@ -108,6 +111,7 @@ const i18n = createI18n({
       historyPresence: historyPresenceLocales['ja-JP'],
       commitFlow: commitFlowLocales['ja-JP'],
       historyMenu: historyMenuLocales['ja-JP'],
+      updateProgress: updateProgressLocales['ja-JP'],
     },
     'ko-KR': {
       experience: experienceLocales['ko-KR'],
@@ -122,6 +126,7 @@ const i18n = createI18n({
       historyPresence: historyPresenceLocales['ko-KR'],
       commitFlow: commitFlowLocales['ko-KR'],
       historyMenu: historyMenuLocales['ko-KR'],
+      updateProgress: updateProgressLocales['ko-KR'],
     },
     'en-US': {
       experience: experienceLocales['en-US'],
@@ -136,6 +141,7 @@ const i18n = createI18n({
       historyPresence: historyPresenceLocales['en-US'],
       commitFlow: commitFlowLocales['en-US'],
       historyMenu: historyMenuLocales['en-US'],
+      updateProgress: updateProgressLocales['en-US'],
     },
   },
 })

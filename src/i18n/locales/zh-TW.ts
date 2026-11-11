@@ -48,6 +48,8 @@ export default {
     enUS: 'English',
   },
   settings: {
+    general: '一般',
+    appliedImmediately: '設定會自動儲存並立即生效。',
     appearance: '外觀',
     svnSettings: 'SVN 設定',
     svnPath: 'SVN 可執行檔',

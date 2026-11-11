@@ -21,10 +21,17 @@ const branchAccessLocales = {
   'ja-JP': { addBranchUrl: 'ブランチ URL を追加…', knownBranches: '既知のブランチ', branchUrlHint: 'アクセス可能なブランチの完全な URL を入力してください。親ディレクトリの読み取り権限は不要です。', branchAccessHint: 'SVN はブランチ一覧のディレクトリへのアクセスを拒否しました。個別のブランチへのアクセス可否は別です。完全な URL を追加できます。', branchBrowseFailed: 'ディレクトリを表示できません。既知のブランチは引き続き利用できます。詳細を確認するか URL を追加してください。' },
   'ko-KR': { addBranchUrl: '브랜치 URL 추가…', knownBranches: '알려진 브랜치', branchUrlHint: '접근 가능한 브랜치의 전체 URL을 입력하세요. 해당 폴더만 확인하며 상위 폴더 읽기 권한은 필요하지 않습니다.', branchAccessHint: 'SVN이 브랜치 목록 폴더 접근을 거부했습니다. 개별 브랜치 접근 권한은 별개입니다. 전체 브랜치 URL을 추가할 수 있습니다.', branchBrowseFailed: '폴더 목록을 읽을 수 없습니다. 알려진 브랜치는 계속 사용할 수 있습니다. 상세 정보를 확인하거나 URL을 추가하세요.' },
 }
+const stashCreationLocales = {
+  'en-US': { stashScopeHint: 'Only these {count} selected items will be saved and removed from the working copy.', stashNoChanges: 'There are no supported changes in the selected paths.' },
+  'zh-CN': { stashScopeHint: '仅贮藏以下 {count} 项选中内容，保存后移除对应的本地修改。', stashNoChanges: '选中路径中没有可贮藏的修改。' },
+  'zh-TW': { stashScopeHint: '僅貯藏以下 {count} 項選取內容，儲存後移除對應的本機修改。', stashNoChanges: '選取路徑中沒有可貯藏的修改。' },
+  'ja-JP': { stashScopeHint: '選択した以下の {count} 項目のみを保存し、作業コピーから変更を取り除きます。', stashNoChanges: '選択したパスにスタッシュ可能な変更はありません。' },
+  'ko-KR': { stashScopeHint: '선택한 아래 {count}개 항목만 저장한 후 해당 로컬 변경을 제거합니다.', stashNoChanges: '선택한 경로에 스태시할 수 있는 변경이 없습니다.' },
+}
 export const workflowLocales = {
-  'en-US': { ...baseWorkflowLocales['en-US'], ...branchAccessLocales['en-US'] },
-  'zh-CN': { ...baseWorkflowLocales['zh-CN'], ...branchAccessLocales['zh-CN'] },
-  'zh-TW': { ...baseWorkflowLocales['zh-TW'], ...branchAccessLocales['zh-TW'] },
-  'ja-JP': { ...baseWorkflowLocales['ja-JP'], ...branchAccessLocales['ja-JP'] },
-  'ko-KR': { ...baseWorkflowLocales['ko-KR'], ...branchAccessLocales['ko-KR'] },
+  'en-US': { ...baseWorkflowLocales['en-US'], ...branchAccessLocales['en-US'], ...stashCreationLocales['en-US'] },
+  'zh-CN': { ...baseWorkflowLocales['zh-CN'], ...branchAccessLocales['zh-CN'], ...stashCreationLocales['zh-CN'] },
+  'zh-TW': { ...baseWorkflowLocales['zh-TW'], ...branchAccessLocales['zh-TW'], ...stashCreationLocales['zh-TW'] },
+  'ja-JP': { ...baseWorkflowLocales['ja-JP'], ...branchAccessLocales['ja-JP'], ...stashCreationLocales['ja-JP'] },
+  'ko-KR': { ...baseWorkflowLocales['ko-KR'], ...branchAccessLocales['ko-KR'], ...stashCreationLocales['ko-KR'] },
 }

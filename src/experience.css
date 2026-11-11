@@ -100,9 +100,6 @@
   .source-shell .sidebar-resizer {
     display: none;
   }
-  .source-shell .page-switcher {
-    width: 40px;
-  }
   .source-shell .current-branch {
     max-width: 110px;
   }
@@ -158,23 +155,6 @@ html .source-shell .tool-button {
 }
 html .source-shell .tool-button .el-icon {
   font-size: 16px;
-}
-html .source-shell .page-switcher {
-  gap: 3px;
-  padding-top: 7px;
-  background: var(--md-sys-color-surface-container-lowest);
-}
-html .source-shell .page-switcher > button {
-  height: 34px;
-  min-height: 34px;
-  width: 34px;
-  border-radius: 5px;
-}
-html .source-shell .page-switcher > button .el-icon {
-  font-size: 18px;
-}
-html .source-shell .page-switcher > button.active {
-  box-shadow: inset 2px 0 var(--md-sys-color-primary);
 }
 html .source-shell .source-sidebar {
   background: var(--md-sys-color-surface-container-lowest);
@@ -455,4 +435,71 @@ html .source-shell .activity-trigger {
   font-size: 13px;
   font-weight: 600;
   color: var(--md-sys-color-on-surface-variant);
+}
+
+/* Preferences is independent of the active repository page. */
+.preferences-dialog.el-dialog {
+  max-width: calc(100vw - 24px);
+  max-height: calc(100dvh - 32px);
+  display: flex;
+  flex-direction: column;
+  padding: 16px 20px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 6px;
+  background: var(--md-sys-color-surface-container-lowest);
+}
+.preferences-dialog .el-dialog__header {
+  padding: 0 32px 12px 0;
+  margin-right: 0;
+  background: transparent;
+  flex-shrink: 0;
+}
+.preferences-dialog .el-dialog__title {
+  font-size: 14px;
+  font-weight: 600;
+}
+.preferences-dialog .el-dialog__body {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0;
+}
+.preferences-dialog .el-dialog__footer {
+  padding: 12px 0 0;
+  background: transparent;
+  flex-shrink: 0;
+}
+@media (max-width: 700px) {
+  html .source-shell .source-body,
+  html .source-shell .source-body.sidebar-hidden {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  html .source-shell .repository-identity {
+    min-width: 0;
+  }
+}
+.preferences-dialog .el-dialog__headerbtn {
+  top: 6px;
+  right: 10px;
+}
+
+@media (max-width: 700px) {
+  html .source-shell .source-body.sidebar-mobile-open .source-sidebar {
+    display: flex;
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: min(260px, calc(100vw - 80px));
+    z-index: 12;
+    border-right: 1px solid var(--md-sys-color-outline-variant);
+    box-shadow: 6px 0 20px #0003;
+  }
+  html .source-shell .sidebar-backdrop {
+    display: block;
+    position: absolute;
+    inset: 0;
+    z-index: 11;
+    background: #0005;
+    border: 0;
+  }
 }

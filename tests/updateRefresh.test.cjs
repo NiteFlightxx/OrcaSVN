@@ -27,7 +27,7 @@ function harness() {
       }
     } }) },
     vue: {
-      ...vue, watch() {}, onUnmounted() {},
+      ...vue, watch() { return () => {} }, onUnmounted() {},
       onActivated(fn) { lifecycle.activate = fn },
       onDeactivated(fn) { lifecycle.deactivate = fn },
     },

@@ -48,6 +48,8 @@ export default {
     enUS: 'English',
   },
   settings: {
+    general: 'General',
+    appliedImmediately: 'Changes are saved and applied automatically.',
     appearance: 'Appearance',
     svnSettings: 'SVN Configuration',
     svnPath: 'SVN Executable',

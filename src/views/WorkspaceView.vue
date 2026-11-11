@@ -974,7 +974,14 @@ const runContextAction = async (action: string) => {
     } else if (action === 'blame')
       await router.push({ name: 'blame', query: { path: context.path } })
     else if (action === 'stash')
-      await router.push({ name: 'stash', query: { files: context.targets } })
+      await router.push({
+        name: 'stash',
+        query: {
+          files: context.targets,
+          stashWorkspace: context.workspace,
+          stashBranch: context.branch,
+        },
+      })
     else if (action === 'patch') {
       const destination = await save({
         title: t('fileMenu.patch'),

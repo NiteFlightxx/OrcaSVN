@@ -5,7 +5,9 @@
         >{{ $t('menu.stash') }} <small>{{ records.length }}</small></strong
       >
       <div class="actions">
-        <el-button :disabled="flow.busy" @click="openCreate"
+        <el-button
+          :disabled="flow.busy || !workspace.currentPath || !flow.identity"
+          @click="openCreate"
           ><el-icon><Plus /></el-icon>{{ $t('flow.createStash') }}</el-button
         ><el-dropdown trigger="click"
           ><button
@@ -132,29 +134,43 @@
     <el-dialog
       v-model="creatingDialog"
       :title="$t('flow.createStash')"
-      width="min(960px, 94vw)"
+      width="min(760px, 94vw)"
+      class="stash-create-dialog"
       :close-on-click-modal="false"
     >
-      <el-input v-model="name" :placeholder="$t('flow.name')" maxlength="120" />
-      <p>{{ $t('flow.selectFiles') }}</p>
-      <el-table :data="choices" max-height="280" @selection-change="select"
-        ><el-table-column type="selection" width="42" /><el-table-column
+      <p v-if="!inspecting" class="stash-scope-hint">
+        {{ $t('flow.stashScopeHint', { count: preview.length }) }}
+      </p>
+      <p v-if="inspecting" role="status">{{ $t('common.loading') }}</p>
+      <el-table
+        :data="preview"
+        max-height="280"
+        class="stash-scope-list"
+        :empty-text="inspecting ? $t('common.loading') : $t('flow.stashNoChanges')"
+      >
+        <el-table-column
           prop="path"
-          :label="$t('flow.files')" /><el-table-column
-          prop="status_code"
-          :label="$t('flow.state')"
-          width="120"
-      /></el-table>
-      <el-button :loading="inspecting" :disabled="!files.length || flow.busy" @click="inspect">{{
-        $t('flow.inspect')
-      }}</el-button>
-      <div v-if="preview.length" class="stash-details">
-        <div v-for="node in preview" :key="node.path" class="node-line">
-          <span>{{ node.status }} · {{ node.path }}</span
-          ><span>{{ size(node.size) }}</span>
-        </div>
-      </div>
-      <p v-if="error" class="error">{{ error }}</p>
+          :label="$t('flow.files')"
+          min-width="240"
+          show-overflow-tooltip
+        />
+        <el-table-column prop="status" :label="$t('flow.state')" width="110" />
+      </el-table>
+      <el-input
+        v-model="name"
+        :placeholder="$t('flow.name')"
+        :aria-label="$t('flow.name')"
+        maxlength="120"
+        class="stash-name-input"
+      />
+      <p v-if="error" class="error" role="alert">{{ error }}</p>
+      <el-button
+        v-if="error && files.length"
+        :loading="inspecting"
+        :disabled="flow.busy || !contextMatches()"
+        @click="inspect"
+        >{{ $t('common.retry') }}</el-button
+      >
       <template #footer
         ><el-button :disabled="flow.busy" @click="creatingDialog = false">{{
           $t('common.cancel')
@@ -162,7 +178,7 @@
         ><el-button
           type="primary"
           :loading="flow.busy"
-          :disabled="!preview.length || !name.trim()"
+          :disabled="!canCreate || !name.trim()"
           @click="create"
           >{{ $t('flow.saveHide') }}</el-button
         ></template
@@ -179,7 +195,7 @@ import FileContextMenu from './FileContextMenu.vue'
 import { buildChangeTree, type ChangeNode } from '@/utils/changeTree'
 import { readPanelSize } from '@/utils/changeSelection'
 import { snapshotDiff } from '@/utils/diffPairs'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { open } from '@tauri-apps/plugin-dialog'
@@ -202,6 +218,7 @@ import {
 const flow = useWorkflowStore(),
   workspace = useWorkspaceStore(),
   route = useRoute(),
+  router = useRouter(),
   { t } = useI18n()
 const legacyStore = useStashStore()
 const legacyOpen = ref(false)
@@ -287,6 +304,13 @@ const selected = ref<AssetStash | null>(null),
   files = ref<string[]>([]),
   name = ref(''),
   error = ref('')
+const creationContext = ref<{ path: string; url: string } | null>(null)
+const contextMatches = () =>
+  creationContext.value?.path === workspace.currentPath &&
+  creationContext.value?.url === flow.identity?.url
+const canCreate = computed(
+  () => contextMatches() && !inspecting.value && !flow.busy && preview.value.length > 0
+)
 const filePreview = ref<Awaited<ReturnType<typeof assetStashPreview>> | null>(null)
 let previewGeneration = 0
 let inspectionGeneration = 0
@@ -311,7 +335,7 @@ watch(
 const choices = computed(() =>
   workspace.statusList.filter(
     (s) =>
-      ['modified', 'added', 'deleted', 'unversioned', 'normal', 'none'].includes(s.status_code) ||
+      ['modified', 'added', 'deleted', 'unversioned'].includes(s.status_code) ||
       s.prop_status === 'modified'
   )
 )
@@ -326,26 +350,34 @@ function select(rows: { path: string }[]) {
   preview.value = []
   error.value = ''
 }
-function openCreate() {
-  inspectionGeneration++
-  inspecting.value = false
+function startCreate(requested: string[]) {
+  if (flow.busy || !workspace.currentPath || !flow.identity?.url) return
+  select([...new Set(requested.filter((path) => path.trim()))].map((path) => ({ path })))
+  creationContext.value = { path: workspace.currentPath, url: flow.identity.url }
   name.value = `WIP ${new Date().toLocaleString()}`
-  files.value = []
-  preview.value = []
-  error.value = ''
   creatingDialog.value = true
+  if (files.value.length) void inspect()
+  else error.value = t('flow.stashNoChanges')
+}
+function openCreate() {
+  startCreate(choices.value.map((entry) => entry.path))
 }
 async function inspect() {
   const path = workspace.currentPath,
     request = ++inspectionGeneration,
     selection = [...files.value]
-  if (!path) return
+  if (!path || !files.value.length || !contextMatches()) return
+  const url = creationContext.value?.url
   inspecting.value = true
   try {
     const result = await assetStashCandidates(path, selection)
-    if (request === inspectionGeneration && path === workspace.currentPath) {
+    if (
+      request === inspectionGeneration &&
+      path === workspace.currentPath &&
+      url === flow.identity?.url
+    ) {
       preview.value = result
-      error.value = ''
+      error.value = result.length ? '' : t('flow.stashNoChanges')
     }
   } catch (e) {
     if (request === inspectionGeneration) {
@@ -359,10 +391,12 @@ async function inspect() {
 async function create() {
   const path = workspace.currentPath,
     url = flow.identity?.url
-  if (!path || !url || !preview.value.length) return
+  if (!path || !url || !canCreate.value || !name.value.trim()) return
+  const selection = [...files.value]
+  const stashName = name.value
   try {
     const entry = await flow.perform(t('flow.createStash'), () =>
-      assetStashCreate(path, name.value, files.value, url)
+      assetStashCreate(path, stashName, selection, url)
     )
     selected.value = entry
     selectedKey.value = 'full:' + entry.id
@@ -447,39 +481,74 @@ watch(
   },
   { immediate: true }
 )
+watch([() => workspace.currentPath, () => flow.identity?.url], () => {
+  inspectionGeneration++
+  inspecting.value = false
+  creatingDialog.value = false
+  creationContext.value = null
+  selected.value = null
+  selectedKey.value = ''
+  menu.value.visible = false
+  preview.value = []
+  files.value = []
+})
 watch(
-  () => [route.query.file, route.query.files],
-  async ([file, selected]) => {
-    const requested = Array.isArray(selected)
-      ? selected.filter((value): value is string => typeof value === 'string')
-      : typeof selected === 'string'
-        ? [selected]
+  [
+    () => route.query.file,
+    () => route.query.files,
+    () => workspace.currentPath,
+    () => flow.identity?.url,
+    () => flow.busy,
+  ],
+  () => {
+    const file = route.query.file,
+      requested = route.query.files
+    if (
+      (file === undefined && requested === undefined) ||
+      !workspace.currentPath ||
+      !flow.identity?.url ||
+      flow.busy
+    )
+      return
+    const paths = Array.isArray(requested)
+      ? requested.filter((value): value is string => typeof value === 'string')
+      : typeof requested === 'string'
+        ? [requested]
         : typeof file === 'string'
           ? [file]
           : []
-    if (requested.length) {
-      openCreate()
-      files.value = requested
-      await inspect()
-    }
+    const sameWorkspace =
+      !route.query.stashWorkspace || route.query.stashWorkspace === workspace.currentPath
+    const sameBranch = !route.query.stashBranch || route.query.stashBranch === flow.identity?.url
+    if (sameWorkspace && sameBranch) startCreate(paths)
+    else ElMessage.error(t('fileMenu.changed'))
+    const query = { ...route.query }
+    delete query.file
+    delete query.files
+    delete query.stashWorkspace
+    delete query.stashBranch
+    void router.replace({ query })
   },
   { immediate: true }
 )
-watch(
-  () => workspace.currentPath,
-  () => {
+watch(creatingDialog, (open) => {
+  if (!open) {
     inspectionGeneration++
     inspecting.value = false
-    creatingDialog.value = false
-    selected.value = null
-    selectedKey.value = ''
-    menu.value.visible = false
     preview.value = []
     files.value = []
+    creationContext.value = null
   }
-)
+})
 </script>
 <style scoped>
+.stash-scope-hint {
+  margin-bottom: 12px;
+  color: var(--md-sys-color-on-surface-variant);
+}
+.stash-name-input {
+  margin-top: 14px;
+}
 .asset-stashes {
   height: 100%;
   display: flex;

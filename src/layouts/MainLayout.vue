@@ -21,109 +21,6 @@
         >
       </el-dropdown>
     </nav>
-    <header class="repository-toolbar">
-      <div class="toolbar-group toolbar-primary">
-        <button
-          class="tool-button icon-only"
-          :title="$t('sourceUI.toggleSidebar')"
-          :aria-label="$t('sourceUI.toggleSidebar')"
-          :aria-pressed="showSidebar"
-          @click="toggleSidebar"
-        >
-          <el-icon><PanelLeft /></el-icon>
-        </button>
-        <button
-          class="tool-button"
-          :disabled="!workspaceStore.currentPath || workspaceStore.isLoading || workflow.busy"
-          :title="$t('menu.refresh')"
-          :aria-label="$t('menu.refresh')"
-          @click="refreshStatus"
-        >
-          <el-icon :class="{ 'is-loading': workspaceStore.isLoading }"><Refresh /></el-icon
-          ><span>{{ $t('menu.refresh') }}</span>
-        </button>
-        <button
-          class="tool-button"
-          :disabled="!workspaceStore.currentPath || workspaceStore.isLoading || workflow.busy"
-          :title="$t('menu.update')"
-          :aria-label="$t('menu.update')"
-          :aria-busy="updating"
-          @click="updateWorkspace()"
-        >
-          <el-icon :class="{ 'is-loading': updating }"><RefreshRight /></el-icon
-          ><span>{{ $t('menu.update') }}</span>
-        </button>
-        <button
-          class="tool-button"
-          :disabled="!workspaceStore.currentPath"
-          :title="$t('menu.stash')"
-          @click="navigateTo('stash')"
-        >
-          <el-icon><Archive /></el-icon><span>{{ $t('menu.stash') }}</span>
-        </button>
-      </div>
-      <button
-        class="repository-identity"
-        :disabled="!workspaceStore.currentPath"
-        :title="workflow.identity?.url"
-        @click="focusBranches"
-      >
-        <strong>{{
-          workspaceStore.currentPath
-            ? workspaceNameFromPath(workspaceStore.currentPath)
-            : $t('workspace.openWorkspace')
-        }}</strong>
-        <span
-          ><el-icon><GitBranch /></el-icon>{{ workflow.branchName || repositoryRevision
-          }}<el-icon><ArrowDown /></el-icon
-        ></span>
-      </button>
-      <div class="toolbar-group toolbar-right">
-        <el-dropdown
-          trigger="click"
-          :disabled="!workspaceStore.currentPath"
-          @command="openCurrentWorkspaceIn"
-        >
-          <button
-            class="tool-button"
-            :disabled="!workspaceStore.currentPath"
-            :title="$t('menu.openIn')"
-            :aria-label="$t('menu.openIn')"
-          >
-            <el-icon><component :is="selectedOpenTargetIcon" /></el-icon
-            ><span>{{ $t('menu.openIn') }}</span
-            ><el-icon class="chevron"><ArrowDown /></el-icon>
-          </button>
-          <template #dropdown
-            ><el-dropdown-menu
-              ><el-dropdown-item
-                v-for="target in ['explorer', 'vscode', 'terminal'] as const"
-                :key="target"
-                :command="target"
-                ><el-icon><component :is="openTargetIcons[target]" /></el-icon
-                >{{ $t('openIn.' + target) }}</el-dropdown-item
-              ></el-dropdown-menu
-            ></template
-          >
-        </el-dropdown>
-        <button
-          class="tool-button"
-          :disabled="!workspaceStore.currentPath"
-          :title="$t('openIn.terminal')"
-          @click="openCurrentWorkspaceIn('terminal')"
-        >
-          <el-icon><Terminal /></el-icon><span>{{ $t('openIn.terminal') }}</span>
-        </button>
-        <button
-          class="tool-button"
-          :title="$t('forkUI.appearance')"
-          @click="navigateTo('settings')"
-        >
-          <el-icon><Setting /></el-icon><span>{{ $t('forkUI.appearance') }}</span>
-        </button>
-        <LanguageSwitcher />
-      </div>
-    </header>
     <div class="repository-tabs">
       <button
         class="app-mark"
@@ -194,9 +91,90 @@
                 /></el-icon></button></el-dropdown-item></el-dropdown-menu></template
       ></el-dropdown>
     </div>
+    <header class="repository-toolbar">
+      <div class="toolbar-group toolbar-primary">
+        <button
+          class="tool-button icon-only"
+          :title="$t('sourceUI.toggleSidebar')"
+          :aria-label="$t('sourceUI.toggleSidebar')"
+          :aria-pressed="compactNavigation ? mobileSidebarOpen : showSidebar"
+          @click="toggleSidebar"
+        >
+          <el-icon><PanelLeft /></el-icon>
+        </button>
+        <button
+          class="tool-button"
+          :disabled="!workspaceStore.currentPath || workspaceStore.isLoading || workflow.busy"
+          :title="$t('menu.refresh')"
+          :aria-label="$t('menu.refresh')"
+          @click="refreshStatus"
+        >
+          <el-icon :class="{ 'is-loading': workspaceStore.isLoading }"><Refresh /></el-icon
+          ><span>{{ $t('menu.refresh') }}</span>
+        </button>
+        <button
+          class="tool-button"
+          :disabled="!workspaceStore.currentPath || workspaceStore.isLoading || workflow.busy"
+          :title="$t('menu.update')"
+          :aria-label="$t('menu.update')"
+          :aria-busy="updating"
+          @click="updateWorkspace()"
+        >
+          <el-icon :class="{ 'is-loading': updating }"><RefreshRight /></el-icon
+          ><span>{{ $t('menu.update') }}</span>
+        </button>
+      </div>
+      <button
+        class="repository-identity"
+        :disabled="!workspaceStore.currentPath"
+        :title="workflow.identity?.url"
+        @click="focusBranches"
+      >
+        <el-icon><GitBranch /></el-icon>
+        <span class="branch-label">{{ workflow.branchName || repositoryRevision }}</span>
+        <el-icon><ArrowDown /></el-icon>
+      </button>
+      <div class="toolbar-group toolbar-right">
+        <el-dropdown
+          trigger="click"
+          :disabled="!workspaceStore.currentPath"
+          @command="openCurrentWorkspaceIn"
+        >
+          <button
+            class="tool-button"
+            :disabled="!workspaceStore.currentPath"
+            :title="$t('menu.openIn')"
+            :aria-label="$t('menu.openIn')"
+          >
+            <el-icon><component :is="selectedOpenTargetIcon" /></el-icon
+            ><span>{{ $t('menu.openIn') }}</span
+            ><el-icon class="chevron"><ArrowDown /></el-icon>
+          </button>
+          <template #dropdown
+            ><el-dropdown-menu
+              ><el-dropdown-item
+                v-for="target in ['explorer', 'vscode', 'terminal'] as const"
+                :key="target"
+                :command="target"
+                ><el-icon><component :is="openTargetIcons[target]" /></el-icon
+                >{{ $t('openIn.' + target) }}</el-dropdown-item
+              ></el-dropdown-menu
+            ></template
+          >
+        </el-dropdown>
+        <button
+          class="tool-button"
+          :title="$t('menu.settings') + ' · Ctrl+,'"
+          :aria-label="$t('menu.settings')"
+          @click="navigateTo('settings')"
+        >
+          <el-icon><Setting /></el-icon><span>{{ $t('menu.settings') }}</span>
+        </button>
+      </div>
+    </header>
     <main
       class="source-body"
-      :class="{ 'sidebar-hidden': !showSidebar }"
+      :class="{ 'sidebar-hidden': !showSidebar, 'sidebar-mobile-open': mobileSidebarOpen }"
       :style="{ '--sidebar-width': `${sidebarWidth}px` }"
     >
       <aside v-show="showSidebar" class="source-sidebar">
@@ -206,35 +184,32 @@
               ? workspaceNameFromPath(workspaceStore.currentPath)
               : 'OrcaSVN'
           }}</strong>
-          <button
-            :title="$t('menu.settings')"
-            :aria-label="$t('menu.settings')"
-            @click="navigateTo('settings')"
-          >
-            <el-icon><Setting /></el-icon>
-          </button>
         </div>
         <nav class="repository-navigation" :aria-label="$t('workspace.quickActions')">
           <button
+            v-for="page in navigationPages"
+            :key="page.name"
             :class="{
-              active: routeName === 'workspace' || routeName === 'commit',
+              active:
+                routeName === page.name || (page.name === 'workspace' && routeName === 'commit'),
             }"
-            :title="$t('menu.workspace') + ' · Ctrl+2'"
-            :aria-label="$t('forkUI.localChanges')"
-            @click="navigateTo('workspace')"
+            :aria-current="routeName === page.name ? 'page' : undefined"
+            :title="$t(page.label) + ' · ' + page.shortcut"
+            :aria-label="$t(page.label)"
+            @click="navigateTo(page.name)"
           >
-            <el-icon><Layers /></el-icon><span>{{ $t('forkUI.localChanges') }}</span
-            ><b v-if="workspaceStore.statusList.length">{{
-              workspaceStore.statusList.length > 99 ? '99+' : workspaceStore.statusList.length
-            }}</b>
+            <el-icon><component :is="page.icon" /></el-icon><span>{{ $t(page.label) }}</span
+            ><b v-if="page.count">{{ page.count > 99 ? '99+' : page.count }}</b>
           </button>
           <button
-            :class="{ active: routeName === 'log' }"
-            :title="$t('menu.log') + ' · Ctrl+1'"
-            :aria-label="$t('forkUI.allCommits')"
-            @click="navigateTo('log')"
+            v-if="workspaceStore.conflictedCount"
+            :class="{ active: routeName === 'conflicts' }"
+            :title="$t('flow.conflicts')"
+            :aria-label="$t('flow.conflicts')"
+            @click="navigateTo('conflicts')"
           >
-            <el-icon><History /></el-icon><span>{{ $t('forkUI.allCommits') }}</span>
+            <el-icon><Warning /></el-icon><span>{{ $t('flow.conflicts') }}</span
+            ><b>{{ workspaceStore.conflictedCount }}</b>
           </button>
         </nav>
         <div class="repository-navigation-scroll">
@@ -275,6 +250,12 @@
           </button>
         </nav>
       </aside>
+      <button
+        v-if="compactNavigation && mobileSidebarOpen"
+        class="sidebar-backdrop"
+        :aria-label="$t('sourceUI.toggleSidebar')"
+        @click="mobileSidebarOpen = false"
+      ></button>
       <div
         v-show="showSidebar"
         class="sidebar-resizer"
@@ -327,6 +308,22 @@
       @close="tabMenu.visible = false"
     />
     <OperationDialog />
+    <UpdateProgressDialog />
+    <el-dialog
+      v-model="preferencesVisible"
+      :title="$t('menu.settings')"
+      width="720px"
+      class="preferences-dialog"
+      align-center
+      :close-on-click-modal="false"
+    >
+      <SettingsView v-if="preferencesVisible" />
+      <template #footer
+        ><el-button @click="preferencesVisible = false">{{
+          $t('common.close')
+        }}</el-button></template
+      >
+    </el-dialog>
     <div class="shell-bottom">
       <ActivityPanel />
       <footer class="fork-status">
@@ -357,7 +354,16 @@
 
 <script setup lang="ts">
 import orcaLogo from '../../src-tauri/icons/orca.svg'
-import { nextTick, reactive, computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import {
+  defineAsyncComponent,
+  nextTick,
+  reactive,
+  computed,
+  onMounted,
+  onUnmounted,
+  ref,
+  watch,
+} from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus/es/components/message/index'
@@ -372,9 +378,9 @@ import { persistRepositoryUi, repositoryUi, reorderTabs, tabsToClose } from '@/u
 import FileContextMenu from '@/components/FileContextMenu.vue'
 import BranchSidebar from '@/components/BranchSidebar.vue'
 import OperationDialog from '@/components/OperationDialog.vue'
+import UpdateProgressDialog from '@/components/UpdateProgressDialog.vue'
 import ActivityPanel from '@/components/ActivityPanel.vue'
 import { useWorkflowStore } from '@/stores/workflows'
-import LanguageSwitcher from '@/components/LanguageSwitcher.vue'
 import {
   GitBranch,
   Code,
@@ -382,6 +388,7 @@ import {
   Terminal,
 } from '@/components/icons/materialIcons'
 
+const SettingsView = defineAsyncComponent(() => import('@/views/SettingsView.vue'))
 const router = useRouter()
 const route = useRoute()
 const { t } = useI18n()
@@ -391,6 +398,23 @@ const workflow = useWorkflowStore()
 const { updateWorkspace, updating } = useSvnUpdate()
 const { loadWorkspace, openWorkspace, refreshStatus, refreshStatusIfStale, openStartupWorkspace } =
   useWorkspace()
+const preferencesVisible = ref(false)
+const compactNavigation = ref(false)
+const mobileSidebarOpen = ref(false)
+function updateNavigationSize() {
+  compactNavigation.value = window.matchMedia('(max-width: 700px)').matches
+  if (!compactNavigation.value) mobileSidebarOpen.value = false
+}
+const navigationPages = computed(() => [
+  {
+    name: 'workspace',
+    label: 'forkUI.localChanges',
+    icon: 'Layers',
+    shortcut: 'Ctrl+2',
+    count: workspaceStore.statusList.length,
+  },
+  { name: 'log', label: 'forkUI.allCommits', icon: 'History', shortcut: 'Ctrl+1', count: 0 },
+])
 const branchSidebar = ref<InstanceType<typeof BranchSidebar> | null>(null)
 const sidebarCollapsed = ref(localStorage.getItem('orcasvn-fork-sidebar-hidden') === 'true')
 const openTabs = ref<string[]>(
@@ -505,6 +529,12 @@ async function closeRepositoryTab(path: string) {
 }
 function handleShellKeydown(event: KeyboardEvent) {
   if (!(event.ctrlKey || event.metaKey) || event.altKey) return
+  if (event.key === ',') {
+    event.preventDefault()
+    preferencesVisible.value = true
+    return
+  }
+  if (preferencesVisible.value) return
   const pages = { '1': 'log', '2': 'workspace', '3': 'stash' } as Record<string, string>
   if (pages[event.key]) {
     event.preventDefault()
@@ -537,7 +567,8 @@ function startResize(event: PointerEvent) {
 function resizeSidebar(event: PointerEvent) {
   if (resizing) {
     const rail = event.currentTarget as HTMLElement
-    setSidebarWidth(event.clientX - (rail.parentElement?.getBoundingClientRect().left || 0))
+    const sidebar = rail.previousElementSibling as HTMLElement | null
+    if (sidebar) setSidebarWidth(event.clientX - sidebar.getBoundingClientRect().left)
   }
 }
 function finishResize() {
@@ -615,12 +646,21 @@ async function handleShellCommand(command: string) {
 }
 const routeName = computed(() => String(route.name || 'workspace'))
 const showSidebar = computed(() => !sidebarCollapsed.value)
+watch(routeName, () => {
+  mobileSidebarOpen.value = false
+})
 async function focusBranches() {
   sidebarCollapsed.value = false
+  mobileSidebarOpen.value = true
   await nextTick()
   await branchSidebar.value?.focus()
 }
 function toggleSidebar() {
+  if (compactNavigation.value) {
+    sidebarCollapsed.value = false
+    mobileSidebarOpen.value = !mobileSidebarOpen.value
+    return
+  }
   sidebarCollapsed.value = !sidebarCollapsed.value
 }
 function openStash(id: string) {
@@ -628,6 +668,10 @@ function openStash(id: string) {
   void router.push({ name: 'stash', query: { id } })
 }
 const navigateTo = (name: string) => {
+  if (name === 'settings') {
+    preferencesVisible.value = true
+    return
+  }
   saveRepositoryView()
   return router.push(name === 'commit' ? { name: 'workspace', query: { commit: '1' } } : { name })
 }
@@ -665,6 +709,8 @@ const handleFocus = () => {
   if (!workflow.busy) void refreshStatusIfStale(3000)
 }
 onMounted(async () => {
+  updateNavigationSize()
+  window.addEventListener('resize', updateNavigationSize)
   window.addEventListener('focus', handleFocus)
   window.addEventListener('beforeunload', saveRepositoryView)
   void checkForUpdates()
@@ -674,6 +720,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  window.removeEventListener('resize', updateNavigationSize)
   window.removeEventListener('focus', handleFocus)
   window.removeEventListener('beforeunload', saveRepositoryView)
   if (statusRefreshTimer !== undefined) {
@@ -700,10 +747,9 @@ onUnmounted(() => {
 }
 .repository-identity {
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 1px;
+  gap: 7px;
   min-width: 120px;
   max-width: 280px;
   width: 24%;
@@ -713,25 +759,38 @@ onUnmounted(() => {
   color: inherit;
   padding: 3px 12px;
 }
-.repository-identity strong {
-  display: block;
-  max-width: 100%;
+.repository-identity .branch-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: var(--app-font-size-sm);
-  font-weight: 500;
+}
+.repository-identity > .el-icon {
+  flex-shrink: 0;
+}
+.repository-toolbar > .toolbar-group {
+  flex: 1;
+}
+.sidebar-repository {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  height: 34px;
+  flex-shrink: 0;
+  padding: 0 10px;
+  font-size: var(--app-font-size-sm);
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+}
+.sidebar-repository strong {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.repository-identity > span {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  max-width: 100%;
+.sidebar-repository small {
   font-size: var(--app-font-size-2xs);
-  color: var(--md-sys-color-on-surface-variant);
-}
-.repository-toolbar > .toolbar-group {
-  flex: 1;
+  opacity: 0.65;
 }
 .repository-navigation {
   display: flex;
@@ -815,17 +874,9 @@ onUnmounted(() => {
 .sidebar-stashes .sidebar-stash {
   padding-left: 24px;
 }
-.sidebar-repository > button {
-  display: grid;
-  place-items: center;
-  border: 0;
-  background: none;
-  color: inherit;
-  padding: 4px;
-}
 .source-shell {
   display: grid;
-  grid-template-rows: 24px 44px 28px minmax(0, 1fr) auto;
+  grid-template-rows: 24px 32px 40px minmax(0, 1fr) auto;
   height: 100vh;
   overflow: hidden;
   background: var(--md-sys-color-surface);
@@ -979,6 +1030,7 @@ button:disabled {
   text-overflow: ellipsis;
 }
 .source-body {
+  position: relative;
   display: grid;
   grid-template-columns:
     min(var(--sidebar-width), calc(100vw - 484px))
@@ -996,26 +1048,6 @@ button:disabled {
   min-height: 0;
   overflow: hidden;
   background: var(--md-sys-color-surface-container-low);
-}
-.sidebar-repository {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  height: 34px;
-  flex-shrink: 0;
-  padding: 0 10px;
-  font-size: var(--app-font-size-sm);
-  border-bottom: 1px solid var(--md-sys-color-outline-variant);
-}
-.sidebar-repository strong {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.sidebar-repository small {
-  font-size: var(--app-font-size-2xs);
-  opacity: 0.65;
 }
 .sidebar-resizer {
   background: var(--md-sys-color-outline-variant);
@@ -1183,5 +1215,8 @@ summary {
   .current-branch {
     max-width: 140px;
   }
+}
+.sidebar-backdrop {
+  display: none;
 }
 </style>

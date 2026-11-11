@@ -293,3 +293,19 @@ test('mixed folder discard opens choices only for conflicts and retains other ch
   assert.equal(h.conflictRequest.value.otherCount, 1)
   h.stop()
 })
+
+
+test('context stash transfers exactly the selected paths and their workspace and branch', async () => {
+  const h = harness()
+  await h.openFileContextMenu(pointer, h.folder, false)
+  const targets = Array.from(h.fileContextMenu.targets)
+  const originWorkspace = h.fileContextMenu.workspace, originBranch = h.fileContextMenu.branch
+  await h.runContextAction('stash')
+  const route = h.calls.find(call => call[0] === 'route')[1]
+  assert.equal(route.name, 'stash')
+  assert.deepEqual(Array.from(route.query.files), targets)
+  assert.equal(route.query.stashWorkspace, originWorkspace)
+  assert.equal(route.query.stashBranch, originBranch)
+  assert.equal(targets.includes('Source/Game.cpp'), false)
+  h.stop()
+})
