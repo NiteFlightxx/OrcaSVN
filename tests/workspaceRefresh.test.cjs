@@ -34,7 +34,7 @@ function harness() {
   const mocks = {
     '@/stores/workspace': { useWorkspaceStore: () => store },
     '@/api/svn': {
-      svnStatus: (path, force = false) => { const request = { path, force, ...deferred() }; requests.push(request); return request.promise },
+      svnStatus: (path, force = false, includeInventory = true) => { const request = { path, force, includeInventory, ...deferred() }; requests.push(request); return request.promise },
       svnLocalRevision: () => { revisionReads.push(true); return localRevision() },
     },
     '@tauri-apps/plugin-dialog': {},
@@ -45,7 +45,7 @@ function harness() {
     '@/utils/statusPatch': (() => { const context = { exports: {} }; vm.runInNewContext(ts.transpileModule(fs.readFileSync('src/utils/statusPatch.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText, context); return context.exports })(),
     '@/utils/gitignoreWorker': { filterByGitignoreAsync: list => filter(list) },
     '@/utils/workspaceSnapshot': { getWorkspaceSnapshot: path => snapshots.get(path) || null, cacheWorkspaceSnapshot: (...args) => writes.push(args), invalidateWorkspaceSnapshot: path => { invalidations.push(path); snapshots.delete(path) } },
-    '@/utils/svnInfoCache': { getCachedSvnInfoMetadata: () => ({ url: 'file:///repo' }), invalidateSvnInfoMetadata() {}, cacheSvnInfoMetadata() {} },
+    '@/utils/svnInfoCache': { getCachedSvnInfoMetadata: () => ({ url: store.svnInfo?.url || 'file:///repo' }), invalidateSvnInfoMetadata() {}, cacheSvnInfoMetadata() {} },
   }
   const context = { exports: {}, queueMicrotask, require: name => { assert.ok(name in mocks, name); return mocks[name] } }
   const code = ts.transpileModule(fs.readFileSync('src/composables/useWorkspace.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText
@@ -534,4 +534,61 @@ test('a failed commit display filter starts recovery without changing the comple
   h.requests[0].resolve([])
   await new Promise(resolve => setImmediate(resolve))
   assert.equal(h.store.statusIsStale, false)
+})
+
+
+test('post-update verification runs once in the background without filesystem inventory or branch reloads', async () => {
+  const h = harness(), patch = prepareDiscard(h), workspace = h.useWorkspace()
+  const before = h.store.statusList
+  const verification = workspace.refreshStatusAfterUpdate('/a', patch.expectedUrl)
+  assert.equal(h.store.statusIsStale, true)
+  assert.equal(h.store.isLoading, false)
+  assert.equal(h.store.statusList, before)
+  assert.equal(h.store.epoch, 0)
+  assert.equal(h.store.historyEpoch, 1)
+  assert.deepEqual(h.historyInvalidations, [['/a', patch.expectedUrl]])
+  assert.equal(h.requests[0].includeInventory, false)
+  assert.equal(h.requests[0].force, true)
+  const joined = workspace.refreshStatusIfStale(60_000)
+  assert.equal(joined, verification)
+  assert.equal(h.requests.length, 1)
+  h.requests[0].resolve([changed('new.txt')])
+  assert.equal(await verification, true)
+  assert.equal(h.store.statusIsStale, false)
+  assert.deepEqual(Array.from(h.store.statusList, e => e.path), ['new.txt'])
+})
+
+test('post-update verification invalidates an older scan and rejects late replies after workspace switches', async () => {
+  const h = harness(), patch = prepareDiscard(h), workspace = h.useWorkspace()
+  const old = workspace.refreshStatusIfStale(60_000)
+  const fresh = workspace.refreshStatusAfterUpdate('/a', patch.expectedUrl)
+  h.requests[0].resolve([changed('obsolete.txt')])
+  assert.equal(await old, false)
+  h.store.currentPath = '/b'
+  h.requests[1].resolve([])
+  assert.equal(await fresh, false)
+  assert.equal(h.store.rawStatusList.length, 3)
+})
+
+test('update verification never queries another workspace or branch, but invalidates the original history', async () => {
+  for (const change of ['workspace', 'branch']) {
+    const h = harness(), patch = prepareDiscard(h)
+    if (change === 'workspace') h.store.currentPath = '/b'
+    else h.store.svnInfo.url = 'file:///repo/publish'
+    assert.equal(await h.useWorkspace().refreshStatusAfterUpdate('/a', patch.expectedUrl), false)
+    assert.equal(h.requests.length, 0)
+    assert.equal(h.store.historyEpoch, 0)
+    assert.deepEqual(h.historyInvalidations, [['/a', patch.expectedUrl]])
+  }
+})
+
+test('a failed post-update verification preserves the view and reports its error', async () => {
+  const h = harness(), patch = prepareDiscard(h), before = h.store.statusList
+  const pending = h.useWorkspace().refreshStatusAfterUpdate('/a', patch.expectedUrl)
+  h.requests[0].reject(new Error('verification failed'))
+  assert.equal(await pending, false)
+  assert.equal(h.store.statusList, before)
+  assert.equal(h.store.statusIsStale, true)
+  assert.equal(h.store.isLoading, false)
+  assert.match(h.store.error, /verification failed/)
 })

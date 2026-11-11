@@ -2806,3 +2806,172 @@ fn scoped_submission_cancelled_missing_addition_does_not_create_an_unrelated_com
     assert!(f.svn(Some(&f.dev), &["status"]).contains("text.txt"));
     assert!(!f.root().join("new.txt").exists());
 }
+
+#[test]
+fn native_update_returns_before_status_inventory_and_preserves_local_asset_edits() {
+    let f = Fixture::new();
+    let observer = f
+        .temp
+        .join("update-producer")
+        .to_string_lossy()
+        .into_owned();
+    f.svn(None, &["checkout", &format!("{}/dev", f.url), &observer]);
+    fs::write(PathBuf::from(&observer).join("text.txt"), "incoming text").unwrap();
+    f.svn(Some(&observer), &["commit", "-m", "incoming update"]);
+    fs::write(f.root().join("asset.uasset"), [0, 99, 255]).unwrap();
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    crate::svn::capture_commands(&f.dev);
+    let result = runtime
+        .block_on(crate::svn_update(f.dev.clone(), None))
+        .unwrap();
+    let commands = crate::svn::take_commands(&f.dev);
+    assert!(result.success && result.conflicts.is_empty(), "{result:?}");
+    assert_eq!(
+        commands.len(),
+        2,
+        "only identity and native update belong to the foreground: {commands:?}"
+    );
+    assert!(commands.iter().any(|a| a[0] == "info"));
+    assert!(commands.iter().any(|a| a[0] == "update"));
+    assert!(!commands
+        .iter()
+        .any(|a| a[0] == "status" || a[0] == "list" || a[0] == "log"));
+    assert_eq!(
+        fs::read_to_string(f.root().join("text.txt")).unwrap(),
+        "incoming text"
+    );
+    assert_eq!(
+        fs::read(f.root().join("asset.uasset")).unwrap(),
+        [0, 99, 255]
+    );
+    let status = runtime.block_on(crate::svn::status(&f.dev)).unwrap();
+    assert!(status
+        .iter()
+        .any(|s| s.path == "asset.uasset" && s.status_code == "modified"));
+}
+
+#[test]
+fn native_update_reports_text_and_binary_conflicts_without_a_foreground_status_scan() {
+    let f = Fixture::new();
+    let observer = f
+        .temp
+        .join("update-conflict-producer")
+        .to_string_lossy()
+        .into_owned();
+    f.svn(None, &["checkout", &format!("{}/dev", f.url), &observer]);
+    fs::write(PathBuf::from(&observer).join("text.txt"), "incoming text").unwrap();
+    fs::write(PathBuf::from(&observer).join("asset.uasset"), [0, 77, 255]).unwrap();
+    f.svn(Some(&observer), &["commit", "-m", "incoming conflict"]);
+    fs::write(f.root().join("text.txt"), "local text").unwrap();
+    fs::write(f.root().join("asset.uasset"), [0, 99, 255]).unwrap();
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    crate::svn::capture_commands(&f.dev);
+    let result = runtime
+        .block_on(crate::svn_update(f.dev.clone(), None))
+        .unwrap();
+    let commands = crate::svn::take_commands(&f.dev);
+    assert!(result.success, "{result:?}");
+    assert!(result.conflicts.contains(&"text.txt".into()));
+    assert!(result.conflicts.contains(&"asset.uasset".into()));
+    assert!(!commands.iter().any(|a| a[0] == "status"));
+    assert_eq!(
+        fs::read(f.root().join("asset.uasset")).unwrap(),
+        [0, 99, 255]
+    );
+    assert!(f.svn(Some(&f.dev), &["status"]).contains('C'));
+}
+
+#[test]
+#[ignore = "explicit synthetic update timing; never opens a user workspace or server"]
+fn benchmark_native_update_completion() {
+    use std::time::Instant;
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    for (tracked, untracked) in [(500, 500), (4000, 8000)] {
+        let f = Fixture::new();
+        fs::create_dir(f.root().join("tracked")).unwrap();
+        for i in 0..tracked {
+            fs::write(f.root().join(format!("tracked/{i}.txt")), vec![b'a'; 1024]).unwrap();
+        }
+        f.svn(Some(&f.dev), &["add", "tracked"]);
+        f.svn(Some(&f.dev), &["commit", "-m", "update benchmark seed"]);
+        fs::create_dir(f.root().join("untracked")).unwrap();
+        for i in 0..untracked {
+            fs::write(f.root().join(format!("untracked/{i}.txt")), "untracked").unwrap();
+        }
+        let mut direct = Vec::new();
+        let mut old = Vec::new();
+        let mut new = Vec::new();
+        let mut verification = Vec::new();
+        for _ in 0..3 {
+            let start = Instant::now();
+            f.svn(Some(&f.dev), &["update"]);
+            direct.push(start.elapsed().as_secs_f64() * 1000.);
+            let start = Instant::now();
+            runtime.block_on(async {
+                crate::svn_update(f.dev.clone(), None).await.unwrap();
+                let info_path = f.dev.clone();
+                let metadata = tokio::spawn(async move { crate::svn::info(&info_path).await });
+                let revision_path = f.dev.clone();
+                let revision =
+                    tokio::spawn(async move { crate::svn::local_revision(&revision_path).await });
+                crate::svn::cached_status(&f.dev, true, None).await.unwrap();
+                metadata.await.unwrap().unwrap();
+                revision.await.unwrap().unwrap();
+            });
+            old.push(start.elapsed().as_secs_f64() * 1000.);
+            let start = Instant::now();
+            runtime
+                .block_on(crate::svn_update(f.dev.clone(), None))
+                .unwrap();
+            new.push(start.elapsed().as_secs_f64() * 1000.);
+            let start = Instant::now();
+            runtime.block_on(crate::svn::status(&f.dev)).unwrap();
+            verification.push(start.elapsed().as_secs_f64() * 1000.);
+        }
+        let median = |v: &mut Vec<f64>| {
+            v.sort_by(f64::total_cmp);
+            v[1]
+        };
+        println!("SYNTHETIC_UPDATE tracked={tracked} untracked={untracked} cliMedianMs={:.3} oldForegroundMedianMs={:.3} newForegroundMedianMs={:.3} backgroundStatusMedianMs={:.3}",median(&mut direct),median(&mut old),median(&mut new),median(&mut verification));
+    }
+}
+
+#[test]
+#[cfg(windows)]
+fn native_update_failure_invalidates_cached_status_without_a_foreground_scan() {
+    use std::os::windows::fs::OpenOptionsExt;
+    let f = Fixture::new();
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    runtime
+        .block_on(crate::svn::cached_status(&f.dev, true, None))
+        .unwrap();
+    let observer = f
+        .temp
+        .join("update-lock-producer")
+        .to_string_lossy()
+        .into_owned();
+    f.svn(None, &["checkout", &format!("{}/dev", f.url), &observer]);
+    fs::write(PathBuf::from(&observer).join("text.txt"), "incoming text").unwrap();
+    fs::write(PathBuf::from(&observer).join("asset.uasset"), [0, 77, 255]).unwrap();
+    f.svn(Some(&observer), &["commit", "-m", "locked update"]);
+    let locked = fs::OpenOptions::new()
+        .read(true)
+        .share_mode(0)
+        .open(f.root().join("text.txt"))
+        .unwrap();
+    crate::svn::capture_commands(&f.dev);
+    let result = runtime.block_on(crate::svn_update(f.dev.clone(), None));
+    let commands = crate::svn::take_commands(&f.dev);
+    assert!(result.is_err(), "{result:?}");
+    assert!(!commands.iter().any(|a| a[0] == "status"));
+    drop(locked);
+    crate::svn::capture_commands(&f.dev);
+    runtime
+        .block_on(crate::svn::cached_status(&f.dev, false, None))
+        .unwrap();
+    let commands = crate::svn::take_commands(&f.dev);
+    assert!(
+        commands.iter().any(|a| a[0] == "status"),
+        "the invalidated baseline must not be reused: {commands:?}"
+    );
+}

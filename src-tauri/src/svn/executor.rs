@@ -27,7 +27,7 @@ pub async fn execute_svn(args: &[&str], path: Option<&str>) -> Result<String, Sv
     #[cfg(test)]
     if let Some(path) = path {
         let mut capture = TEST_COMMANDS.lock().unwrap();
-        if let Some(commands) = capture.get_mut(path) {
+        if let Some(commands) = capture.get_mut(&test_root_key(path)) {
             commands.push(args.iter().map(|s| s.to_string()).collect());
         }
     }
@@ -60,18 +60,31 @@ pub(crate) fn after_test_commit(root: &str, action: impl FnOnce() + Send + 'stat
 static TEST_COMMANDS: std::sync::Mutex<std::collections::BTreeMap<String, Vec<Vec<String>>>> =
     std::sync::Mutex::new(std::collections::BTreeMap::new());
 #[cfg(test)]
+fn test_root_key(root: &str) -> String {
+    #[cfg(windows)]
+    {
+        crate::strip_verbatim_prefix(root)
+            .replace('\\', "/")
+            .to_lowercase()
+    }
+    #[cfg(not(windows))]
+    {
+        root.to_string()
+    }
+}
+#[cfg(test)]
 pub(crate) fn capture_commands(root: &str) {
     TEST_COMMANDS
         .lock()
         .unwrap()
-        .insert(root.into(), Vec::new());
+        .insert(test_root_key(root), Vec::new());
 }
 #[cfg(test)]
 pub(crate) fn take_commands(root: &str) -> Vec<Vec<String>> {
     TEST_COMMANDS
         .lock()
         .unwrap()
-        .remove(root)
+        .remove(&test_root_key(root))
         .unwrap_or_default()
 }
 

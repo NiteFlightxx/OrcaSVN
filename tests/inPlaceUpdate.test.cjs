@@ -16,7 +16,7 @@ function deferred() {
 function harness() {
   const command = deferred(), refresh = deferred(), calls = [], messages = []
   const workspace = vue.reactive({ currentPath: '/synthetic/update', epoch: 0, isLoading: false,
-    error: null, setError(error) { this.error = error } })
+    svnInfo: {url:'file:///synthetic/dev'}, statusIsStale: false, error: null, setError(error) { this.error = error } })
   const storage = new Map()
   const mocks = {
     vue: { ...vue, watch() {} },
@@ -27,9 +27,16 @@ function harness() {
     './workspace': { useWorkspaceStore: () => workspace },
     '@/stores/workspace': { useWorkspaceStore: () => workspace },
     '@/api/workflows': { repositoryIdentity: async () => { throw new Error('fixture: no remote') } },
-    '@/composables/useWorkspace': { useWorkspace: () => ({ refreshStatusAfterMutation: async () => {
-      calls.push(['refresh', workspace.currentPath])
-      return refresh.promise
+    '@/composables/useWorkspace': { useWorkspace: () => ({ refreshStatusAfterMutation: async () => { throw new Error('Update must not use the generic foreground refresh') },
+    refreshStatusAfterUpdate: (path, url) => {
+      if (workspace.currentPath !== path || workspace.svnInfo.url !== url) return Promise.resolve(false)
+      calls.push(['refresh', path])
+      workspace.statusIsStale = true
+      return refresh.promise.then(fresh => {
+        if (fresh) workspace.statusIsStale = false
+        else workspace.setError('synthetic refresh failed')
+        return fresh
+      })
     } }) },
     'vue-i18n': { useI18n: () => ({ t: key => key }) },
     'element-plus/es/components/message/index': { ElMessage: {
@@ -53,17 +60,21 @@ function harness() {
   return { ...createAction(), createAction, workspace, flow, command, refresh, calls, messages }
 }
 
-test('in-place update refreshes once and records output without importing navigation', async () => {
+test('in-place update completes without awaiting background verification and records output without navigation', async () => {
   const h = harness()
   const pending = h.updateWorkspace()
   assert.equal(h.updating.value, true)
   assert.equal(h.flow.busy, true)
   h.command.resolve({ output: 'Updated to revision 2.', conflicts: [] })
   await new Promise(resolve => setImmediate(resolve))
-  assert.equal(h.flow.phase, 'refreshing')
-  assert.equal(h.flow.busy, true)
-  h.refresh.resolve(true)
   await pending
+  assert.equal(h.flow.phase, 'completed')
+  assert.equal(h.flow.busy, false)
+  assert.equal(h.workspace.statusIsStale, true)
+  assert.equal(h.messages[0][0], 'success')
+  h.refresh.resolve(true)
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(h.workspace.statusIsStale, false)
   assert.deepEqual(h.calls, [['update', '/synthetic/update'], ['refresh', '/synthetic/update']])
   assert.equal(h.flow.activities[0].output, 'Updated to revision 2.')
   assert.equal(h.flow.phase, 'completed')
@@ -117,15 +128,19 @@ test('partial update failure still refreshes and releases operation gates', asyn
   assert.deepEqual(h.messages, [])
 })
 
-test('failed local refresh stays visible and cannot produce a success toast or a stuck gate', async () => {
+test('failed background verification cannot change a successful update into a command failure or a stuck gate', async () => {
   const h = harness(), pending = h.updateWorkspace()
   h.command.resolve({ conflicts: [] })
   h.refresh.resolve(false)
   await pending
-  assert.equal(h.flow.refreshWarning, true)
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(h.flow.refreshWarning, false)
+  assert.equal(h.workspace.statusIsStale, true)
+  assert.match(h.workspace.error, /synthetic refresh failed/)
   assert.equal(h.flow.busy, false)
   assert.equal(h.updating.value, false)
-  assert.deepEqual(h.messages, [])
+  assert.equal(h.messages[0][0], 'success')
+  assert.equal(h.flow.activities[0].failed, false)
 })
 
 test('late completion cannot refresh or notify a different repository', async () => {
@@ -136,4 +151,44 @@ test('late completion cannot refresh or notify a different repository', async ()
   assert.deepEqual(h.calls, [['update', '/synthetic/update']])
   assert.deepEqual(h.messages, [])
   assert.equal(h.flow.busy, false)
+})
+
+
+test('late completion in a different branch cannot notify or verify that branch', async () => {
+  const h = harness(), pending = h.updateWorkspace()
+  h.workspace.svnInfo.url = 'file:///synthetic/publish'
+  h.command.resolve({conflicts:[]})
+  await pending
+  assert.deepEqual(h.calls, [['update', '/synthetic/update']])
+  assert.deepEqual(h.messages, [])
+})
+
+
+test('background failure does not wait or mask the native update error', async () => {
+  const h = harness(), pending = h.updateWorkspace()
+  h.command.reject(new Error('native update failed'))
+  await pending
+  assert.match(h.workspace.error, /native update failed/)
+  assert.equal(h.flow.busy, false)
+  assert.equal(h.updating.value, false)
+  assert.deepEqual(h.messages, [])
+  h.refresh.resolve(false)
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(h.flow.phase, 'failed')
+  assert.match(h.flow.activities[0].output, /native update failed/)
+})
+
+test('status API requests inventory for regular polls and bypasses it only when explicitly requested', async () => {
+  const calls = []
+  const context = { exports: {}, require: name => {
+    assert.equal(name, '@tauri-apps/api/core')
+    return { invoke: async (...args) => {calls.push(args); return []} }
+  } }
+  vm.runInNewContext(ts.transpileModule(fs.readFileSync('src/api/svn.ts','utf8'), {compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText, context)
+  await context.exports.svnStatus('/synthetic/update')
+  await context.exports.svnStatus('/synthetic/update',true,false)
+  assert.equal(calls[0][0], 'svn_status')
+  assert.equal(calls[0][1].includeInventory,true)
+  assert.equal(calls[1][1].includeInventory,false)
+  assert.equal(calls[1][1].force,true)
 })

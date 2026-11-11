@@ -244,9 +244,7 @@ const loadUpdateState = async (force = false, background = false, localStateFres
   try {
     const refreshed = localStateFresh
       ? !workspaceStore.statusIsStale
-      : await (force
-          ? refreshStatusAfterMutation()
-          : refreshStatusIfStale(updateStateIntervalMs))
+      : await (force ? refreshStatusAfterMutation() : refreshStatusIfStale(updateStateIntervalMs))
     // Without a known local revision, every remote commit would look incoming.
     if (!isCurrent() || !refreshed || !workspaceStore.svnInfo) return
     const info = await svnRemoteInfo(requestedPath)
@@ -292,14 +290,27 @@ const loadUpdateState = async (force = false, background = false, localStateFres
 const doUpdate = async () => {
   if (!workspaceStore.currentPath || operationFlow.busy) return
   const requestedPath = workspaceStore.currentPath
+  // Supersede a pending details poll without retaining its loading indicator
+  // when the later background verification fails or the page is deactivated.
+  updateRequestGeneration += 1
+  loading.value = false
   updateConflicts.value = []
   const result = await updateWorkspace()
   if (!result || workspaceStore.currentPath !== requestedPath) return
   updateConflicts.value = result.conflicts ?? []
   updateStateCache.clear()
-  // The shared runner already refreshed local status. Only the active legacy
-  // update page needs remote revision details; toolbar updates never fetch them.
-  await loadUpdateState(true, false, true)
+  // Join the shared background verification; never start another full scan or
+  // make command completion wait for remote revision/history queries.
+  const generation = ++updateRequestGeneration
+  void refreshStatusIfStale(updateStateIntervalMs).then((fresh) => {
+    if (
+      fresh &&
+      isActive &&
+      generation === updateRequestGeneration &&
+      workspaceStore.currentPath === requestedPath
+    )
+      void loadUpdateState(true, true, true)
+  })
 }
 
 const viewDiff = (path: string) => {

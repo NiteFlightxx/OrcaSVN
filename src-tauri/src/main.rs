@@ -623,9 +623,22 @@ async fn svn_checkout(
 
 #[tauri::command]
 async fn svn_update(path: String, revision: Option<u64>) -> Result<CommandResult, String> {
+    let started = std::time::Instant::now();
     let _writer = workflows::acquire(&path).await?;
-    svn::update(&path, revision)
-        .await
+    let check_ms = started.elapsed().as_secs_f64() * 1000.;
+    let started = std::time::Instant::now();
+    let result = svn::update(&path, revision).await;
+    let update_ms = started.elapsed().as_secs_f64() * 1000.;
+    // A failed update can already have changed files. Never let an older cached
+    // inventory satisfy a later poll, and do not wait for its scan mutex here.
+    let _ = svn::invalidate_status(Path::new(&path));
+    tracing::info!(
+        check_ms,
+        update_ms,
+        success = result.is_ok(),
+        "SVN update command finished"
+    );
+    result
         .map(|output| {
             let conflicts = svn::parse_update_conflicts(&output);
             CommandResult {
@@ -673,7 +686,13 @@ async fn svn_status(
     app: tauri::AppHandle,
     path: String,
     force: Option<bool>,
+    include_inventory: Option<bool>,
 ) -> Result<Vec<SvnStatus>, String> {
+    if include_inventory == Some(false) {
+        // Post-update verification needs authoritative SVN state, without
+        // rebuilding the filesystem inventory used by regular background polls.
+        return svn::status(&path).await.map_err(|e| e.to_string());
+    }
     svn::cached_status(
         &path,
         force.unwrap_or(false),

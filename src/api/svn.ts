@@ -39,8 +39,8 @@ export async function svnCommit(
   return invoke<CommitResult>('svn_commit', { path, message, files, autoDeleteMissing, expectedUrl })
 }
 
-export async function svnStatus(path: string, force = false): Promise<SvnStatus[]> {
-  return invoke<SvnStatus[]>('svn_status', { path, force })
+export async function svnStatus(path: string, force = false, includeInventory = true): Promise<SvnStatus[]> {
+  return invoke<SvnStatus[]>('svn_status', { path, force, includeInventory })
 }
 
 export async function svnLog(

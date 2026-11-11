@@ -218,7 +218,7 @@ export function useWorkspace() {
     return loadWorkspace(path)
   }
 
-  async function performRefreshStatus(force = false, background = false): Promise<boolean> {
+  async function performRefreshStatus(force = false, background = false, includeInventory = true): Promise<boolean> {
     if (!workspaceStore.currentPath) return false
 
     const generation = ++workspaceRequestGeneration
@@ -232,7 +232,7 @@ export function useWorkspace() {
       clearStatusError()
     }
     try {
-      const statusRequest = svnStatus(path, force)
+      const statusRequest = svnStatus(path, force, includeInventory)
       const infoRequest = requestWorkspaceInfo(path, isCurrent)
       const gitignoreRequest = loadGitignoreIfNeeded(path, workspaceStore, isCurrent)
       const status = await statusRequest
@@ -292,6 +292,19 @@ export function useWorkspace() {
       workspaceStore.setStatusIsStale(true)
     }
     return path ? trackRequest(path, () => performRefreshStatus(true), true) : Promise.resolve(false)
+  }
+
+  function refreshStatusAfterUpdate(path: string, url: string): Promise<boolean> {
+    invalidateWorkspaceSnapshot(path)
+    invalidateSvnInfoMetadata(path)
+    if (url) invalidateHistoryForSource(path, url)
+    if (path !== workspaceStore.currentPath || (url && url !== workspaceStore.svnInfo?.url)) return Promise.resolve(false)
+    // Update does not change branch or stash configuration. Only history/BASE
+    // consumers need invalidation; do not query remote branch directories here.
+    workspaceStore.advanceHistoryEpoch()
+    workspaceStore.setStatusIsStale(true)
+    workspaceStore.setLoading(false)
+    return trackRequest(path, () => performRefreshStatus(true, true, false), true, true)
   }
 
   function refreshStatusAfterDiscard(patch: DiscardStatusPatch | null): Promise<boolean> {
@@ -395,5 +408,5 @@ export function useWorkspace() {
     if (launchPath && launchError && !workspaceStore.error) reportStatusError(launchPath, launchError)
   }
 
-  return { loadWorkspace, openWorkspace, restoreLastWorkspace, openStartupWorkspace, refreshStatus, refreshStatusAfterMutation, refreshStatusAfterDiscard, applyCommitResult, refreshStatusIfStale }
+  return { loadWorkspace, openWorkspace, restoreLastWorkspace, openStartupWorkspace, refreshStatus, refreshStatusAfterMutation, refreshStatusAfterUpdate, refreshStatusAfterDiscard, applyCommitResult, refreshStatusIfStale }
 }

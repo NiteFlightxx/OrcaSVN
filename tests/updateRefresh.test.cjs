@@ -13,15 +13,16 @@ function deferred() {
 
 function harness() {
   const update = deferred(), refresh = deferred(), calls = [], lifecycle = {}, timers = new Set()
+  let sharedVerification = null
   const store = {
-    currentPath: '/wc', svnInfo: { revision: 1 }, statusList: [],
+    currentPath: '/wc', svnInfo: { revision: 1 }, statusList: [], statusIsStale: false,
     setError(error) { this.error = error },
   }
   const mocks = {
-    '@/stores/workflows': { useWorkflowStore: () => ({ busy: false, perform: async (_title, operation) => {
+    '@/stores/workflows': { useWorkflowStore: () => ({ busy: false, perform: async (_title, operation, _mutation, refreshLocal = true) => {
       try { return await operation() }
       finally {
-        if (store.currentPath === '/wc')
+        if (refreshLocal && store.currentPath === '/wc')
           await mocks['@/composables/useWorkspace'].useWorkspace().refreshStatusAfterMutation()
       }
     } }) },
@@ -39,8 +40,13 @@ function harness() {
     } },
     '@/stores/workspace': { useWorkspaceStore: () => store },
     '@/composables/useWorkspace': { useWorkspace: () => ({
-      refreshStatusIfStale: async () => false,
-      refreshStatusAfterMutation: async () => {
+      refreshStatusIfStale: () => sharedVerification || Promise.resolve(false),
+      refreshStatusAfterMutation: async () => { throw new Error('Unexpected duplicate foreground scan') },
+      refreshStatusAfterUpdate: (path) => {
+        if (path !== store.currentPath) return Promise.resolve(false)
+        if (sharedVerification) return sharedVerification
+        store.statusIsStale = true
+        sharedVerification = (async () => {
         calls.push('refresh')
         await refresh.promise
         if (store.refreshFails) {
@@ -48,8 +54,11 @@ function harness() {
           return false
         }
         store.svnInfo = store.revisionUnavailable ? null : { revision: 2 }
+        store.statusIsStale = false
         store.statusList = store.statusHidesConflicts ? [] : [{ path: 'conflict.txt', status_code: 'conflicted' }]
         return true
+        })()
+        return sharedVerification
       },
     }) },
     '@/composables/useSettings': { useSettings: () => ({ settings: {} }) },
@@ -63,7 +72,7 @@ function harness() {
   vm.runInNewContext(ts.transpileModule(fs.readFileSync('src/composables/useSvnUpdate.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, updateModule)
   mocks['@/composables/useSvnUpdate'] = updateModule.exports
   const script = fs.readFileSync('src/views/UpdateView.vue', 'utf8').match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1]
-  const code = ts.transpileModule(script + '\nexports.actions = { doUpdate, updating, visibleConflicts };', { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText
+  const code = ts.transpileModule(script + '\nexports.actions = { doUpdate, updating, visibleConflicts, loading };', { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText
   const context = {
     exports: {}, require: name => { assert.ok(name in mocks, name); return mocks[name] },
     window: {
@@ -84,6 +93,7 @@ test('leaving during an update still refreshes the shared revision and conflict 
   h.update.resolve()
   h.refresh.resolve()
   await pending
+  await new Promise(resolve => setImmediate(resolve))
   assert.deepEqual(h.calls.filter(call => !call.startsWith('toast:')), ['update', 'refresh'])
   assert.equal(h.store.svnInfo.revision, 2)
   assert.equal(h.store.statusList[0].status_code, 'conflicted')
@@ -96,10 +106,11 @@ test('deactivation during the post-update refresh suppresses remote requests', a
   const pending = h.doUpdate()
   h.update.resolve()
   for (let i = 0; i < 10; i++) await Promise.resolve()
-  assert.deepEqual(h.calls, ['update', 'refresh'])
+  assert.deepEqual(h.calls.filter(call => !call.startsWith('toast:')), ['update', 'refresh'])
   h.lifecycle.deactivate()
   h.refresh.resolve()
   await pending
+  await new Promise(resolve => setImmediate(resolve))
   assert.deepEqual(h.calls.filter(call => !call.startsWith('toast:')), ['update', 'refresh'])
   assert.equal(h.store.svnInfo.revision, 2)
 })
@@ -111,6 +122,7 @@ test('an active update refreshes local state once before querying the remote rev
   h.update.resolve()
   h.refresh.resolve()
   await pending
+  await new Promise(resolve => setImmediate(resolve))
   assert.deepEqual(h.calls.filter(call => !call.startsWith('toast:')), ['update', 'refresh', 'remote'])
 })
 
@@ -121,6 +133,7 @@ test('completion in a different workspace does not refresh that workspace', asyn
   h.store.currentPath = '/other'
   h.update.resolve()
   await pending
+  await new Promise(resolve => setImmediate(resolve))
   assert.deepEqual(h.calls, ['update'])
 })
 
@@ -132,6 +145,7 @@ test('an unknown local revision does not treat remote commits as incoming', asyn
   h.update.resolve()
   h.refresh.resolve()
   await pending
+  await new Promise(resolve => setImmediate(resolve))
   assert.deepEqual(h.calls.filter(call => !call.startsWith('toast:')), ['update', 'refresh'])
 })
 
@@ -144,6 +158,7 @@ test('a conflict reported by svn update is shown even when the refresh fails', a
   h.update.resolve()
   h.refresh.resolve()
   await pending
+  await new Promise(resolve => setImmediate(resolve))
   assert.ok(h.calls.includes('toast:warning'))
   assert.ok(!h.calls.includes('toast:success'))
   assert.deepEqual([...h.visibleConflicts.value], ['src/x'])
@@ -158,6 +173,26 @@ test('a reported conflict warns even when status does not list the path', async 
   h.update.resolve()
   h.refresh.resolve()
   await pending
+  await new Promise(resolve => setImmediate(resolve))
   assert.ok(h.calls.includes('toast:warning'))
   assert.ok(!h.calls.includes('toast:success'))
+})
+
+
+test('the update page returns while verification is still pending and stays usable if it fails', async () => {
+  const h = harness()
+  h.lifecycle.activate()
+  h.loading.value = true
+  h.store.refreshFails = true
+  const pending = h.doUpdate()
+  h.update.resolve()
+  await pending
+  assert.equal(h.updating.value, false)
+  assert.equal(h.loading.value, false)
+  assert.ok(h.calls.includes('toast:success'))
+  assert.equal(h.calls.includes('remote'), false)
+  h.refresh.resolve()
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(h.loading.value, false)
+  assert.equal(h.store.statusIsStale, true)
 })
