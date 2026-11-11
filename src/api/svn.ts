@@ -25,8 +25,8 @@ export async function svnCheckout(
   return invoke<CommandResult>('svn_checkout', { url, path, revision })
 }
 
-export async function svnUpdate(path: string, revision?: number): Promise<CommandResult> {
-  return invoke<CommandResult>('svn_update', { path, revision })
+export async function svnUpdate(path: string, revision?: number, expectedUrl?: string): Promise<CommandResult> {
+  return invoke<CommandResult>('svn_update', { path, revision, expectedUrl })
 }
 
 export async function svnCommit(

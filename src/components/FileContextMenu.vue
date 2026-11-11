@@ -5,7 +5,11 @@
       class="file-context-menu"
       role="menu"
       data-path-menu
-      :style="{ left: `${position.x}px`, top: `${position.y}px` }"
+      :style="{
+        left: `${position.x}px`,
+        top: `${position.y}px`,
+        width: props.width ? `${props.width}px` : undefined,
+      }"
       @click.stop
       @contextmenu.prevent.stop
       @keydown="navigate"
@@ -45,7 +49,8 @@
               @click="$emit('action', child.id)"
             >
               <el-icon><component :is="child.icon || menuIcon(child.id)" /></el-icon
-              ><span>{{ child.label }}</span>
+              ><span>{{ child.label }}</span
+              ><kbd v-if="child.shortcut">{{ child.shortcut }}</kbd>
             </button>
           </div>
         </div>
@@ -104,7 +109,14 @@ function menuIcon(id: string) {
   }
   return icons[id] || 'Document'
 }
-const props = defineProps<{ x: number; y: number; items: FileMenuItem[]; notice?: string }>()
+const props = defineProps<{
+  x: number
+  y: number
+  items: FileMenuItem[]
+  notice?: string
+  width?: number
+  shortcuts?: { copy: string; copyAlt: string; remove: string }
+}>()
 const emit = defineEmits<{ action: [id: string]; close: [] }>()
 const element = ref<HTMLElement | null>(null)
 const previousFocus =
@@ -217,10 +229,24 @@ function navigate(event: KeyboardEvent) {
   ) {
     event.preventDefault()
     event.stopPropagation()
-    emit('action', event.altKey || event.shiftKey ? 'copy-absolute' : 'copy-relative')
+    const action =
+      event.altKey || event.shiftKey
+        ? (props.shortcuts?.copyAlt ?? 'copy-absolute')
+        : (props.shortcuts?.copy ?? 'copy-relative')
+    if (action) emit('action', action)
+  } else if ((event.ctrlKey || event.metaKey) && event.shiftKey) {
+    const item = props.items.find(
+      (item) => !item.disabled && item.shortcut === `Ctrl+Shift+${event.key.toUpperCase()}`
+    )
+    if (item) {
+      event.preventDefault()
+      event.stopPropagation()
+      emit('action', item.id)
+    }
   } else if (event.key === 'Delete') {
     event.preventDefault()
-    emit('action', 'discard')
+    const action = props.shortcuts?.remove ?? 'discard'
+    if (action) emit('action', action)
   }
 }
 </script>
@@ -250,6 +276,7 @@ function navigate(event: KeyboardEvent) {
   position: fixed;
   z-index: 3500;
   width: min(290px, calc(100vw - 16px));
+  max-width: calc(100vw - 16px);
   max-height: calc(100vh - 16px);
   overflow: auto;
   padding: 4px;
@@ -262,7 +289,8 @@ function navigate(event: KeyboardEvent) {
 }
 .context-menu-item,
 .file-menu-submenu > button {
-  display: flex;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
@@ -278,6 +306,13 @@ function navigate(event: KeyboardEvent) {
   text-align: left;
   cursor: pointer;
   box-sizing: border-box;
+}
+.context-menu-item > span,
+.file-menu-submenu > button > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .context-menu-item:hover:not(:disabled),
 .context-menu-item:focus-visible,

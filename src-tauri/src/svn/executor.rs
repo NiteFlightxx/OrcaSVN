@@ -134,6 +134,48 @@ pub async fn configure_svn_executable(executable: Option<&str>) -> Result<String
     Ok(version.trim().to_string())
 }
 
+/// svnmucc's cp fails atomically if DST exists; svn copy may instead nest SRC
+/// beneath it when another client creates DST after a preflight check.
+pub(crate) async fn copy_repository(
+    path: &str,
+    source: &str,
+    revision: u64,
+    destination: &str,
+    message: &str,
+) -> Result<String, SvnError> {
+    let svn = current_svn_executable()?;
+    let name = if cfg!(windows) {
+        "svnmucc.exe"
+    } else {
+        "svnmucc"
+    };
+    let executable = svn
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .map(|p| p.join(name))
+        .unwrap_or_else(|| PathBuf::from(name));
+    execute_svn_inner(
+        executable,
+        &[
+            "-m",
+            message,
+            "cp",
+            &revision.to_string(),
+            source,
+            destination,
+        ],
+        Some(path),
+    )
+    .await
+    .map_err(|error| match error {
+        SvnError::SvnNotFound => SvnError::CommandFailed(
+            "Atomic repository copy requires svnmucc alongside the configured SVN executable"
+                .into(),
+        ),
+        other => other,
+    })
+}
+
 fn normalize_svn_executable(executable: Option<&str>) -> PathBuf {
     executable
         .map(str::trim)

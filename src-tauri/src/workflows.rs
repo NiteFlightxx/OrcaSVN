@@ -527,6 +527,8 @@ pub struct Plan {
     pub source: String,
     pub source_revision: u64,
     pub revision: u64,
+    #[serde(default)]
+    pub revisions: Vec<u64>,
     pub fingerprint: String,
     pub preview: String,
     pub created: i64,
@@ -626,11 +628,135 @@ pub async fn repository_preview(
         source: source_info.url,
         source_revision: source_info.revision,
         revision: revision.unwrap_or(0),
+        revisions: revision.into_iter().collect(),
         fingerprint,
         preview,
         created: chrono::Utc::now().timestamp(),
         local_changes,
     })
+}
+
+/// History selections are explicit revision sets, never an inferred range.
+#[tauri::command]
+pub async fn repository_history_merge_preview(
+    path: String,
+    source: String,
+    revisions: Vec<u64>,
+    reverse: bool,
+    expected_url: String,
+) -> Result<Plan> {
+    let _guard = acquire(&path).await?;
+    let info = identity(&path).await?;
+    if info.url != expected_url
+        || fs::canonicalize(&path).map_err(|e| e.to_string())?
+            != fs::canonicalize(&info.root).map_err(|e| e.to_string())?
+    {
+        return Err("Working-copy source changed, or open its root before merging".into());
+    }
+    let mut revisions = revisions;
+    revisions.sort_unstable();
+    revisions.dedup();
+    if revisions.is_empty() || revisions.len() > 128 || revisions[0] == 0 {
+        return Err("Select 1 to 128 valid revisions".into());
+    }
+    let fingerprint = clean_fingerprint(&info, true).await?;
+    let (source_info, uuid) = remote(&info.root, &source).await?;
+    if uuid != info.uuid {
+        return Err("Different repository UUID".into());
+    }
+    let same = source_info.url.trim_end_matches('/') == info.url.trim_end_matches('/');
+    if reverse != same {
+        return Err(
+            "Reverse merge requires the current branch; cherry-pick requires another source branch"
+                .into(),
+        );
+    }
+    if *revisions.last().unwrap() > source_info.revision
+        || (reverse && *revisions.last().unwrap() > info.revision)
+    {
+        return Err("Update and verify the selected revisions first".into());
+    }
+    let peg = format!("{}@{}", source_info.url, source_info.revision);
+    if !reverse {
+        for revision in &revisions {
+            let eligible = run(
+                &info.root,
+                &[
+                    "mergeinfo",
+                    "--show-revs",
+                    "eligible",
+                    "--depth",
+                    "infinity",
+                    "-r",
+                    &revision.to_string(),
+                    "--",
+                    &peg,
+                    ".",
+                ],
+            )
+            .await?;
+            if eligible.contains('*')
+                || !eligible.lines().any(|l| l.trim() == format!("r{revision}"))
+            {
+                return Err(format!(
+                    "r{revision} is already merged, ineligible, or partially merged"
+                ));
+            }
+        }
+    }
+    let changes = merge_changes(&revisions, reverse);
+    let preview = run(
+        &info.root,
+        &[
+            "merge",
+            "--dry-run",
+            "--accept",
+            "postpone",
+            "-c",
+            &changes,
+            "--",
+            &peg,
+            ".",
+        ],
+    )
+    .await?;
+    save_plan(Plan {
+        id: id(),
+        kind: if reverse {
+            "reverse-merge"
+        } else {
+            "cherry-pick"
+        }
+        .into(),
+        identity: info,
+        source: source_info.url,
+        source_revision: source_info.revision,
+        revision: revisions[0],
+        revisions,
+        fingerprint,
+        preview,
+        created: chrono::Utc::now().timestamp(),
+        local_changes: Vec::new(),
+    })
+}
+fn merge_changes(revisions: &[u64], reverse: bool) -> String {
+    let mut revisions = revisions.to_vec();
+    revisions.sort_unstable();
+    revisions.dedup();
+    if reverse {
+        revisions.reverse();
+    }
+    revisions
+        .iter()
+        .map(|r| {
+            if reverse {
+                format!("-{r}")
+            } else {
+                r.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(",")
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -755,6 +881,12 @@ pub async fn execute_plan(data: &Path, plan_id: &str) -> Result<Outcome> {
     )?;
     progress(&plan.kind, &plan.source, 0, 0);
     let peg = format!("{}@{}", plan.source, plan.source_revision);
+    let revisions = if plan.revisions.is_empty() {
+        vec![plan.revision]
+    } else {
+        plan.revisions.clone()
+    };
+    let changes = merge_changes(&revisions, plan.kind == "reverse-merge");
     let result = if plan.kind == "switch" {
         run(
             &now.root,
@@ -775,14 +907,7 @@ pub async fn execute_plan(data: &Path, plan_id: &str) -> Result<Outcome> {
         run(
             &now.root,
             &[
-                "merge",
-                "--accept",
-                "postpone",
-                "-c",
-                &plan.revision.to_string(),
-                "--",
-                &peg,
-                ".",
+                "merge", "--accept", "postpone", "-c", &changes, "--", &peg, ".",
             ],
         )
         .await

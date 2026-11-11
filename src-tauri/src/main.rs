@@ -4,6 +4,7 @@ mod asset_stash;
 mod discard;
 mod external_tools;
 mod file_actions;
+mod history_actions;
 mod svn;
 #[cfg(test)]
 mod workflow_tests;
@@ -622,9 +623,18 @@ async fn svn_checkout(
 }
 
 #[tauri::command]
-async fn svn_update(path: String, revision: Option<u64>) -> Result<CommandResult, String> {
+async fn svn_update(
+    path: String,
+    revision: Option<u64>,
+    expected_url: Option<String>,
+) -> Result<CommandResult, String> {
     let started = std::time::Instant::now();
     let _writer = workflows::acquire(&path).await?;
+    if let Some(expected) = expected_url {
+        if svn::info(&path).await.map_err(|e| e.to_string())?.url != expected {
+            return Err("Working-copy source changed; review the revision again".into());
+        }
+    }
     let check_ms = started.elapsed().as_secs_f64() * 1000.;
     let started = std::time::Instant::now();
     let result = svn::update(&path, revision).await;
@@ -1027,6 +1037,11 @@ fn main() {
             launch_workspace_path,
             svn_checkout,
             svn_update,
+            history_actions::history_copy,
+            history_actions::history_checkout,
+            history_actions::history_edit_message,
+            history_actions::history_export_patches,
+            workflows::repository_history_merge_preview,
             svn_commit,
             svn_status,
             svn_log,

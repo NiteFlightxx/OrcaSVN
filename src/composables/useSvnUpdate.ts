@@ -16,7 +16,7 @@ export function useSvnUpdate() {
   const { t } = useI18n()
   const updating = ref(false)
 
-  async function updateWorkspace() {
+  async function updateWorkspace(revision?: number) {
     const path = workspace.currentPath
     const url = workspace.svnInfo?.url || ''
     if (!path || workspace.isLoading || workflow.busy || updating.value) return
@@ -28,7 +28,7 @@ export function useSvnUpdate() {
         t('menu.update'),
         async () => {
           try {
-            return await svnUpdate(path)
+            return await svnUpdate(path, revision, revision === undefined ? undefined : url)
           } finally {
             // Do not make a successful SVN command wait for full working-copy
             // verification. The existing list remains visible but marked stale.

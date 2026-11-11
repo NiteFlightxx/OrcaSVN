@@ -2822,7 +2822,7 @@ fn native_update_returns_before_status_inventory_and_preserves_local_asset_edits
     let runtime = tokio::runtime::Runtime::new().unwrap();
     crate::svn::capture_commands(&f.dev);
     let result = runtime
-        .block_on(crate::svn_update(f.dev.clone(), None))
+        .block_on(crate::svn_update(f.dev.clone(), None, None))
         .unwrap();
     let commands = crate::svn::take_commands(&f.dev);
     assert!(result.success && result.conflicts.is_empty(), "{result:?}");
@@ -2867,7 +2867,7 @@ fn native_update_reports_text_and_binary_conflicts_without_a_foreground_status_s
     let runtime = tokio::runtime::Runtime::new().unwrap();
     crate::svn::capture_commands(&f.dev);
     let result = runtime
-        .block_on(crate::svn_update(f.dev.clone(), None))
+        .block_on(crate::svn_update(f.dev.clone(), None, None))
         .unwrap();
     let commands = crate::svn::take_commands(&f.dev);
     assert!(result.success, "{result:?}");
@@ -2908,7 +2908,7 @@ fn benchmark_native_update_completion() {
             direct.push(start.elapsed().as_secs_f64() * 1000.);
             let start = Instant::now();
             runtime.block_on(async {
-                crate::svn_update(f.dev.clone(), None).await.unwrap();
+                crate::svn_update(f.dev.clone(), None, None).await.unwrap();
                 let info_path = f.dev.clone();
                 let metadata = tokio::spawn(async move { crate::svn::info(&info_path).await });
                 let revision_path = f.dev.clone();
@@ -2921,7 +2921,7 @@ fn benchmark_native_update_completion() {
             old.push(start.elapsed().as_secs_f64() * 1000.);
             let start = Instant::now();
             runtime
-                .block_on(crate::svn_update(f.dev.clone(), None))
+                .block_on(crate::svn_update(f.dev.clone(), None, None))
                 .unwrap();
             new.push(start.elapsed().as_secs_f64() * 1000.);
             let start = Instant::now();
@@ -2960,7 +2960,7 @@ fn native_update_failure_invalidates_cached_status_without_a_foreground_scan() {
         .open(f.root().join("text.txt"))
         .unwrap();
     crate::svn::capture_commands(&f.dev);
-    let result = runtime.block_on(crate::svn_update(f.dev.clone(), None));
+    let result = runtime.block_on(crate::svn_update(f.dev.clone(), None, None));
     let commands = crate::svn::take_commands(&f.dev);
     assert!(result.is_err(), "{result:?}");
     assert!(!commands.iter().any(|a| a[0] == "status"));
@@ -2974,4 +2974,376 @@ fn native_update_failure_invalidates_cached_status_without_a_foreground_scan() {
         commands.iter().any(|a| a[0] == "status"),
         "the invalidated baseline must not be reused: {commands:?}"
     );
+}
+
+#[test]
+fn history_menu_copy_checkout_and_revision_guards_use_only_synthetic_repositories() {
+    let f = Fixture::new();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let source = format!("{}/dev", f.url);
+    let revision = f
+        .svn(Some(&f.dev), &["info", "--show-item", "revision"])
+        .trim()
+        .parse::<u64>()
+        .unwrap();
+    let dest = format!("{}/history-branch", f.url);
+    let before = f.svn(Some(&f.dev), &["status"]);
+    let output = rt
+        .block_on(crate::history_actions::history_copy(
+            f.dev.clone(),
+            source.clone(),
+            revision,
+            dest.clone(),
+            "create branch at chosen revision".into(),
+            source.clone(),
+        ))
+        .unwrap();
+    assert!(!output.is_empty());
+    assert_eq!(f.svn(None, &["cat", &format!("{dest}/text.txt")]), "base\n");
+    assert_eq!(f.svn(Some(&f.dev), &["status"]), before);
+    assert_eq!(
+        f.svn(Some(&f.dev), &["info", "--show-item", "url"]).trim(),
+        source
+    );
+    let head = f.svn(None, &["info", "--show-item", "revision", &f.url]);
+    assert!(rt
+        .block_on(crate::history_actions::history_copy(
+            f.dev.clone(),
+            source.clone(),
+            revision,
+            dest.clone(),
+            "must not nest".into(),
+            source.clone()
+        ))
+        .is_err());
+    assert_eq!(
+        f.svn(None, &["info", "--show-item", "revision", &f.url]),
+        head
+    );
+    assert!(!f.svn(None, &["list", &dest]).contains("dev/"));
+    assert!(rt
+        .block_on(crate::history_actions::history_copy(
+            f.dev.clone(),
+            source.clone(),
+            revision,
+            format!("{}/bad-source", f.url),
+            "wrong context".into(),
+            format!("{}/publish", f.url)
+        ))
+        .is_err());
+    let checkout = f.temp.join("new checkout");
+    rt.block_on(crate::history_actions::history_checkout(
+        f.dev.clone(),
+        source.clone(),
+        revision,
+        checkout.to_string_lossy().into_owned(),
+        source.clone(),
+    ))
+    .unwrap();
+    assert_eq!(
+        fs::read(checkout.join("asset.uasset")).unwrap(),
+        [0, 1, 255, 7]
+    );
+    assert!(rt
+        .block_on(crate::history_actions::history_checkout(
+            f.dev.clone(),
+            source.clone(),
+            revision,
+            f.root().join("nested").to_string_lossy().into_owned(),
+            source.clone()
+        ))
+        .is_err());
+    assert!(rt
+        .block_on(crate::history_actions::history_checkout(
+            f.dev.clone(),
+            source.clone(),
+            revision,
+            checkout.to_string_lossy().into_owned(),
+            source.clone()
+        ))
+        .is_err());
+    assert_eq!(
+        fs::read(checkout.join("asset.uasset")).unwrap(),
+        [0, 1, 255, 7]
+    );
+    assert!(rt
+        .block_on(crate::svn_update(
+            f.dev.clone(),
+            Some(revision),
+            Some(format!("{}/publish", f.url))
+        ))
+        .is_err());
+}
+
+#[test]
+fn history_menu_selected_merges_use_exact_sets_and_reverse_in_descending_order() {
+    let f = Fixture::new();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let source = format!("{}/dev", f.url);
+    let target = format!("{}/publish", f.url);
+    let mut revs = Vec::new();
+    for name in ["one.txt", "skip.txt", "two.txt"] {
+        fs::write(f.root().join(name), name).unwrap();
+        f.svn(Some(&f.dev), &["add", name]);
+        f.svn(Some(&f.dev), &["commit", "-m", &format!("add {name}")]);
+        revs.push(
+            f.svn(None, &["info", "--show-item", "revision", &f.url])
+                .trim()
+                .parse::<u64>()
+                .unwrap(),
+        );
+    }
+    f.svn(Some(&f.publish), &["update"]);
+    let plan = rt
+        .block_on(w::repository_history_merge_preview(
+            f.publish.clone(),
+            source.clone(),
+            vec![revs[2], revs[0], revs[0]],
+            false,
+            target,
+        ))
+        .unwrap();
+    assert_eq!(plan.revisions, [revs[0], revs[2]]);
+    assert!(
+        !PathBuf::from(&f.publish).join("one.txt").exists(),
+        "preview must not apply changes"
+    );
+    let outcome = rt
+        .block_on(w::execute_plan(&f.temp.join("appdata"), &plan.id))
+        .unwrap();
+    assert!(outcome.error.is_none(), "{outcome:?}");
+    assert!(PathBuf::from(&f.publish).join("one.txt").exists());
+    assert!(PathBuf::from(&f.publish).join("two.txt").exists());
+    assert!(!PathBuf::from(&f.publish).join("skip.txt").exists());
+    f.svn(Some(&f.dev), &["update"]);
+    let plan = rt
+        .block_on(w::repository_history_merge_preview(
+            f.dev.clone(),
+            source.clone(),
+            vec![revs[0], revs[2]],
+            true,
+            source.clone(),
+        ))
+        .unwrap();
+    let head = f.svn(None, &["info", "--show-item", "revision", &f.url]);
+    let outcome = rt
+        .block_on(w::execute_plan(&f.temp.join("appdata"), &plan.id))
+        .unwrap();
+    assert!(outcome.error.is_none(), "{outcome:?}");
+    assert!(!f.root().join("one.txt").exists());
+    assert!(!f.root().join("two.txt").exists());
+    assert!(f.root().join("skip.txt").exists());
+    assert_eq!(
+        f.svn(None, &["info", "--show-item", "revision", &f.url]),
+        head,
+        "reverse merge leaves changes uncommitted"
+    );
+}
+
+#[test]
+fn history_menu_stale_merge_preview_rejects_new_edits_and_preserves_assets() {
+    let f = Fixture::new();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let source = format!("{}/dev", f.url);
+    fs::write(f.root().join("text.txt"), "new remote text").unwrap();
+    f.svn(Some(&f.dev), &["commit", "-m", "change"]);
+    f.svn(Some(&f.dev), &["update"]);
+    let revision = f
+        .svn(Some(&f.dev), &["info", "--show-item", "revision"])
+        .trim()
+        .parse()
+        .unwrap();
+    let plan = rt
+        .block_on(w::repository_history_merge_preview(
+            f.dev.clone(),
+            source.clone(),
+            vec![revision],
+            true,
+            source,
+        ))
+        .unwrap();
+    fs::write(f.root().join("asset.uasset"), [0, 99, 77]).unwrap();
+    assert!(rt
+        .block_on(w::execute_plan(&f.temp.join("appdata"), &plan.id))
+        .is_err());
+    assert_eq!(
+        fs::read(f.root().join("asset.uasset")).unwrap(),
+        [0, 99, 77]
+    );
+}
+
+#[test]
+fn history_menu_patch_export_is_per_revision_and_rejects_binary_or_existing_outputs() {
+    let f = Fixture::new();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let source = format!("{}/dev", f.url);
+    fs::write(f.root().join("text.txt"), "text patch\n").unwrap();
+    f.svn(Some(&f.dev), &["commit", "-m", "text"]);
+    let text_rev = f
+        .svn(None, &["info", "--show-item", "revision", &f.url])
+        .trim()
+        .parse::<u64>()
+        .unwrap();
+    fs::write(f.root().join("asset.uasset"), [0, 99, 77]).unwrap();
+    f.svn(Some(&f.dev), &["commit", "-m", "binary"]);
+    let binary_rev = f
+        .svn(None, &["info", "--show-item", "revision", &f.url])
+        .trim()
+        .parse::<u64>()
+        .unwrap();
+    let folder = f.temp.join("patches");
+    fs::create_dir(&folder).unwrap();
+    assert!(rt
+        .block_on(crate::history_actions::history_export_patches(
+            f.dev.clone(),
+            source.clone(),
+            vec![text_rev, binary_rev],
+            folder.to_string_lossy().into_owned(),
+            source.clone()
+        ))
+        .is_err());
+    assert_eq!(
+        fs::read_dir(&folder).unwrap().count(),
+        0,
+        "binary validation precedes every output write"
+    );
+    let files = rt
+        .block_on(crate::history_actions::history_export_patches(
+            f.dev.clone(),
+            source.clone(),
+            vec![text_rev],
+            folder.to_string_lossy().into_owned(),
+            source.clone(),
+        ))
+        .unwrap();
+    assert_eq!(files.len(), 1);
+    let bytes = fs::read(&files[0]).unwrap();
+    assert!(String::from_utf8_lossy(&bytes).contains("+text patch"));
+    assert!(rt
+        .block_on(crate::history_actions::history_export_patches(
+            f.dev.clone(),
+            source.clone(),
+            vec![text_rev],
+            folder.to_string_lossy().into_owned(),
+            source
+        ))
+        .is_err());
+    assert_eq!(fs::read(&files[0]).unwrap(), bytes);
+}
+
+#[test]
+#[cfg(windows)]
+fn history_menu_log_message_respects_server_hooks_and_detects_stale_edits() {
+    let f = Fixture::new();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let source = format!("{}/dev", f.url);
+    let revision = 2;
+    assert!(rt
+        .block_on(crate::history_actions::history_edit_message(
+            f.dev.clone(),
+            source.clone(),
+            revision,
+            "initial".into(),
+            "edited log".into(),
+            source.clone()
+        ))
+        .is_err());
+    fs::write(
+        f.temp.join("repository/hooks/pre-revprop-change.bat"),
+        "@echo off\r\nexit /b 0\r\n",
+    )
+    .unwrap();
+    rt.block_on(crate::history_actions::history_edit_message(
+        f.dev.clone(),
+        source.clone(),
+        revision,
+        "initial".into(),
+        "edited log\n\ndetails".into(),
+        source.clone(),
+    ))
+    .unwrap();
+    assert_eq!(
+        f.svn(
+            None,
+            &[
+                "propget",
+                "--revprop",
+                "--strict",
+                "-r",
+                "2",
+                "svn:log",
+                &f.url
+            ]
+        )
+        .replace("\r\n", "\n"),
+        "edited log\n\ndetails"
+    );
+    rt.block_on(crate::history_actions::history_edit_message(
+        f.dev.clone(),
+        source.clone(),
+        revision,
+        "edited log\n\ndetails".into(),
+        "--force".into(),
+        source.clone(),
+    ))
+    .unwrap();
+    assert_eq!(
+        f.svn(
+            None,
+            &[
+                "propget",
+                "--revprop",
+                "--strict",
+                "-r",
+                "2",
+                "svn:log",
+                &f.url
+            ]
+        ),
+        "--force"
+    );
+    assert!(rt
+        .block_on(crate::history_actions::history_edit_message(
+            f.dev.clone(),
+            source.clone(),
+            revision,
+            "initial".into(),
+            "stale overwrite".into(),
+            source
+        ))
+        .is_err());
+}
+
+#[test]
+fn history_menu_copy_follows_ancestry_and_refuses_cross_repository_sources() {
+    let f = Fixture::new();
+    let other = Fixture::new();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let current = format!("{}/dev", f.url);
+    let copied = format!("{}/publish", f.url);
+    let destination = format!("{}/from-ancestor", f.url);
+    rt.block_on(crate::history_actions::history_copy(
+        f.dev.clone(),
+        copied,
+        2,
+        destination.clone(),
+        "copy from a revision before publish existed".into(),
+        current.clone(),
+    ))
+    .unwrap();
+    assert_eq!(
+        f.svn(None, &["cat", &format!("{destination}/text.txt")]),
+        "base\n"
+    );
+    assert!(rt
+        .block_on(crate::history_actions::history_copy(
+            f.dev.clone(),
+            format!("{}/dev", other.url),
+            2,
+            format!("{}/foreign", f.url),
+            "refuse foreign repository".into(),
+            current
+        ))
+        .is_err());
+    assert!(!f.svn(None, &["list", &f.url]).contains("foreign/"));
 }

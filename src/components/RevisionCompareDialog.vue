@@ -31,12 +31,13 @@ const props = defineProps<{
   source: string
   revisions: number[]
   allowWorking: boolean
+  ordered?: boolean
   initialWorking?: boolean
 }>()
 defineEmits<{ close: [] }>()
 const workspace = useWorkspaceStore(),
-  old = ref(Math.min(...props.revisions)),
-  next = ref(Math.max(...props.revisions)),
+  old = ref(props.ordered ? props.revisions[0] : Math.min(...props.revisions)),
+  next = ref(props.ordered ? props.revisions[1] : Math.max(...props.revisions)),
   working = ref(Boolean(props.initialWorking)),
   diff = ref(''),
   error = ref(''),

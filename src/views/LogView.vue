@@ -19,21 +19,22 @@
         {{ $t('fileMenu.branchHistory') }}
       </button>
     </div>
-    <div
+    <FileContextMenu
       v-if="contextVisible"
-      class="log-context"
-      :style="{ left: `${contextX}px`, top: `${contextY}px` }"
-      @click.stop
-    >
-      <button :disabled="flow.busy || scopedHistory" @click="cherryPick">
-        {{ $t('flow.cherryPick') }}
-      </button>
-      <button @click="openComparison()">{{ $t('experience.compare') }}</button
-      ><button :disabled="logSource !== flow.identity?.url" @click="openComparison(true)">
-        {{ $t('experience.compareWorking') }}
-      </button>
-      <button @click="copyRevision">{{ $t('log.revision') }}</button>
-    </div>
+      :x="contextX"
+      :y="contextY"
+      :items="contextItems"
+      :width="360"
+      :shortcuts="{ copy: 'copySummary', copyAlt: 'copyInfo', remove: '' }"
+      :notice="
+        contextRows
+          .slice(0, 5)
+          .map((e) => 'r' + e.revision)
+          .join(', ') + (contextRows.length > 5 ? ' … (+' + (contextRows.length - 5) + ')' : '')
+      "
+      @action="runHistoryAction"
+      @close="contextVisible = false"
+    />
     <el-card class="log-card">
       <template #header>
         <div class="card-header">
@@ -457,9 +458,16 @@
       v-if="comparison"
       :source="logSource"
       :revisions="comparison.revisions"
+      :ordered="comparison.ordered"
       :initial-working="comparison.working"
       :allow-working="logSource === flow.identity?.url"
       @close="comparison = null"
+    />
+    <HistoryActionDialog
+      v-if="historyActionRequest"
+      :request="historyActionRequest"
+      @close="historyActionRequest = null"
+      @changed="historyChanged"
     />
   </div>
 </template>
@@ -477,7 +485,10 @@ import {
   watch,
 } from 'vue'
 import { useWorkflowStore } from '@/stores/workflows'
-import { repositoryPreview } from '@/api/workflows'
+import { historyMergePreview } from '@/api/workflows'
+import FileContextMenu from '@/components/FileContextMenu.vue'
+import HistoryActionDialog from '@/components/HistoryActionDialog.vue'
+import { historyMenu, historyClipboard, type HistoryActionRequest } from '@/utils/historyMenu'
 import { svnDiff } from '@/api/svn'
 import { ElMessage } from 'element-plus'
 import PanelSplitter from '@/components/PanelSplitter.vue'
@@ -506,6 +517,7 @@ import {
   getHistorySnapshot,
   setHistorySnapshot,
   invalidateHistoryForSource,
+  invalidateAllHistorySnapshots,
 } from '@/utils/historyCache'
 import { useRouter, useRoute } from 'vue-router'
 
@@ -582,6 +594,31 @@ function selectHistoryRow(
 }
 function navigateHistory(event: KeyboardEvent) {
   if (event.target !== event.currentTarget || !logs.value.length) return
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c') {
+    event.preventDefault()
+    void runHistoryAction(event.shiftKey ? 'copyInfo' : 'copySummary')
+    return
+  }
+  if (
+    (event.ctrlKey || event.metaKey) &&
+    event.shiftKey &&
+    ['b', 't'].includes(event.key.toLowerCase())
+  ) {
+    event.preventDefault()
+    void runHistoryAction(event.key.toLowerCase() === 'b' ? 'createBranch' : 'createTag')
+    return
+  }
+  if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
+    const row = selectedLog.value
+    if (row) {
+      event.preventDefault()
+      const bounds = (event.currentTarget as HTMLElement).getBoundingClientRect()
+      contextX.value = bounds.left + 40
+      contextY.value = bounds.top + 40
+      contextVisible.value = true
+    }
+    return
+  }
   if (event.key === 'Enter' && selectedRevisions.value.length === 2) {
     event.preventDefault()
     openComparison()
@@ -643,16 +680,18 @@ watch([historySplit, filesWidth], () => {
     localStorage.setItem('orcasvn-history-file-height', String(filesWidth.value))
   } catch {}
 })
-const comparison = ref<{ revisions: number[]; working: boolean } | null>(null),
+const comparison = ref<{ revisions: number[]; working: boolean; ordered?: boolean } | null>(null),
   selectedRevisions = ref<number[]>([])
 function openComparison(working = false) {
   const revision = selectedLog.value?.revision || logs.value[0]?.revision || 0
   comparison.value = {
-    revisions:
-      selectedRevisions.value.length === 2
+    revisions: working
+      ? [revision, revision]
+      : selectedRevisions.value.length === 2
         ? [...selectedRevisions.value]
         : [Math.max(0, revision - 1), revision],
     working,
+    ordered: working,
   }
   contextVisible.value = false
 }
@@ -705,7 +744,11 @@ async function restoreHistoryView() {
   }
 }
 
-onDeactivated(saveHistoryView)
+onDeactivated(() => {
+  contextVisible.value = false
+  historyActionRequest.value = null
+  saveHistoryView()
+})
 onMounted(() => {
   document.addEventListener('orcasvn-save-view', saveHistoryView)
   document.addEventListener('orcasvn-restore-view', restoreHistoryView)
@@ -726,32 +769,113 @@ function contextMenu(row: SvnLogEntry, _column: unknown, event: MouseEvent) {
   )
     selectedRevisions.value = []
   handleRowClick(row)
-  contextX.value = Math.min(event.clientX, window.innerWidth - 250)
-  contextY.value = Math.min(event.clientY, window.innerHeight - 100)
+  contextX.value = event.clientX
+  contextY.value = event.clientY
   contextVisible.value = true
 }
-async function copyRevision() {
-  if (selectedLog.value) {
-    await writeClipboardText(String(selectedLog.value.revision))
-    contextVisible.value = false
-  }
-}
-async function cherryPick() {
+const historyActionRequest = ref<HistoryActionRequest | null>(null)
+const contextRows = computed(() => {
+  const selected = new Set(selectedRevisions.value)
+  return selected.size
+    ? logs.value.filter((row) => selected.has(row.revision))
+    : selectedLog.value
+      ? [selectedLog.value]
+      : []
+})
+const contextItems = computed(() =>
+  historyMenu(
+    {
+      count: contextRows.value.length,
+      busy: flow.busy,
+      scoped: scopedHistory.value,
+      sameSource:
+        logSource.value.replace(/\/+$/, '') ===
+        (workspaceStore.svnInfo?.url || '').replace(/\/+$/, ''),
+      canReverse: contextRows.value.every(
+        (row) => row.revision <= (workspaceStore.svnInfo?.revision || 0)
+      ),
+      hasWorkspace: Boolean(workspaceStore.currentPath && workspaceStore.svnInfo?.url),
+    },
+    (key) => t(key)
+  )
+)
+async function runHistoryAction(action: string) {
+  const menu = contextItems.value.flatMap((item) => item.children || [item])
+  const chosen = menu.find((item) => item.id === action)
+  if (!chosen || chosen.disabled) return
   contextVisible.value = false
-  const path = workspaceStore.currentPath,
-    revision = selectedLog.value?.revision,
-    source = logSource.value
-  if (!path || !revision || flow.busy || scopedHistory.value) return
+  const entries = contextRows.value.map((e) => ({ ...e })),
+    path = workspaceStore.currentPath,
+    source = logSource.value,
+    expected = workspaceStore.svnInfo?.url || ''
+  if (!entries.length || !path) return
   try {
-    const result = await flow.perform(
-      t('flow.cherryPick'),
-      () => repositoryPreview(path, source, revision),
-      false
+    if (action.startsWith('copy')) {
+      await writeClipboardText(historyClipboard(action, entries, source))
+      return
+    }
+    if (action === 'compare') {
+      openComparison()
+      return
+    }
+    if (action === 'compareWorking') {
+      openComparison(true)
+      return
+    }
+    if (action === 'compareBase') {
+      comparison.value = {
+        revisions: [entries[0].revision, workspaceStore.svnInfo!.revision],
+        working: false,
+        ordered: true,
+      }
+      return
+    }
+    if (action === 'cherryPick' || action === 'reverseMerge') {
+      const result = await flow.perform(
+        t('historyMenu.' + action),
+        () =>
+          historyMergePreview(
+            path,
+            source,
+            entries.map((e) => e.revision),
+            action === 'reverseMerge',
+            expected
+          ),
+        false
+      )
+      if (
+        path === workspaceStore.currentPath &&
+        source === logSource.value &&
+        expected === workspaceStore.svnInfo?.url
+      )
+        flow.plan = result
+      return
+    }
+    if (
+      [
+        'createBranch',
+        'createTag',
+        'checkoutRevision',
+        'updateRevision',
+        'editMessage',
+        'exportPatch',
+      ].includes(action)
     )
-    if (path === workspaceStore.currentPath && source === logSource.value) flow.plan = result
+      historyActionRequest.value = { action, path, source, expectedUrl: expected, entries }
   } catch (e) {
     ElMessage.error(String(e))
   }
+}
+async function copyRevision() {
+  await runHistoryAction('copyRevision')
+}
+async function cherryPick() {
+  await runHistoryAction('cherryPick')
+}
+async function historyChanged() {
+  invalidateAllHistorySnapshots()
+  historyActionRequest.value = null
+  await reloadLogs(true, true)
 }
 async function previewChangedPath(row: SvnLogPath) {
   if (!workspaceStore.currentPath || !selectedLog.value || !workspaceStore.svnInfo) return
@@ -1823,26 +1947,6 @@ onUnmounted(() => {
   padding: 14px;
   font-size: var(--app-font-size-sm);
   color: var(--md-sys-color-on-surface-variant);
-}
-.log-context {
-  position: fixed;
-  z-index: 100;
-  display: flex;
-  flex-direction: column;
-  padding: 4px;
-  border: 1px solid var(--md-sys-color-outline-variant);
-  background: var(--md-sys-color-surface-container);
-}
-.log-context button {
-  text-align: left;
-  border: 0;
-  background: none;
-  padding: 7px 12px;
-  color: inherit;
-  cursor: pointer;
-}
-.log-context button:hover {
-  background: var(--md-sys-color-surface-container-high);
 }
 .log-branch-context {
   display: flex;

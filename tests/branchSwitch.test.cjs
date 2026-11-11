@@ -161,3 +161,17 @@ test('switch conflicts open conflict review even if SVN also reports an error', 
   assert.equal(h.messages[0][0], 'warning')
   h.stop()
 })
+
+
+test('a cherry-pick or reverse-merge preview cannot write its old working copy after navigation', async () => {
+ for(const kind of ['cherry-pick','reverse-merge']){
+  const h=harness({kind})
+  assert.equal(h.canExecute.value,true)
+  h.workspace.currentPath='/another-fixture'
+  await tick()
+  await h.execute()
+  assert.equal(h.calls.filter(call=>call[0]==='execute').length,0)
+  assert.equal(h.flow.plan,null)
+  h.stop()
+ }
+})

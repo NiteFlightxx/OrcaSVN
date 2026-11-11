@@ -48,7 +48,7 @@
           :title="$t('menu.update')"
           :aria-label="$t('menu.update')"
           :aria-busy="updating"
-          @click="updateWorkspace"
+          @click="updateWorkspace()"
         >
           <el-icon :class="{ 'is-loading': updating }"><RefreshRight /></el-icon
           ><span>{{ $t('menu.update') }}</span>

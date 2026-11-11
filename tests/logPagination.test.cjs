@@ -6,22 +6,24 @@ const vm = require('node:vm')
 const vue = require('vue')
 
 function harness(fetch, diff = async () => ({ diff: '' }), live = false) {
+  const clipboard = [], operations = []
   const calls = [], uiState = {}, hooks = { activated: [], deactivated: [] }
-  const flow = vue.reactive({ browsingUrl: '', identity: null })
+  const flow = vue.reactive({ browsingUrl: '', identity: null, busy:false, async perform(_title,operation){return operation()} })
   const store = vue.reactive({ currentPath: '/wc', epoch: 0, isLoading: false, ...(live ? { svnInfo: { url: 'file:///repo/dev', repository_root: 'file:///repo' } } : {}), setError(error) { this.error = error } })
   const route = vue.reactive({ query: {} })
   const cacheContext = { exports: {} }
   vm.runInNewContext(ts.transpileModule(fs.readFileSync('src/utils/historyCache.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText, cacheContext)
   const mocks = {
     '@/utils/historyCache': cacheContext.exports,
+    '@/utils/historyMenu': (()=>{const c={exports:{}};vm.runInNewContext(ts.transpileModule(fs.readFileSync('src/utils/historyMenu.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,c);return c.exports})(),
     '@/composables/useHistoryPresence': { useHistoryPresence: () => ({ rows: vue.ref({}), checking: vue.ref(false), error: vue.ref(''), baseRevision: vue.ref(null), scopeMatches: vue.ref(null), state: () => 'unknown', refresh() {} }) },
     '@/utils/changeSelection': { readPanelSize: (_key,fallback) => fallback },
     '@/utils/repositoryUi': { repositoryUi: () => uiState },
     vue: { ...vue, watch: live ? vue.watch : () => {}, onMounted() {}, onActivated(fn) { hooks.activated.push(fn) }, onDeactivated(fn) { hooks.deactivated.push(fn) }, onUnmounted() {} },
     '@/stores/workflows': { useWorkflowStore: () => flow },
-    '@/api/workflows': {},
+    '@/api/workflows': {historyMergePreview:async(...args)=>{operations.push(args);return {kind:args[3]?'reverse-merge':'cherry-pick',revisions:args[2]}}},
     '@/components/DiffViewer.vue': {},
-    '@/utils/clipboard': {},
+    '@/utils/clipboard': {writeClipboardText:async text=>clipboard.push(text)},
     'element-plus': {},
     '@/stores/workspace': { useWorkspaceStore: () => store },
     '@/api/svn': { svnLog: async (...args) => { calls.push(args); return fetch(...args) }, svnDiff: diff },
@@ -31,10 +33,10 @@ function harness(fetch, diff = async () => ({ diff: '' }), live = false) {
   }
   const script = fs.readFileSync('src/views/LogView.vue', 'utf8').match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1]
   const context = { exports: {}, window: { setTimeout, clearTimeout }, sessionStorage: { getItem() { return null }, removeItem() {} }, require: name => { assert.ok(name in mocks, name); return mocks[name] } }
-  const code = ts.transpileModule(script + '\nexports.state = { reloadLogs, loadMoreLogs, handleHistoryScroll, syncHistoryContext, logs, nextCursor, historyLoadError, hasMore, loading, filters, saveHistoryView, restoreHistoryView, inspectorTab, selectedRevisionPath, selectedLog, inlineDiff, handleRowClick, previewChangedPath, closeInspector, selectHistoryRow, selectedRevisions, navigateHistory, comparison, historyViewport };', { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText
+  const code = ts.transpileModule(script + '\nexports.state = { reloadLogs, loadMoreLogs, handleHistoryScroll, syncHistoryContext, logs, nextCursor, historyLoadError, hasMore, loading, filters, saveHistoryView, restoreHistoryView, inspectorTab, selectedRevisionPath, selectedLog, inlineDiff, handleRowClick, previewChangedPath, closeInspector, selectHistoryRow, selectedRevisions, navigateHistory, comparison, historyViewport, contextMenu, contextVisible, contextItems, contextRows, runHistoryAction, historyActionRequest };', { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText
   const scope = vue.effectScope()
   scope.run(() => vm.runInNewContext(code, context))
-  return { ...context.exports.state, calls, store, flow, route, deactivate() { hooks.deactivated.forEach(fn => fn()) }, activate() { hooks.activated.forEach(fn => fn()) }, stop() { scope.stop() } }
+  return { ...context.exports.state, clipboard, operations, calls, store, flow, route, deactivate() { hooks.deactivated.forEach(fn => fn()) }, activate() { hooks.activated.forEach(fn => fn()) }, stop() { scope.stop() } }
 }
 const entries = Array.from({ length: 130 }, (_, index) => ({
   revision: 300 - index * 2, author: index % 2 ? 'alice' : 'bob', message: 'change', date: '', changed_paths: [],
@@ -316,4 +318,48 @@ test('deactivating an initial request rejects its reply and reactivation retries
   await new Promise(resolve => setImmediate(resolve))
   assert.equal(h.logs.value.length, 100)
   h.stop()
+})
+
+
+test('history right click preserves a selected set and replaces it only for an unselected revision', async () => {
+ const h=harness(()=>entries.slice(0,4));await h.reloadLogs()
+ h.store.svnInfo={url:'file:///repo/dev',revision:400};h.flow.browsingUrl='file:///repo/dev'
+ h.selectedRevisions.value=[entries[0].revision,entries[2].revision]
+ h.contextMenu(entries[2],null,{preventDefault(){},clientX:10,clientY:10})
+ assert.deepEqual(Array.from(h.contextRows.value,e=>e.revision),[entries[0].revision,entries[2].revision])
+ assert.equal(h.operations.length,0)
+ h.contextMenu(entries[1],null,{preventDefault(){},clientX:10,clientY:10})
+ assert.deepEqual(Array.from(h.contextRows.value,e=>e.revision),[entries[1].revision])
+ assert.equal(h.contextVisible.value,true)
+ h.stop()
+})
+
+test('history menu forms capture source and revision without issuing repository writes', async () => {
+ const h=harness(()=>entries.slice(0,3));await h.reloadLogs()
+ h.store.svnInfo={url:'file:///repo/dev',revision:400};h.flow.browsingUrl='file:///repo/dev';h.selectedLog.value=entries[1]
+ await h.runHistoryAction('createBranch')
+ assert.equal(h.historyActionRequest.value.source,'file:///repo/dev')
+ assert.equal(h.historyActionRequest.value.entries[0].revision,entries[1].revision)
+ assert.equal(h.operations.length,0)
+ await h.runHistoryAction('copyInfo')
+ assert.match(h.clipboard[0],new RegExp('r'+entries[1].revision))
+ assert.equal(h.operations.length,0)
+ h.stop()
+})
+
+test('multi-revision cherry-pick passes an exact sparse set, and BASE/working comparisons start at the selected revision', async () => {
+ const h=harness(()=>entries.slice(0,4));await h.reloadLogs()
+ h.store.svnInfo={url:'file:///repo/dev',revision:100};h.flow.browsingUrl='file:///repo/other';h.selectedLog.value=entries[0]
+ h.selectedRevisions.value=[entries[0].revision,entries[2].revision]
+ await h.runHistoryAction('cherryPick')
+ assert.deepEqual(Array.from(h.operations[0][2]),[entries[0].revision,entries[2].revision])
+ assert.equal(h.flow.plan.kind,'cherry-pick')
+ h.selectedRevisions.value=[];h.flow.browsingUrl='file:///repo/dev'
+ await h.runHistoryAction('compareBase')
+ assert.deepEqual(Array.from(h.comparison.value.revisions),[entries[0].revision,100])
+ assert.equal(h.comparison.value.ordered,true)
+ await h.runHistoryAction('compareWorking')
+ assert.equal(h.comparison.value.revisions[0],entries[0].revision)
+ assert.equal(h.comparison.value.working,true)
+ h.stop()
 })

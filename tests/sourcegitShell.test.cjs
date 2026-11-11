@@ -125,7 +125,7 @@ test('Fork navigation stays visible across pages and only an explicit toggle col
 test('toolbar update executes in place instead of navigating to the legacy update page', async () => {
   const source = fs.readFileSync('src/layouts/MainLayout.vue', 'utf8')
   const button = source.match(/<button\s[^>]*:aria-label="\$t\('menu.update'\)"[^>]*>/)[0]
-  assert.match(button, /@click="updateWorkspace"/)
+  assert.match(button, /@click="updateWorkspace\(\)"/)
   assert.match(button, /:disabled="[^"]*workflow.busy/)
   const h = shellHarness()
   await h.updateWorkspace()

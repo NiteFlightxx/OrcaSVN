@@ -3,7 +3,15 @@
     class="branch-operation-dialog"
     :align-center="true"
     :model-value="Boolean(flow.switchRequest || flow.plan)"
-    :title="$t(isSwitch ? 'flow.switchTo' : 'flow.cherryPick')"
+    :title="
+      $t(
+        isSwitch
+          ? 'flow.switchTo'
+          : displayedKind === 'reverse-merge'
+            ? 'historyMenu.reverseMerge'
+            : 'flow.cherryPick'
+      )
+    "
     width="min(720px, 94vw)"
     :close-on-click-modal="false"
     :close-on-press-escape="!executing"
@@ -59,7 +67,15 @@
         <strong>{{ $t('flow.source') }}</strong
         >: {{ flow.plan.source }}
       </p>
-      <p>{{ $t('flow.cherryHint', { revision: flow.plan.revision }) }}</p>
+      <p>
+        {{
+          $t('historyMenu.mergeHint', {
+            revisions: (flow.plan.revisions?.length ? flow.plan.revisions : [flow.plan.revision])
+              .map((r) => 'r' + r)
+              .join(', '),
+          })
+        }}
+      </p>
       <pre class="operation-output">{{ flow.plan.preview }}</pre>
     </template>
     <div v-if="error" class="switch-error" role="alert">
@@ -133,12 +149,23 @@ const isSwitch = computed(() => displayedKind.value === 'switch')
 const currentUrl = computed(() => flow.switchRequest?.current || flow.plan?.identity.url || '')
 const targetUrl = computed(() => flow.switchRequest?.source || flow.plan?.source || '')
 const failure = computed(() => switchFailure(error.value))
+function workingCopyKey(path: string) {
+  const key = path.replace(/\\/g, '/').replace(/\/+$/, '')
+  return /^[a-z]:\//i.test(key) || key.startsWith('//') ? key.toLowerCase() : key
+}
+const matchesPlanContext = computed(
+  () =>
+    !flow.plan ||
+    (workingCopyKey(flow.plan.identity.root) === workingCopyKey(workspace.currentPath || '') &&
+      flow.plan.identity.url === (workspace.svnInfo?.url || flow.identity?.url))
+)
 const canExecute = computed(
   () =>
     Boolean(flow.plan) &&
     !loading.value &&
     !executing.value &&
     !flow.busy &&
+    matchesPlanContext.value &&
     !error.value &&
     (!flow.switchRequest ||
       (flow.switchRequest.workspace === workspace.currentPath &&
@@ -198,7 +225,13 @@ async function execute() {
   error.value = ''
   try {
     const result = await flow.perform(
-      t(plan.kind === 'switch' ? 'flow.switchTo' : 'flow.cherryPick'),
+      t(
+        plan.kind === 'switch'
+          ? 'flow.switchTo'
+          : plan.kind === 'reverse-merge'
+            ? 'historyMenu.reverseMerge'
+            : 'flow.cherryPick'
+      ),
       () => repositoryExecute(plan.id)
     )
     if (disposed || workspace.currentPath !== originalWorkspace) return
@@ -233,12 +266,12 @@ async function execute() {
       await router.push({ name: 'conflicts' })
       return
     }
-    if (plan.kind === 'cherry-pick') {
+    if (['cherry-pick', 'reverse-merge'].includes(plan.kind)) {
       sessionStorage.setItem(
         'orca_merge_message',
         JSON.stringify({
           root: plan.identity.root,
-          message: `Merge ${plan.source} r${plan.revision}`,
+          message: `${plan.kind === 'reverse-merge' ? 'Reverse merge' : 'Merge'} ${plan.source} ${(plan.revisions?.length ? plan.revisions : [plan.revision]).map((r) => 'r' + r).join(', ')}`,
         })
       )
       await router.push({
@@ -279,8 +312,12 @@ watch(
   { immediate: true, flush: 'sync' }
 )
 watch(
-  () => [workspace.currentPath, flow.identity?.url],
+  () => [workspace.currentPath, workspace.svnInfo?.url, flow.identity?.url],
   () => {
+    if (!executing.value && flow.plan && !matchesPlanContext.value) {
+      close()
+      return
+    }
     if (
       !executing.value &&
       flow.switchRequest &&

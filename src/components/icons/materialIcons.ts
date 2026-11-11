@@ -60,6 +60,7 @@ export const FileAsset = icon(
 export const FileImage = icon('FileImage', 'M4 4h16v16H4zm0 12 5-5 4 4 3-3 4 4M15 8h.01')
 export const Download = icon('Download', 'M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5')
 export const Edit = icon('Edit', 'm15 4 5 5M4 15 15 4l5 5L9 20H4z')
+export const Tag = icon('Tag', 'M3 3h7l11 11-7 7L3 10zM7 7h.01')
 export const Folder = icon('Folder', 'M3 6V4h7l2 3h9v13H3z')
 export const FolderOpened = icon('FolderOpened', 'M3 10V5h7l2 3h8v3M3 20l3-9h16l-3 9z')
 export const GitBranch = icon(

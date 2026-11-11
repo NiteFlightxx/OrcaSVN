@@ -2,7 +2,7 @@ import { invoke } from '@tauri-apps/api/core'
 
 export interface Identity { root: string; uuid: string; url: string; repositoryRoot: string; revision: number; depth: string }
 export interface RepositoryEntry { name: string; url: string; kind: string }
-export interface OperationPlan { id: string; kind: string; identity: Identity; source: string; sourceRevision: number; revision: number; fingerprint: string; preview: string; localChanges?: string[] }
+export interface OperationPlan { id: string; kind: string; identity: Identity; source: string; sourceRevision: number; revision: number; revisions?: number[]; fingerprint: string; preview: string; localChanges?: string[] }
 export interface Outcome { id: string; kind: string; root: string; output: string; error: string | null; conflicts: string[]; identity: Identity | null; created: number }
 export interface Conflict { path: string; kind: string; details: string; versions: { side: string; path: string; size: number; text: string | null }[] }
 export interface AssetNode { path: string; status: string; directory: boolean; size: number; workingHash: string | null; baseHash: string | null }
@@ -12,6 +12,7 @@ export const repositoryIdentity = (path: string) => invoke<Identity>('repository
 export const repositoryBranch = (path: string, url: string) => invoke<RepositoryEntry>('repository_branch', { path, url })
 export const repositoryList = (path: string, url: string) => invoke<RepositoryEntry[]>('repository_list', { path, url })
 export const repositoryPreview = (path: string, source: string, revision?: number) => invoke<OperationPlan>('repository_preview', { path, source, revision })
+export const historyMergePreview = (path: string, source: string, revisions: number[], reverse: boolean, expectedUrl: string) => invoke<OperationPlan>('repository_history_merge_preview', { path, source, revisions, reverse, expectedUrl })
 export const repositoryExecute = (planId: string) => invoke<Outcome>('repository_execute', { planId })
 export const repositoryUndo = (operationId: string) => invoke<Outcome>('repository_undo', { operationId })
 export const repositoryConflicts = (path: string) => invoke<Conflict[]>('repository_conflicts', { path })

@@ -1,3 +1,4 @@
+import { historyMenuLocales } from './historyMenu'
 import { commitFlowLocales } from './commitFlow'
 import { experienceLocales } from './experience'
 import { branchUiLocales } from './branchUi'
@@ -78,6 +79,7 @@ const i18n = createI18n({
       fileMenu: fileMenuLocales['zh-CN'],
       historyPresence: historyPresenceLocales['zh-CN'],
       commitFlow: commitFlowLocales['zh-CN'],
+      historyMenu: historyMenuLocales['zh-CN'],
     },
     'zh-TW': {
       experience: experienceLocales['zh-TW'],
@@ -91,6 +93,7 @@ const i18n = createI18n({
       fileMenu: fileMenuLocales['zh-TW'],
       historyPresence: historyPresenceLocales['zh-TW'],
       commitFlow: commitFlowLocales['zh-TW'],
+      historyMenu: historyMenuLocales['zh-TW'],
     },
     'ja-JP': {
       experience: experienceLocales['ja-JP'],
@@ -104,6 +107,7 @@ const i18n = createI18n({
       fileMenu: fileMenuLocales['ja-JP'],
       historyPresence: historyPresenceLocales['ja-JP'],
       commitFlow: commitFlowLocales['ja-JP'],
+      historyMenu: historyMenuLocales['ja-JP'],
     },
     'ko-KR': {
       experience: experienceLocales['ko-KR'],
@@ -117,6 +121,7 @@ const i18n = createI18n({
       fileMenu: fileMenuLocales['ko-KR'],
       historyPresence: historyPresenceLocales['ko-KR'],
       commitFlow: commitFlowLocales['ko-KR'],
+      historyMenu: historyMenuLocales['ko-KR'],
     },
     'en-US': {
       experience: experienceLocales['en-US'],
@@ -130,6 +135,7 @@ const i18n = createI18n({
       fileMenu: fileMenuLocales['en-US'],
       historyPresence: historyPresenceLocales['en-US'],
       commitFlow: commitFlowLocales['en-US'],
+      historyMenu: historyMenuLocales['en-US'],
     },
   },
 })

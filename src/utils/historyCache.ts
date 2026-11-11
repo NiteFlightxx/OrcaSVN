@@ -37,3 +37,6 @@ export function invalidateHistoryForSource(path: string, source: string) {
   const prefix = JSON.stringify([path, source]).slice(0, -1) + ','
   for (const key of snapshots.keys()) if (key.startsWith(prefix)) snapshots.delete(key)
 }
+
+// Revision properties are repository-wide, including copied path histories.
+export function invalidateAllHistorySnapshots() { snapshots.clear() }

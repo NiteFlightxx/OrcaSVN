@@ -14,6 +14,7 @@ mod status_watch;
 
 pub use commit_selection::{commit_selection, CommitOutcome};
 pub use executor::configure_svn_executable;
+pub(crate) use executor::copy_repository;
 pub(crate) use executor::execute_svn;
 pub use history_presence::{history_base_fingerprint, history_presence, HistoryPresence};
 pub use operations::*;
