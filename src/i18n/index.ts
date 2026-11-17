@@ -4,6 +4,7 @@ import { commitFlowLocales } from './commitFlow'
 import { experienceLocales } from './experience'
 import { branchUiLocales } from './branchUi'
 import { conflictDialogLocales } from './conflictDialog'
+import { conflictReviewLocales } from './conflictReview'
 import { sourceUiLocales } from './sourceUi'
 import { workflowLocales } from './workflows'
 import { changeLocales } from './changes'
@@ -72,6 +73,7 @@ const i18n = createI18n({
       experience: experienceLocales['zh-CN'],
       branchUI: branchUiLocales['zh-CN'],
       conflictDialog: conflictDialogLocales['zh-CN'],
+      conflictReview: conflictReviewLocales['zh-CN'],
       sourceUI: sourceUiLocales['zh-CN'],
       ...zhCN,
       flow: workflowLocales['zh-CN'],
@@ -87,6 +89,7 @@ const i18n = createI18n({
       experience: experienceLocales['zh-TW'],
       branchUI: branchUiLocales['zh-TW'],
       conflictDialog: conflictDialogLocales['zh-TW'],
+      conflictReview: conflictReviewLocales['zh-TW'],
       sourceUI: sourceUiLocales['zh-TW'],
       ...zhTW,
       flow: workflowLocales['zh-TW'],
@@ -102,6 +105,7 @@ const i18n = createI18n({
       experience: experienceLocales['ja-JP'],
       branchUI: branchUiLocales['ja-JP'],
       conflictDialog: conflictDialogLocales['ja-JP'],
+      conflictReview: conflictReviewLocales['ja-JP'],
       sourceUI: sourceUiLocales['ja-JP'],
       ...jaJP,
       flow: workflowLocales['ja-JP'],
@@ -117,6 +121,7 @@ const i18n = createI18n({
       experience: experienceLocales['ko-KR'],
       branchUI: branchUiLocales['ko-KR'],
       conflictDialog: conflictDialogLocales['ko-KR'],
+      conflictReview: conflictReviewLocales['ko-KR'],
       sourceUI: sourceUiLocales['ko-KR'],
       ...koKR,
       flow: workflowLocales['ko-KR'],
@@ -132,6 +137,7 @@ const i18n = createI18n({
       experience: experienceLocales['en-US'],
       branchUI: branchUiLocales['en-US'],
       conflictDialog: conflictDialogLocales['en-US'],
+      conflictReview: conflictReviewLocales['en-US'],
       sourceUI: sourceUiLocales['en-US'],
       ...enUS,
       flow: workflowLocales['en-US'],

@@ -1,10 +1,15 @@
 import { invoke } from '@tauri-apps/api/core'
+import type { WorkspaceStatusPatch } from '@/api/svn'
 
 export interface Identity { root: string; uuid: string; url: string; repositoryRoot: string; revision: number; depth: string }
 export interface RepositoryEntry { name: string; url: string; kind: string }
 export interface OperationPlan { id: string; kind: string; identity: Identity; source: string; sourceRevision: number; revision: number; revisions?: number[]; fingerprint: string; preview: string; localChanges?: string[] }
-export interface Outcome { id: string; kind: string; root: string; output: string; error: string | null; conflicts: string[]; identity: Identity | null; created: number }
-export interface Conflict { path: string; kind: string; details: string; versions: { side: string; path: string; size: number; text: string | null }[] }
+export interface Outcome { id: string; kind: string; root: string; output: string; error: string | null; conflicts: string[]; identity: Identity | null; created: number; status?: WorkspaceStatusPatch | null }
+export interface ConflictSource { url: string; revision: number; kind: string }
+export interface ConflictSummary { nodeKind: string; schedule: string; exists: boolean; localKind: string; operation: string; action: string; reason: string; base: ConflictSource | null; incoming: ConflictSource | null }
+export interface Conflict { path: string; kind: string; details: string; versions: { side: string; path: string; size: number; text: string | null }[]; summary?: ConflictSummary | null }
+export interface ConflictChildren { entries: { name: string; kind: string }[]; truncated: boolean }
+export interface ConflictDetail { identity: Identity; conflict: Conflict | null }
 export interface AssetNode { path: string; status: string; directory: boolean; size: number; workingHash: string | null; baseHash: string | null }
 export interface AssetStash { version: number; id: string; name: string; createdAt: string; identity: Identity; phase: string; warning: string | null; nodes: AssetNode[]; legacy?: Record<string, unknown> | null }
 export interface Collision { path: string; currentHash: string | null }
@@ -16,6 +21,8 @@ export const historyMergePreview = (path: string, source: string, revisions: num
 export const repositoryExecute = (planId: string) => invoke<Outcome>('repository_execute', { planId })
 export const repositoryUndo = (operationId: string) => invoke<Outcome>('repository_undo', { operationId })
 export const repositoryConflicts = (path: string) => invoke<Conflict[]>('repository_conflicts', { path })
+export const repositoryConflictDetail = (path: string, file: string) => invoke<ConflictDetail>('repository_conflict_detail', { path, file })
+export const conflictChildren = (path: string, file: string, side: 'local' | 'incoming') => invoke<ConflictChildren>('conflict_children', { path, file, side })
 export const repositoryResolve = (path: string, file: string, strategy: string, expectedUrl: string) => invoke<Outcome>('repository_resolve', { path, file, strategy, expectedUrl })
 export const repositoryActivities = () => invoke<Record<string, unknown>[]>('repository_activities')
 export const assetStashCandidates = (path: string, files: string[]) => invoke<AssetNode[]>('asset_stash_candidates', { path, files })

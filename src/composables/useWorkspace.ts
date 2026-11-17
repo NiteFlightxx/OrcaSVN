@@ -408,5 +408,5 @@ export function useWorkspace() {
     if (launchPath && launchError && !workspaceStore.error) reportStatusError(launchPath, launchError)
   }
 
-  return { loadWorkspace, openWorkspace, restoreLastWorkspace, openStartupWorkspace, refreshStatus, refreshStatusAfterMutation, refreshStatusAfterUpdate, refreshStatusAfterDiscard, applyCommitResult, refreshStatusIfStale }
+  return { loadWorkspace, openWorkspace, restoreLastWorkspace, openStartupWorkspace, refreshStatus, refreshStatusAfterMutation, refreshStatusAfterUpdate, refreshStatusAfterDiscard, applyStatusPatch: refreshStatusAfterDiscard, applyCommitResult, refreshStatusIfStale }
 }

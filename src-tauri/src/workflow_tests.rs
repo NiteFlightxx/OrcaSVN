@@ -1447,6 +1447,399 @@ fn binary_conflict_resolution_preserves_both_versions_before_selecting_incoming(
 }
 
 #[test]
+fn external_conflict_status_is_visible_without_crossing_resolution_boundaries() {
+    let f = Fixture::new();
+    let external_url = format!("{}/publish", f.url);
+    f.svn(
+        Some(&f.dev),
+        &[
+            "propset",
+            "svn:externals",
+            &format!("{external_url} external"),
+            ".",
+        ],
+    );
+    f.svn(Some(&f.dev), &["update"]);
+    let external = f.root().join("external");
+    fs::write(external.join("text.txt"), "local external\n").unwrap();
+    fs::write(
+        PathBuf::from(&f.publish).join("text.txt"),
+        "incoming external\n",
+    )
+    .unwrap();
+    f.svn(Some(&f.publish), &["commit", "-m", "external fixture"]);
+    f.svn(Some(&f.dev), &["update", "--accept", "postpone"]);
+    let before = fs::read(external.join("text.txt")).unwrap();
+    runtime().block_on(async {
+        let status = crate::svn::status(&f.dev).await.unwrap();
+        assert!(status.iter().any(|entry| entry.path == "external/text.txt"
+            && entry.status_code == "conflicted"), "{status:?}");
+        // Root conflict details deliberately exclude separate external working copies.
+        assert!(w::repository_conflicts(f.dev.clone())
+            .await
+            .unwrap()
+            .is_empty());
+        let details = w::repository_conflicts(external.to_string_lossy().into_owned())
+            .await
+            .unwrap();
+        assert_eq!(details.len(), 1);
+        assert_eq!(details[0].path, "text.txt");
+        assert_eq!(details[0].kind, "content");
+        assert!(
+            w::repository_conflict_detail(f.dev.clone(), "external/text.txt".into())
+                .await
+                .is_err()
+        );
+        assert!(w::repository_conflict_detail(
+            external.to_string_lossy().into_owned(),
+            "text.txt".into()
+        )
+        .await
+        .unwrap()
+        .conflict
+        .is_some());
+        assert_eq!(fs::read(external.join("text.txt")).unwrap(), before);
+    });
+}
+
+#[test]
+fn selected_conflict_details_only_query_the_selected_node_without_a_working_copy_scan() {
+    let f = Fixture::new();
+    f.seed_directory();
+    let observer = f
+        .temp
+        .join("detail-producer")
+        .to_string_lossy()
+        .into_owned();
+    f.svn(None, &["checkout", &format!("{}/dev", f.url), &observer]);
+    for file in ["text.txt", "folder/a.txt"] {
+        fs::write(Path::new(&observer).join(file), "incoming\n").unwrap();
+        fs::write(f.root().join(file), "local\n").unwrap();
+    }
+    fs::write(Path::new(&observer).join("asset.uasset"), [0, 9, 255]).unwrap();
+    fs::write(f.root().join("asset.uasset"), [0, 4, 255]).unwrap();
+    f.svn(Some(&observer), &["commit", "-m", "detail fixture"]);
+    f.svn(Some(&f.dev), &["update", "--accept", "postpone"]);
+    let before = f.svn(Some(&f.dev), &["status", "--xml"]);
+    let bytes = fs::read(f.root().join("asset.uasset")).unwrap();
+    runtime().block_on(async {
+        crate::svn::capture_commands(&f.dev);
+        let result = w::repository_conflict_detail(f.dev.clone(), "text.txt".into())
+            .await
+            .unwrap();
+        assert_eq!(result.conflict.unwrap().path, "text.txt");
+        let commands = crate::svn::take_commands(&f.dev);
+        let status: Vec<_> = commands.iter().filter(|args| args[0] == "status").collect();
+        assert_eq!(status.len(), 1, "{commands:?}");
+        assert_eq!(
+            status[0].as_slice(),
+            [
+                "status",
+                "--xml",
+                "--ignore-externals",
+                "--depth",
+                "empty",
+                "--",
+                "text.txt@"
+            ]
+        );
+        assert!(
+            commands
+                .iter()
+                .all(|args| ["info", "status"].contains(&args[0].as_str())
+                    && [".", "text.txt@"].contains(&args.last().unwrap().as_str())),
+            "{commands:?}"
+        );
+        let sub = w::repository_conflict_detail(
+            f.root().join("folder").to_string_lossy().into_owned(),
+            "a.txt".into(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(sub.conflict.unwrap().path, "folder/a.txt");
+        let binary = w::repository_conflict_detail(f.dev.clone(), "asset.uasset".into())
+            .await
+            .unwrap()
+            .conflict
+            .unwrap();
+        assert!(binary.versions.iter().all(|v| v.text.is_none()));
+        assert!(
+            w::repository_conflict_detail(f.dev.clone(), "delete.txt".into())
+                .await
+                .unwrap()
+                .conflict
+                .is_none()
+        );
+        for invalid in ["../outside", ".svn/wc.db", "folder/../text.txt"] {
+            assert!(w::repository_conflict_detail(f.dev.clone(), invalid.into())
+                .await
+                .is_err());
+        }
+    });
+    assert_eq!(
+        w::canonical_xml_fingerprint(&f.svn(Some(&f.dev), &["status", "--xml"])).unwrap(),
+        w::canonical_xml_fingerprint(&before).unwrap()
+    );
+    assert_eq!(fs::read(f.root().join("asset.uasset")).unwrap(), bytes);
+}
+
+#[test]
+fn selected_conflict_details_include_directory_tree_and_root_property_conflicts() {
+    let f = Fixture::new();
+    f.seed_directory();
+    let observer = f
+        .temp
+        .join("directory-conflict-producer")
+        .to_string_lossy()
+        .into_owned();
+    f.svn(None, &["checkout", &format!("{}/dev", f.url), &observer]);
+    f.svn(Some(&observer), &["propset", "custom", "incoming", "."]);
+    f.svn(Some(&observer), &["delete", "folder"]);
+    f.svn(Some(&observer), &["commit", "-m", "directory fixture"]);
+    f.svn(Some(&f.dev), &["propset", "custom", "local", "."]);
+    fs::write(f.root().join("folder/a.txt"), "local directory edit\n").unwrap();
+    f.svn(Some(&f.dev), &["update", "--accept", "postpone"]);
+    runtime().block_on(async {
+        let tree = w::repository_conflict_detail(f.dev.clone(), "folder".into())
+            .await
+            .unwrap()
+            .conflict
+            .unwrap();
+        assert_eq!(tree.path, "folder");
+        assert_eq!(tree.kind, "tree");
+        let metadata = tree.summary.as_ref().unwrap();
+        assert_eq!(metadata.node_kind, "dir");
+        assert!(metadata.exists);
+        assert_eq!(metadata.local_kind, "dir");
+        assert_eq!(metadata.action, "delete");
+        assert_eq!(metadata.operation, "update");
+        let preview = crate::conflict_review::conflict_children(
+            f.dev.clone(),
+            "folder".into(),
+            "local".into(),
+        )
+        .await
+        .unwrap();
+        assert!(preview.entries.iter().any(|e| e.name == "a.txt"));
+        assert!(!preview.truncated);
+        assert!(crate::conflict_review::conflict_children(
+            f.dev.clone(),
+            "folder".into(),
+            "incoming".into()
+        )
+        .await
+        .is_err());
+        let property = w::repository_conflict_detail(f.dev.clone(), ".".into())
+            .await
+            .unwrap()
+            .conflict
+            .unwrap();
+        assert_eq!(property.path, ".");
+        assert_eq!(property.kind, "property");
+        assert_eq!(property.summary.as_ref().unwrap().node_kind, "dir");
+    });
+    assert_eq!(
+        fs::read_to_string(f.root().join("folder/a.txt")).unwrap(),
+        "local directory edit\n"
+    );
+}
+
+#[test]
+fn conflict_directory_previews_are_explicit_scoped_and_revision_pinned() {
+    let f = Fixture::new();
+    f.svn(
+        None,
+        &[
+            "mkdir",
+            &format!("{}/dev/Incoming", f.url),
+            "-m",
+            "incoming directory",
+        ],
+    );
+    fs::create_dir(f.root().join("Incoming")).unwrap();
+    fs::write(f.root().join("Incoming/local.txt"), "local bytes\n").unwrap();
+    f.svn(Some(&f.dev), &["update", "--accept", "postpone"]);
+    let before = f.svn(Some(&f.dev), &["status", "--xml"]);
+    runtime().block_on(async {
+        let conflict = w::repository_conflict_detail(f.dev.clone(), "Incoming".into())
+            .await
+            .unwrap()
+            .conflict
+            .unwrap();
+        let summary = conflict.summary.unwrap();
+        assert_eq!(summary.action, "add");
+        assert_eq!(summary.reason, "unversioned");
+        assert_eq!(summary.local_kind, "dir");
+        let incoming = summary.incoming.unwrap();
+        crate::svn::capture_commands(&f.dev);
+        let remote = crate::conflict_review::conflict_children(
+            f.dev.clone(),
+            "Incoming".into(),
+            "incoming".into(),
+        )
+        .await
+        .unwrap();
+        assert!(remote.entries.is_empty());
+        let commands = crate::svn::take_commands(&f.dev);
+        let list: Vec<_> = commands.iter().filter(|args| args[0] == "list").collect();
+        assert_eq!(list.len(), 1);
+        assert_eq!(
+            list[0].last().unwrap(),
+            &format!("{}@{}", incoming.url, incoming.revision)
+        );
+        assert!(list[0]
+            .windows(2)
+            .any(|pair| pair == ["-r", &incoming.revision.to_string()]));
+        assert!(commands
+            .iter()
+            .all(|args| !["update", "resolve", "revert", "switch"].contains(&args[0].as_str())));
+        assert_eq!(
+            w::canonical_xml_fingerprint(&f.svn(Some(&f.dev), &["status", "--xml"])).unwrap(),
+            w::canonical_xml_fingerprint(&before).unwrap()
+        );
+        for n in 0..205 {
+            fs::write(
+                f.root().join(format!("Incoming/generated-{n}.txt")),
+                "fixture",
+            )
+            .unwrap();
+        }
+        let before_local = f.svn(Some(&f.dev), &["status", "--xml"]);
+        let local = crate::conflict_review::conflict_children(
+            f.dev.clone(),
+            "Incoming".into(),
+            "local".into(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(local.entries.len(), 200);
+        assert!(local.truncated);
+        assert_eq!(
+            w::canonical_xml_fingerprint(&f.svn(Some(&f.dev), &["status", "--xml"])).unwrap(),
+            w::canonical_xml_fingerprint(&before_local).unwrap()
+        );
+        assert!(crate::conflict_review::conflict_children(
+            f.dev.clone(),
+            "../outside".into(),
+            "local".into()
+        )
+        .await
+        .is_err());
+    });
+    assert_eq!(
+        fs::read_to_string(f.root().join("Incoming/local.txt")).unwrap(),
+        "local bytes\n"
+    );
+}
+
+#[test]
+fn conflict_resolution_returns_an_exact_status_patch_and_keeps_other_conflicts() {
+    let f = Fixture::new();
+    fs::write(Path::new(&f.publish).join("asset.uasset"), [0, 4, 255]).unwrap();
+    f.svn(
+        Some(&f.publish),
+        &["propset", "custom", "incoming", "text.txt"],
+    );
+    f.svn(Some(&f.publish), &["commit", "-m", "incoming conflict"]);
+    f.svn(Some(&f.dev), &["propset", "custom", "local", "text.txt"]);
+    fs::write(f.root().join("asset.uasset"), [0, 5, 255]).unwrap();
+    f.svn(Some(&f.dev), &["commit", "-m", "local conflict"]);
+    f.svn(Some(&f.dev), &["update"]);
+    // Apply a property change with the existing fixture merge machinery.
+    runtime().block_on(async {
+        let plan = w::repository_preview(f.dev.clone(), format!("{}/publish", f.url), Some(4))
+            .await
+            .unwrap();
+        w::execute_plan(&f.temp.join("data"), &plan.id)
+            .await
+            .unwrap();
+        crate::svn::capture_commands(&f.dev);
+        let result = w::resolve(
+            &f.temp.join("data"),
+            &f.dev,
+            "text.txt",
+            "working",
+            &format!("{}/dev", f.url),
+        )
+        .await
+        .unwrap();
+        assert!(result.error.is_none(), "{result:?}");
+        let patch = result.status.unwrap();
+        assert_eq!(patch.workspace, f.dev);
+        assert_eq!(patch.paths, ["text.txt"]);
+        assert!(patch.subtrees.is_empty());
+        assert!(patch
+            .entries
+            .iter()
+            .all(|e| e.path == "text.txt" && e.prop_status != "conflicted"));
+        let commands = crate::svn::take_commands(&f.dev);
+        assert!(commands
+            .iter()
+            .filter(|args| args[0] == "status")
+            .all(|args| args.last().is_some_and(|s| s == "text.txt@")
+                && args.windows(2).any(|p| p == ["--depth", "empty"])));
+        let remaining = w::repository_conflict_detail(f.dev.clone(), "asset.uasset".into())
+            .await
+            .unwrap();
+        assert!(remaining.conflict.is_some());
+    });
+}
+
+#[test]
+fn conflict_resolution_from_a_subworkspace_maps_patch_paths_and_rejects_outside_targets() {
+    let f = Fixture::new();
+    f.seed_directory();
+    let observer = f
+        .temp
+        .join("subworkspace-producer")
+        .to_string_lossy()
+        .into_owned();
+    f.svn(None, &["checkout", &format!("{}/dev", f.url), &observer]);
+    f.svn(
+        Some(&observer),
+        &["propset", "custom", "incoming", "folder/a.txt"],
+    );
+    f.svn(Some(&observer), &["commit", "-m", "subworkspace incoming"]);
+    f.svn(
+        Some(&f.dev),
+        &["propset", "custom", "local", "folder/a.txt"],
+    );
+    f.svn(Some(&f.dev), &["update", "--accept", "postpone"]);
+    let sub = f.root().join("folder").to_string_lossy().into_owned();
+    runtime().block_on(async {
+        let outside = w::resolve(
+            &f.temp.join("data"),
+            &sub,
+            "text.txt",
+            "working",
+            &format!("{}/dev", f.url),
+        )
+        .await
+        .unwrap_err();
+        assert!(outside.contains("outside this workspace"));
+        let result = w::resolve(
+            &f.temp.join("data"),
+            &sub,
+            "folder/a.txt",
+            "working",
+            &format!("{}/dev", f.url),
+        )
+        .await
+        .unwrap();
+        assert!(result.error.is_none(), "{result:?}");
+        let patch = result.status.unwrap();
+        assert_eq!(patch.workspace, sub);
+        assert_eq!(patch.expected_url, format!("{}/dev/folder", f.url));
+        assert_eq!(patch.paths, ["a.txt"]);
+        assert!(patch.entries.iter().all(|e| e.path == "a.txt"));
+        assert_eq!(
+            fs::read_to_string(f.root().join("folder/a.txt")).unwrap(),
+            "original-a"
+        );
+    });
+}
+
+#[test]
 fn tree_conflicts_are_exposed_and_manual_resolution_keeps_the_working_file() {
     let f = Fixture::new();
     f.svn(Some(&f.dev), &["delete", "text.txt"]);

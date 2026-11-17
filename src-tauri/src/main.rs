@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod asset_stash;
+mod conflict_review;
 mod discard;
 mod external_tools;
 mod file_actions;
@@ -1031,6 +1032,8 @@ fn main() {
             workflows::repository_execute,
             workflows::repository_undo,
             workflows::repository_conflicts,
+            workflows::repository_conflict_detail,
+            conflict_review::conflict_children,
             workflows::repository_resolve,
             workflows::repository_activities,
             configure_svn_executable,

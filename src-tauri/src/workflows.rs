@@ -402,7 +402,7 @@ pub async fn clean_fingerprint(info: &Identity, uniform: bool) -> Result<String>
 
 // Switch preserves local edits. Its preflight detects subsequent edits rather
 // than requiring a clean tree; cherry-pick keeps its existing stricter policy.
-fn canonical_xml_fingerprint(xml: &str) -> Result<String> {
+pub(crate) fn canonical_xml_fingerprint(xml: &str) -> Result<String> {
     let mut reader = Reader::from_str(xml);
     reader.config_mut().trim_text(true);
     let mut hash = Sha256::new();
@@ -770,6 +770,8 @@ pub struct Outcome {
     pub conflicts: Vec<String>,
     pub identity: Option<Identity>,
     pub created: i64,
+    #[serde(default)]
+    pub status: Option<svn::StatusPatch>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Change {
@@ -849,6 +851,7 @@ pub async fn outcome(path: &str, kind: &str, result: Result<String>) -> Outcome 
         conflicts,
         identity: identity(path).await.ok(),
         created: chrono::Utc::now().timestamp(),
+        status: None,
     }
 }
 #[tauri::command]
@@ -1068,6 +1071,8 @@ pub struct Conflict {
     pub kind: String,
     pub details: String,
     pub versions: Vec<ConflictVersion>,
+    #[serde(default)]
+    pub summary: Option<crate::conflict_review::Summary>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1085,85 +1090,147 @@ pub async fn repository_conflicts(path: String) -> Result<Vec<Conflict>> {
         if entry.status_code != "conflicted" && entry.prop_status != "conflicted" {
             continue;
         }
-        let xml = run(&info.root, &["info", "--xml", "--", &target(&entry.path)]).await?;
-        let kind = if xml.contains("tree-conflict") {
-            "tree"
-        } else if entry.prop_status == "conflicted" {
-            "property"
-        } else {
-            "content"
-        };
-        let mut versions = Vec::new();
-        for (side, tag) in [
-            ("base", "prev-base-file"),
-            ("local", "prev-wc-file"),
-            ("incoming", "cur-base-file"),
-            ("properties", "prop-file"),
-        ] {
-            let artifact = field(&xml, tag);
-            if artifact.is_empty() {
-                continue;
-            }
-            let full = PathBuf::from(&artifact);
-            let full = if full.is_absolute() {
-                full
-            } else {
-                Path::new(&info.root).join(full)
-            };
-            let full = fs::canonicalize(full).map_err(|e| e.to_string())?;
-            let root = fs::canonicalize(&info.root).map_err(|e| e.to_string())?;
-            let relative = full
-                .strip_prefix(&root)
-                .map_err(|_| "Conflict artifact outside working copy")?
-                .to_string_lossy()
-                .replace('\\', "/");
-            safe_child(&root, &relative)?;
-            let size = fs::metadata(&full).map_err(|e| e.to_string())?.len();
-            let text = if size <= 512 * 1024 {
-                fs::read(&full)
-                    .ok()
-                    .filter(|b| !b.contains(&0))
-                    .and_then(|b| String::from_utf8(b).ok())
-            } else {
-                None
-            };
-            versions.push(ConflictVersion {
-                side: side.into(),
-                path: relative,
-                size,
-                text,
-            });
-        }
-        let working = if entry.path == "." {
-            PathBuf::from(&info.root)
-        } else {
-            safe_child(Path::new(&info.root), &entry.path)?
-        };
-        if working.is_file() {
-            let size = fs::metadata(&working).map_err(|e| e.to_string())?.len();
-            let text = if size <= 512 * 1024 {
-                fs::read(&working)
-                    .ok()
-                    .filter(|b| !b.contains(&0))
-                    .and_then(|b| String::from_utf8(b).ok())
-            } else {
-                None
-            };
-            versions.push(ConflictVersion {
-                side: "working".into(),
-                path: entry.path.clone(),
-                size,
-                text,
-            });
-        }
-        result.push(Conflict {
-            path: entry.path,
-            kind: kind.into(),
-            details: xml,
-            versions,
-        });
+        result.push(read_conflict(&info, &entry).await?);
     }
     Ok(result)
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConflictDetail {
+    pub identity: Identity,
+    pub conflict: Option<Conflict>,
+}
+
+/// Read just the selected node. Navigating the conflict view must not scan the
+/// entire working copy or read other conflict artifacts.
+#[tauri::command]
+pub async fn repository_conflict_detail(path: String, file: String) -> Result<ConflictDetail> {
+    let info = identity(&path).await?;
+    let workspace = fs::canonicalize(&path).map_err(|e| e.to_string())?;
+    let root = fs::canonicalize(&info.root).map_err(|e| e.to_string())?;
+    let full = if file == "." {
+        workspace.clone()
+    } else {
+        safe_child(&workspace, &file)?
+    };
+    let relative = full
+        .strip_prefix(&root)
+        .map_err(|_| "Outside working copy")?
+        .to_string_lossy()
+        .replace('\\', "/");
+    let relative = if relative.is_empty() { "." } else { &relative };
+    if relative != "." {
+        ensure_owned(&info.root, relative).await?;
+    }
+    let xml = run(
+        &info.root,
+        &[
+            "status",
+            "--xml",
+            "--ignore-externals",
+            "--depth",
+            "empty",
+            "--",
+            &target(relative),
+        ],
+    )
+    .await?;
+    let entries = svn::parse_status_xml(&xml).map_err(|e| e.to_string())?;
+    let entry = entries.into_iter().find(|entry| {
+        entry.path == relative
+            && (entry.status_code == "conflicted" || entry.prop_status == "conflicted")
+    });
+    let conflict = match entry {
+        Some(entry) => Some(read_conflict(&info, &entry).await?),
+        None => None,
+    };
+    Ok(ConflictDetail {
+        identity: info,
+        conflict,
+    })
+}
+
+async fn read_conflict(info: &Identity, entry: &crate::SvnStatus) -> Result<Conflict> {
+    let xml = run(&info.root, &["info", "--xml", "--", &target(&entry.path)]).await?;
+    let working = if entry.path == "." {
+        PathBuf::from(&info.root)
+    } else {
+        safe_child(Path::new(&info.root), &entry.path)?
+    };
+    let summary = crate::conflict_review::summary(&xml, &working)?;
+    let kind = if summary.tree_conflict {
+        "tree"
+    } else if entry.prop_status == "conflicted" {
+        "property"
+    } else {
+        "content"
+    };
+    let mut versions = Vec::new();
+    for (side, tag) in [
+        ("base", "prev-base-file"),
+        ("local", "prev-wc-file"),
+        ("incoming", "cur-base-file"),
+        ("properties", "prop-file"),
+    ] {
+        let artifact = field(&xml, tag);
+        if artifact.is_empty() {
+            continue;
+        }
+        let full = PathBuf::from(&artifact);
+        let full = if full.is_absolute() {
+            full
+        } else {
+            Path::new(&info.root).join(full)
+        };
+        let full = fs::canonicalize(full).map_err(|e| e.to_string())?;
+        let root = fs::canonicalize(&info.root).map_err(|e| e.to_string())?;
+        let relative = full
+            .strip_prefix(&root)
+            .map_err(|_| "Conflict artifact outside working copy")?
+            .to_string_lossy()
+            .replace('\\', "/");
+        safe_child(&root, &relative)?;
+        let size = fs::metadata(&full).map_err(|e| e.to_string())?.len();
+        let text = if size <= 512 * 1024 {
+            fs::read(&full)
+                .ok()
+                .filter(|b| !b.contains(&0))
+                .and_then(|b| String::from_utf8(b).ok())
+        } else {
+            None
+        };
+        versions.push(ConflictVersion {
+            side: side.into(),
+            path: relative,
+            size,
+            text,
+        });
+    }
+    if working.is_file() {
+        let size = fs::metadata(&working).map_err(|e| e.to_string())?.len();
+        let text = if size <= 512 * 1024 {
+            fs::read(&working)
+                .ok()
+                .filter(|b| !b.contains(&0))
+                .and_then(|b| String::from_utf8(b).ok())
+        } else {
+            None
+        };
+        versions.push(ConflictVersion {
+            side: "working".into(),
+            path: entry.path.clone(),
+            size,
+            text,
+        });
+    }
+    Ok(Conflict {
+        path: entry.path.clone(),
+        kind: kind.into(),
+        summary: Some(summary),
+        details: xml,
+        versions,
+    })
 }
 
 async fn backup_conflicts(
@@ -1224,13 +1291,28 @@ pub async fn resolve(
     if info.url != expected_url {
         return Err("Working-copy branch changed".into());
     }
+    let workspace = fs::canonicalize(path).map_err(|e| e.to_string())?;
+    let root = fs::canonicalize(&info.root).map_err(|e| e.to_string())?;
+    let prefix = workspace
+        .strip_prefix(root)
+        .map_err(|_| "Outside working copy")?
+        .to_string_lossy()
+        .replace('\\', "/");
+    let relative_file = if prefix.is_empty() {
+        file.to_string()
+    } else if file == prefix {
+        ".".into()
+    } else {
+        file.strip_prefix(&format!("{prefix}/"))
+            .ok_or("Selected conflict is outside this workspace")?
+            .into()
+    };
     if !["working", "mine-full", "theirs-full"].contains(&strategy) {
         return Err("Unsupported resolution strategy".into());
     }
-    let current = repository_conflicts(info.root.clone())
+    let current = repository_conflict_detail(info.root.clone(), file.into())
         .await?
-        .into_iter()
-        .find(|c| c.path == file)
+        .conflict
         .ok_or("Conflict no longer exists")?;
     if current.kind != "content" && strategy != "working" {
         return Err(
@@ -1276,7 +1358,74 @@ pub async fn resolve(
         ],
     )
     .await;
-    Ok(outcome(&info.root, "resolve", result).await)
+    let (output, mut error) = match result {
+        Ok(output) => (output, None),
+        Err(error) => (String::new(), Some(error)),
+    };
+    let mut conflicts = Vec::new();
+    let verification = async {
+        let xml = run(
+            &info.root,
+            &[
+                "status",
+                "--xml",
+                "--ignore-externals",
+                "--depth",
+                "empty",
+                "--",
+                &target(file),
+            ],
+        )
+        .await?;
+        let mut entries = svn::parse_status_xml(&xml).map_err(|e| e.to_string())?;
+        entries.retain(|entry| entry.path == file);
+        conflicts = entries
+            .iter()
+            .filter(|e| e.status_code == "conflicted" || e.prop_status == "conflicted")
+            .map(|e| e.path.clone())
+            .collect();
+        entries.retain(|entry| {
+            !["normal", "none"].contains(&entry.status_code.as_str())
+                || ["modified", "conflicted"].contains(&entry.prop_status.as_str())
+        });
+        for entry in &mut entries {
+            entry.path = relative_file.clone();
+        }
+        let working_info = svn::info(path).await.map_err(|e| e.to_string())?;
+        let now = identity(path).await?;
+        if now.url != info.url {
+            return Err("Working-copy branch changed during resolution".into());
+        }
+        Ok::<_, String>(svn::StatusPatch {
+            workspace: path.into(),
+            expected_url: working_info.url,
+            paths: vec![relative_file],
+            subtrees: Vec::new(),
+            entries,
+        })
+    }
+    .await;
+    let status = match verification {
+        Ok(patch) => Some(patch),
+        Err(problem) => {
+            error = Some(format!(
+                "{}\nStatus verification failed: {problem}",
+                error.unwrap_or_default()
+            ));
+            None
+        }
+    };
+    Ok(Outcome {
+        id: id(),
+        kind: "resolve".into(),
+        root: info.root.clone(),
+        output,
+        error,
+        conflicts,
+        identity: Some(info),
+        created: chrono::Utc::now().timestamp(),
+        status,
+    })
 }
 
 #[cfg(test)]
