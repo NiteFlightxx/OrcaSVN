@@ -581,7 +581,7 @@ const {
   checkForUpdates,
   openReleasePage,
 } = useUpdateCheck()
-const cachedViews = ref(['WorkspaceView', 'LogView', 'UpdateView', 'ConflictsView'])
+const cachedViews = ref(['WorkspaceView', 'LogView', 'UpdateView'])
 const statusRefreshIntervalMs = 60_000
 let statusRefreshTimer: number | undefined
 const selectedOpenTarget = ref<OpenWorkspaceTarget>('explorer')

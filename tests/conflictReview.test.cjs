@@ -81,16 +81,27 @@ function harness(options = {}) {
     '@/components/ConflictExplanation.vue': { default: {} },
     '@/components/ConflictResolutionDialog.vue': { default: {} },
   }
+  const props = vue.reactive({
+    file: options.file || workspace.statusList[0]?.path || '',
+    visible: true,
+  })
+  const events = []
+  mocks['@/composables/useExternalTool'] = { useExternalTool: () => ({ open: async () => {} }) }
   const source = fs
-    .readFileSync('src/views/ConflictsView.vue', 'utf8')
+    .readFileSync('src/components/ConflictInspector.vue', 'utf8')
     .match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1]
   const compiled = ts.transpileModule(
     source +
-      '\nexports.state = { conflicts, selected, selectedPath, loading, refreshing, canResolve, error, load, refresh, openResolution, conflictRequest };',
+      '\nexports.state = { conflicts, selected, loading, canResolve, error, load, openResolution };',
     { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }
   ).outputText
   const context = {
     exports: {},
+    defineProps: () => props,
+    defineEmits:
+      () =>
+      (...args) =>
+        events.push(args),
     require: (name) => {
       assert.ok(name in mocks, name)
       return mocks[name]
@@ -101,6 +112,8 @@ function harness(options = {}) {
   return {
     ...context.exports.state,
     workspace,
+    props,
+    events,
     flow,
     calls,
     errors,
@@ -152,7 +165,7 @@ test('detail query failure preserves every known path and exposes the error', as
   h.stop()
 })
 test('an empty page needs no query and late status loads only the selected path', async () => {
-  const h = harness({ load: () => [conflict('late.txt', 'tree')] })
+  const h = harness({ file: 'late.txt', load: () => [conflict('late.txt', 'tree')] })
   await settle()
   assert.equal(h.loads(), 0)
   h.workspace.statusList = [status('late.txt')]
@@ -173,32 +186,6 @@ test('unrelated status changes do not repeat conflict detail scans', async () =>
   assert.equal(h.loads(), 1)
   h.stop()
 })
-test('refresh clears a stale conflict from the page and sidebar status together', async () => {
-  const h = harness({
-    status: [status('old.txt')],
-    refresh: async (workspace) => {
-      workspace.epoch++
-      workspace.statusList = []
-      return true
-    },
-  })
-  await settle()
-  await h.refresh()
-  await settle()
-  assert.equal(h.refreshes(), 1)
-  assert.equal(h.loads(), 1)
-  assert.equal(h.workspace.statusList.length, 0)
-  assert.equal(h.conflicts.value.length, 0)
-  h.stop()
-})
-test('refresh failure retains paths and explains that status may be outdated', async () => {
-  const h = harness({ status: [status('a.txt')], refresh: async () => false })
-  await settle()
-  await h.refresh()
-  assert.equal(h.conflicts.value[0].path, 'a.txt')
-  assert.equal(h.error.value, 'conflictReview.refreshFailed')
-  h.stop()
-})
 test('subdirectory paths are mapped to the working-copy root without duplicate entries', async () => {
   const h = harness({
     identity: { root: '/fixture' },
@@ -208,9 +195,9 @@ test('subdirectory paths are mapped to the working-copy root without duplicate e
   await settle()
   assert.equal(h.conflicts.value.length, 1)
   assert.equal(h.selected.value.path, 'Content/a.txt')
-  h.openResolution()
-  assert.deepEqual(Array.from(h.conflictRequest.value.files), ['Content/a.txt'])
-  assert.equal(h.conflictRequest.value.workspace, '/fixture/wc')
+  h.openResolution('mine-full')
+  assert.equal(h.events.at(-1)[0], 'resolve')
+  assert.equal(h.events.at(-1)[1], 'mine-full')
   assert.equal(h.calls.length, 0)
   h.stop()
 })
@@ -223,6 +210,7 @@ test('late responses and errors from another working copy never replace current 
       })
     h.workspace.currentPath = '/fixture/other'
     h.workspace.statusList = [status('new.txt')]
+    h.props.file = 'new.txt'
     await settle()
     if (reject) pending.reject(new Error('old error'))
     else pending.resolve([conflict('old.txt')])
@@ -232,31 +220,22 @@ test('late responses and errors from another working copy never replace current 
     h.stop()
   }
 })
-test('switching branch closes the request for the old branch without writing files', async () => {
+test('a hidden inspector cannot launch a resolution', async () => {
   const h = harness({ conflicts: [conflict('a.txt')] })
   await settle()
-  h.openResolution()
-  assert.ok(h.conflictRequest.value)
-  h.workspace.svnInfo.url = 'file:///fixture/other'
+  h.props.visible = false
   await settle()
-  assert.equal(h.conflictRequest.value, null)
-  assert.equal(h.calls.length, 0)
+  h.openResolution('working')
+  assert.equal(h.events.length, 0)
   h.stop()
-})
-test('unmount invalidates pending details and confirmation actions', async () => {
-  const h = harness({ conflicts: [conflict('a.txt')] })
-  await settle()
-  h.openResolution()
-  h.stop()
-  h.openResolution()
-  assert.equal(h.conflictRequest.value, null)
-  assert.equal(h.calls.length, 0)
+  h.openResolution('working')
+  assert.equal(h.events.length, 0)
 })
 test('returning to the conflict view retains selection and details without loading or querying', async () => {
   const h = harness({ conflicts: [conflict('a.txt'), conflict('b.txt')] })
   await settle()
   assert.deepEqual(h.queried, [['/fixture/wc', 'a.txt']])
-  h.selectedPath.value = 'b.txt'
+  h.props.file = 'b.txt'
   await settle()
   assert.equal(h.loads(), 2)
   h.deactivate()
@@ -266,30 +245,10 @@ test('returning to the conflict view retains selection and details without loadi
   assert.equal(h.canResolve.value, true)
   await settle()
   assert.equal(h.loads(), 2)
-  h.selectedPath.value = 'a.txt'
+  h.props.file = 'a.txt'
   await settle()
   assert.equal(h.loads(), 2)
   h.stop()
-})
-test('failed or absent details are cached until a status change or explicit refresh', async () => {
-  for (const load of [
-    async () => [],
-    async () => {
-      throw new Error('unavailable')
-    },
-  ]) {
-    const h = harness({ status: [status('a.txt')], load })
-    await settle()
-    h.deactivate()
-    h.activate()
-    await settle()
-    assert.equal(h.loads(), 1)
-    assert.equal(h.loading.value, false)
-    assert.equal(h.canResolve.value, false)
-    await h.refresh()
-    assert.equal(h.loads(), 2)
-    h.stop()
-  }
 })
 test('leaving and returning during an initial query reuses its in-flight request', async () => {
   const pending = deferred(),
@@ -324,7 +283,7 @@ test('a late detail response from another selection does not replace or unblock 
       status: [status('a.txt'), status('b.txt')],
       load: (_n, file) => (file === 'a.txt' ? a.promise : b.promise),
     })
-  h.selectedPath.value = 'b.txt'
+  h.props.file = 'b.txt'
   await settle()
   a.resolve([conflict('a.txt')])
   await settle()
@@ -337,8 +296,8 @@ test('a late detail response from another selection does not replace or unblock 
   assert.equal(h.canResolve.value, true)
   h.stop()
 })
-test('the application preserves the conflict view along with its other cached routes', () => {
-  const layout = fs.readFileSync('src/layouts/MainLayout.vue', 'utf8')
-  assert.match(layout, /keep-alive :include="cachedViews"/)
-  assert.match(layout, /const cachedViews = ref\(\[[^\]]*'ConflictsView'/)
+test('both conflict and local changes routes use the same cached workspace component', () => {
+  const router = fs.readFileSync('src/router/index.ts', 'utf8')
+  assert.match(router, /name: 'conflicts',[\s\S]*?import\('@\/views\/WorkspaceView.vue'\)/)
+  assert.equal(fs.existsSync('src/views/ConflictsView.vue'), false)
 })

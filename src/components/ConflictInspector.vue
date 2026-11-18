@@ -1,165 +1,264 @@
 <template>
-  <section class="conflict-inspector">
+  <section class="conflict-inspector" :aria-busy="loading || refreshing">
     <header>
       <strong>{{ file }}</strong
-      ><button :disabled="flow.busy || loading" @click="load">{{ $t('menu.refresh') }}</button>
+      ><el-button size="small" :disabled="flow.busy || loading" @click="load(true)">{{
+        $t('menu.refresh')
+      }}</el-button>
     </header>
-    <p v-if="error" role="alert" class="error">{{ error }}</p>
-    <template v-if="conflict">
-      <p>{{ $t('flow.conflicts') }} · {{ conflict.kind }}</p>
+    <p v-if="loading" class="muted" role="status">{{ $t('conflictReview.loadingDetails') }}</p>
+    <p v-if="error" class="error" role="alert">{{ error }}</p>
+    <p v-if="!detail && !loading && !error" class="muted">{{ $t('conflictReview.unverified') }}</p>
+    <template v-if="detail">
       <div class="conflict-actions">
-        <el-button :disabled="flow.busy" @click="resolve('working')">{{
+        <el-button
+          v-if="detail.kind === 'content'"
+          :disabled="!canResolve"
+          @click="openResolution('mine-full')"
+          >{{ $t('conflictDialog.local') }}</el-button
+        >
+        <el-button
+          v-if="detail.kind === 'content'"
+          :disabled="!canResolve"
+          @click="openResolution('theirs-full')"
+          >{{ $t('conflictDialog.incoming') }}</el-button
+        >
+        <el-button :disabled="!canResolve" @click="openResolution('working')">{{
           $t('flow.keepWorking')
-        }}</el-button
-        ><el-button
-          :disabled="flow.busy || conflict.kind !== 'content'"
-          @click="resolve('mine-full')"
-          >{{ $t('flow.keepLocal') }}</el-button
-        ><el-button
-          :disabled="flow.busy || conflict.kind !== 'content'"
-          @click="resolve('theirs-full')"
-          >{{ $t('flow.takeIncoming') }}</el-button
-        ><el-button :disabled="flow.busy || conflict.kind !== 'content'" @click="merge">{{
+        }}</el-button>
+        <el-button v-if="detail.kind === 'content'" :disabled="!canResolve" @click="merge">{{
           $t('experience.externalMerge')
         }}</el-button>
+        <el-button @click="reveal">{{ $t('flow.openFile') }}</el-button>
       </div>
-      <p class="muted">
-        {{ $t(conflict.kind === 'content' ? 'flow.resolveConfirm' : 'flow.conflictHint') }}
-      </p>
-      <div class="conflict-versions">
-        <article v-for="version in conflict.versions" :key="version.side">
-          <strong>{{ $t(`flow.${version.side}`) }}</strong
-          ><small>{{ version.size.toLocaleString() }} B</small>
-          <pre>{{ version.text ?? $t('experience.binary') }}</pre>
-        </article>
-      </div>
+      <ConflictExplanation
+        :conflict="detail"
+        :workspace="workspace.currentPath || undefined"
+        :file="file"
+        :version="context"
+      />
+      <details v-if="detail.versions.length" class="version-details">
+        <summary>{{ $t('conflictDialog.versions') }}</summary>
+        <div class="versions">
+          <article v-for="version in detail.versions" :key="version.side">
+            <strong
+              >{{ $t(`flow.${version.side}`) }} · {{ version.size.toLocaleString() }} B</strong
+            >
+            <p>{{ version.path }}</p>
+            <pre>{{ version.text ?? $t('flow.binary') }}</pre>
+          </article>
+        </div>
+      </details>
       <details>
-        <summary>{{ $t('flow.details') }}</summary>
-        <pre>{{ conflict.details }}</pre>
+        <summary>{{ $t('conflictReview.diagnostics') }}</summary>
+        <pre>{{ detail.details }}</pre>
       </details>
     </template>
   </section>
 </template>
 <script setup lang="ts">
-import { ref, watch } from 'vue'
-import { useI18n } from 'vue-i18n'
-import { ElMessageBox } from 'element-plus'
-import { repositoryConflicts, repositoryResolve, type Conflict } from '@/api/workflows'
+import {
+  computed,
+  onActivated,
+  onBeforeUnmount,
+  onDeactivated,
+  ref,
+  shallowReactive,
+  watch,
+} from 'vue'
+import { ElMessage } from 'element-plus'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useWorkflowStore } from '@/stores/workflows'
+
+import { repositoryConflictDetail, type ConflictDetail } from '@/api/workflows'
+import { revealWorkspaceFile } from '@/api/svn'
+import ConflictExplanation from '@/components/ConflictExplanation.vue'
+
+import type { ConflictStrategy } from '@/utils/conflictResolution'
 import { useExternalTool } from '@/composables/useExternalTool'
-const props = defineProps<{ file: string }>(),
-  emit = defineEmits<{ resolved: [file: string] }>()
+
+const props = defineProps<{ file: string; visible?: boolean }>()
+const emit = defineEmits<{ resolve: [strategy: ConflictStrategy] }>()
 const workspace = useWorkspaceStore(),
-  flow = useWorkflowStore(),
-  { t } = useI18n()
-const conflict = ref<Conflict | null>(null),
-  loading = ref(false),
-  error = ref('')
-let generation = 0
-async function load() {
-  const request = ++generation,
-    path = workspace.currentPath,
-    file = props.file
-  conflict.value = null
-  error.value = ''
-  if (!path) return
-  loading.value = true
-  try {
-    const next = await repositoryConflicts(path)
-    if (request === generation)
-      conflict.value =
-        next.find(
-          (item) =>
-            item.path === file ||
-            item.path ===
-              [
-                path
-                  .replace(/\\/g, '/')
-                  .slice((flow.identity?.root || path).replace(/\\/g, '/').length)
-                  .replace(/^\//, ''),
-                file,
-              ]
-                .filter(Boolean)
-                .join('/')
-        ) || null
-  } catch (e) {
-    if (request === generation) error.value = String(e)
-  } finally {
-    if (request === generation) loading.value = false
+  flow = useWorkflowStore()
+type Snapshot = { detail: ConflictDetail | null; error: string }
+const cache = shallowReactive(new Map<string, Snapshot>())
+const pending = new Map<string, Promise<Snapshot>>()
+const loading = ref(false),
+  refreshing = ref(false),
+  refreshError = ref('')
+const active = ref(true)
+
+let generation = 0,
+  disposed = false,
+  cacheContext = ''
+const knownConflicts = computed(() =>
+  workspace.statusList.filter(
+    (item) => item.status_code === 'conflicted' || item.prop_status === 'conflicted'
+  )
+)
+const context = computed(() =>
+  JSON.stringify([
+    workspace.currentPath,
+    workspace.svnInfo?.url,
+    workspace.epoch,
+    workspace.historyEpoch,
+    knownConflicts.value.map((item) => [item.path, item.status_code, item.prop_status]).sort(),
+  ])
+)
+const conflicts = computed(() =>
+  knownConflicts.value
+    .map((item) => ({
+      path: item.path,
+      kind:
+        cache.get(item.path)?.detail?.conflict?.kind ||
+        (item.prop_status === 'conflicted' ? 'property' : 'unknown'),
+      confirmed: !!cache.get(item.path)?.detail?.conflict,
+    }))
+    .sort((a, b) => a.path.localeCompare(b.path))
+)
+const selected = computed(() => conflicts.value.find((item) => item.path === props.file) || null)
+const snapshot = computed(() => (selected.value ? cache.get(selected.value.path) : undefined))
+const detail = computed(() => snapshot.value?.detail?.conflict || null)
+const identity = computed(() => snapshot.value?.detail?.identity || null)
+const error = computed(() => refreshError.value || snapshot.value?.error || '')
+const canResolve = computed(
+  () =>
+    active.value &&
+    props.visible !== false &&
+    !disposed &&
+    !loading.value &&
+    !refreshing.value &&
+    !flow.busy &&
+    context.value === cacheContext &&
+    !!selected.value?.confirmed &&
+    !!identity.value
+)
+async function load(force = false) {
+  const version = context.value
+  if (cacheContext !== version) {
+    cacheContext = version
+    cache.clear()
+    pending.clear()
+    generation++
   }
-}
-async function resolve(strategy: string) {
   const path = workspace.currentPath,
-    url = flow.identity?.url,
-    item = conflict.value
-  if (!path || !url || !item || flow.busy) return
-  try {
-    await ElMessageBox.confirm(`${item.path}\n${t('flow.resolveConfirm')}`, t('flow.conflicts'), {
-      type: 'warning',
-    })
-    if (path !== workspace.currentPath || item !== conflict.value) return
-    const result = await flow.perform(t('flow.conflicts'), () =>
-      repositoryResolve(path, item.path, strategy, url)
+    file = selected.value?.path,
+    request = ++generation
+  loading.value = false
+  if (!path || !file || disposed || !active.value || props.visible === false || refreshing.value)
+    return
+  if (!force && cache.has(file)) return
+  loading.value = true
+  let query = pending.get(file)
+  if (!query) {
+    query = repositoryConflictDetail(path, file).then(
+      (detail) => ({ detail, error: '' }),
+      (error) => ({ detail: null, error: String(error) })
     )
-    if (result.error) error.value = result.error
-    else emit('resolved', props.file)
-  } catch (e) {
-    if (e !== 'cancel' && e !== 'close') error.value = String(e)
+    pending.set(file, query)
   }
+  const next = await query
+  if (pending.get(file) === query) pending.delete(file)
+  if (!disposed && version === context.value && version === cacheContext) {
+    cache.delete(file)
+    cache.set(file, next)
+    // Bound retained file previews while keeping the currently selected path.
+    while (cache.size > 8) {
+      const oldest = [...cache.keys()].find((key) => key !== selected.value?.path)
+      if (!oldest) break
+      cache.delete(oldest)
+    }
+  }
+  if (request === generation && !disposed) loading.value = false
+}
+function openResolution(strategy: ConflictStrategy = 'working') {
+  if (!canResolve.value) return
+  emit('resolve', strategy)
 }
 async function merge() {
+  if (!detail.value || detail.value.kind !== 'content' || !canResolve.value) return
   try {
-    await useExternalTool().open(conflict.value?.path || props.file, true, true)
-    await load()
+    await useExternalTool().open(props.file, true)
+    await load(true)
   } catch (e) {
-    error.value = String(e)
+    refreshError.value = String(e)
   }
 }
-watch(() => [workspace.currentPath, props.file], load, { immediate: true })
+async function reveal() {
+  if (detail.value && identity.value) {
+    try {
+      await revealWorkspaceFile(identity.value.root, detail.value.path)
+    } catch (e) {
+      ElMessage.error(String(e))
+    }
+  }
+}
+watch(
+  [context, () => selected.value?.path, () => props.visible],
+  () => {
+    refreshError.value = ''
+    void load()
+  },
+  { immediate: true }
+)
+onActivated(() => {
+  active.value = true
+  void load()
+})
+onDeactivated(() => {
+  active.value = false
+  generation++
+  loading.value = false
+})
+onBeforeUnmount(() => {
+  disposed = true
+  generation++
+  cache.clear()
+  pending.clear()
+})
 </script>
 <style scoped>
 .conflict-inspector {
   height: 100%;
   overflow: auto;
-  padding: 12px;
+  padding: 16px;
   box-sizing: border-box;
 }
 header,
 .conflict-actions {
   display: flex;
+  gap: 8px;
   align-items: center;
-  gap: 6px;
   flex-wrap: wrap;
 }
 header strong {
   flex: 1;
+  font-size: 14px;
   overflow-wrap: anywhere;
 }
-header button {
-  border: 0;
-  background: none;
-  color: inherit;
-  cursor: pointer;
+.conflict-actions {
+  margin: 12px 0;
 }
-.conflict-versions {
+.versions {
   display: flex;
-  gap: 8px;
+  gap: 10px;
+  margin: 12px 0;
 }
-.conflict-versions article {
+.versions article {
   flex: 1;
   min-width: 0;
+  padding: 10px;
   border: 1px solid var(--md-sys-color-outline-variant);
-  padding: 8px;
 }
-.conflict-versions small {
-  float: right;
+.versions p {
+  overflow-wrap: anywhere;
 }
-.conflict-versions pre {
-  max-height: 34vh;
-  overflow: auto;
+pre {
   white-space: pre-wrap;
-  font-size: 11px;
+  overflow: auto;
+  max-height: 40vh;
+  font-size: 12px;
 }
 .muted {
   font-size: 12px;
@@ -168,9 +267,15 @@ header button {
 .error {
   color: var(--md-sys-color-error);
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+summary {
+  cursor: pointer;
+  font-size: 12px;
+  margin: 12px 0;
 }
 @media (max-width: 1000px) {
-  .conflict-versions {
+  .versions {
     flex-direction: column;
   }
 }

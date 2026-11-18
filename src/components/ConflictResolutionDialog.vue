@@ -7,20 +7,26 @@
     :close-on-press-escape="!executing"
     :before-close="close"
   >
-    <p class="conflict-intro">{{ $t('conflictDialog.intro') }}</p>
+    <p class="conflict-intro">
+      {{ $t(request.strategy ? 'conflictActions.confirmScope' : 'conflictDialog.intro') }}
+    </p>
+    <strong v-if="request.strategy">{{ $t(choiceLabel) }} · {{ eligible.length }}</strong>
     <p v-if="request.otherCount" class="conflict-notice">
       {{ $t('conflictDialog.otherChanges', { count: request.otherCount }) }}
     </p>
     <p v-if="loading" role="status">{{ $t('common.loading') }}</p>
     <p v-if="error" role="alert" class="conflict-error">{{ error }}</p>
     <ul class="conflict-targets">
-      <li v-for="item in items" :key="item.path">
+      <li v-for="item in items.filter((item) => !skipped.includes(item))" :key="item.path">
         <code>{{ item.path }}</code
         ><span v-if="completed.includes(item.path)">✓</span>
       </li>
     </ul>
-    <ConflictExplanation v-if="items.length === 1" :conflict="items[0]" />
-    <fieldset :disabled="loading || executing || !isCurrent() || !remaining.length">
+    <ConflictExplanation v-if="items.length === 1 && !request.strategy" :conflict="items[0]" />
+    <fieldset
+      v-if="!request.strategy"
+      :disabled="loading || executing || !isCurrent() || !remaining.length"
+    >
       <legend>{{ $t('conflictDialog.choose') }}</legend>
       <label
         ><input v-model="strategy" type="radio" value="working" name="conflict-strategy" /><span
@@ -30,24 +36,49 @@
           }}</small></span
         ></label
       >
-      <label v-if="!hasManualConflict"
+      <label
         ><input v-model="strategy" type="radio" value="mine-full" name="conflict-strategy" /><span
           ><strong>{{ $t('conflictDialog.local') }}</strong
           ><small>{{ $t('conflictDialog.localHint') }}</small></span
         ></label
       >
-      <label v-if="!hasManualConflict"
+      <label
         ><input v-model="strategy" type="radio" value="theirs-full" name="conflict-strategy" /><span
           ><strong>{{ $t('conflictDialog.incoming') }}</strong
           ><small>{{ $t('conflictDialog.incomingHint') }}</small></span
         ></label
       >
-      <label v-if="hasManualConflict" class="manual-confirm"
-        ><input v-model="manual" type="checkbox" /><span>{{
-          $t('conflictDialog.manual')
-        }}</span></label
-      >
     </fieldset>
+    <label v-if="needsManual" class="manual-confirm"
+      ><input v-model="manual" type="checkbox" :disabled="loading || executing" /><span>{{
+        $t('conflictDialog.manual')
+      }}</span></label
+    >
+    <p v-if="skipped.length" class="conflict-notice">
+      {{ $t('conflictActions.skipped', { count: skipped.length }) }}
+    </p>
+    <ul v-if="skipped.length" class="conflict-targets">
+      <li v-for="item in skipped" :key="item.path">
+        <code>{{ item.path }}</code
+        ><span>{{
+          $t(item.kind === 'tree' ? 'conflictReview.tree' : 'conflictReview.property')
+        }}</span>
+      </li>
+    </ul>
+    <p v-for="issue in loadIssues" :key="issue.path" class="conflict-error" role="alert">
+      {{ issue.path }} — {{ issue.error }}
+    </p>
+    <p v-if="executing || completed.length" role="status">
+      {{
+        $t('conflictActions.progress', {
+          done: completed.length,
+          total: eligible.length + completed.length,
+        })
+      }}<span v-if="currentFile"> · {{ currentFile }}</span>
+    </p>
+    <p v-for="issue in failures" :key="issue.path" class="conflict-error" role="alert">
+      {{ issue.path }} — {{ issue.error }}
+    </p>
     <div v-if="remaining.length" class="resolution-effect">
       <strong>{{ $t('conflictReview.effectTitle') }}</strong>
       <p>
@@ -64,7 +95,7 @@
         }}
       </p>
       <p
-        v-for="item in remaining.filter((item) => item.summary?.schedule === 'delete')"
+        v-for="item in eligible.filter((item) => item.summary?.schedule === 'delete')"
         :key="item.path"
         class="conflict-error"
       >
@@ -90,7 +121,7 @@
       ><el-button :disabled="executing" @click="close">{{ $t('common.cancel') }}</el-button
       ><el-button :disabled="executing || loading" @click="load">{{ $t('flow.refresh') }}</el-button
       ><el-button type="primary" :loading="executing" :disabled="!canApply" @click="apply">{{
-        $t('conflictDialog.apply')
+        $t(failures.length ? 'conflictActions.retry' : 'conflictDialog.apply')
       }}</el-button></template
     >
   </el-dialog>
@@ -127,11 +158,26 @@ const strategy = ref<ConflictStrategy>('working'),
   loading = ref(false),
   executing = ref(false),
   error = ref('')
+const currentFile = ref('')
+const loadIssues = ref<{ path: string; error: string }[]>([])
+const failures = ref<{ path: string; error: string }[]>([])
 let generation = 0,
   disposed = false
 const remaining = computed(() => items.value.filter((item) => !completed.value.includes(item.path)))
 const versionItems = computed(() => items.value.filter((item) => item.versions.length > 0))
 const hasManualConflict = computed(() => remaining.value.some((item) => item.kind !== 'content'))
+const eligible = computed(() =>
+  remaining.value.filter((item) => strategy.value === 'working' || item.kind === 'content')
+)
+const skipped = computed(() => remaining.value.filter((item) => !eligible.value.includes(item)))
+const needsManual = computed(() => eligible.value.some((item) => item.kind !== 'content'))
+const choiceLabel = computed(() =>
+  strategy.value === 'mine-full'
+    ? 'conflictDialog.local'
+    : strategy.value === 'theirs-full'
+      ? 'conflictDialog.incoming'
+      : 'flow.keepWorking'
+)
 function isCurrent() {
   return (
     !disposed &&
@@ -146,7 +192,7 @@ const canApply = computed(
     !flow.busy &&
     isCurrent() &&
     identity.value !== null &&
-    strategyAllowed(strategy.value, remaining.value, manual.value)
+    strategyAllowed(strategy.value, eligible.value, manual.value)
 )
 async function load() {
   if (executing.value) return
@@ -158,17 +204,26 @@ async function load() {
   identity.value = null
   completed.value = []
   manual.value = false
-  strategy.value = 'working'
+  strategy.value = request.strategy || 'working'
+  loadIssues.value = []
+  failures.value = []
+  currentFile.value = ''
   try {
     const conflicts: Conflict[] = []
     let info: Identity | null = null
     for (const file of [...new Set(request.files)]) {
-      const result = await repositoryConflictDetail(request.workspace, file)
-      if (current !== generation || props.request !== request || !isCurrent()) return
-      if (info && (info.root !== result.identity.root || info.url !== result.identity.url))
-        throw new Error(t('fileMenu.changed'))
-      info = result.identity
-      if (result.conflict) conflicts.push(result.conflict)
+      try {
+        const result = await repositoryConflictDetail(request.workspace, file)
+        if (current !== generation || props.request !== request || !isCurrent()) return
+        if (info && (info.root !== result.identity.root || info.url !== result.identity.url))
+          throw new Error(t('fileMenu.changed'))
+        info = result.identity
+        if (result.conflict) conflicts.push(result.conflict)
+        else loadIssues.value.push({ path: file, error: t('conflictDialog.noConflicts') })
+      } catch (e) {
+        if (current !== generation || !isCurrent()) return
+        loadIssues.value.push({ path: file, error: String(e) })
+      }
     }
     if (!info) throw new Error(t('conflictDialog.noConflicts'))
     items.value = selectedConflicts(request.workspace, info.root, request.files, conflicts)
@@ -186,9 +241,10 @@ async function apply() {
     request = props.request,
     info = { ...identity.value },
     choice = strategy.value,
-    selected = [...remaining.value]
+    selected = [...eligible.value]
   executing.value = true
   error.value = ''
+  failures.value = []
   try {
     await flow.perform(
       t('conflictDialog.title'),
@@ -196,25 +252,43 @@ async function apply() {
         for (const item of selected) {
           if (!isCurrent() || props.request !== request || current !== generation)
             throw new Error(t('fileMenu.changed'))
-          const result = await repositoryResolve(request.workspace, item.path, choice, info.url)
-          if (isCurrent() && !(await useWorkspace().applyStatusPatch(result.status || null)))
-            flow.refreshWarning = true
-          if (result.error) throw new Error(result.error)
-          if (result.conflicts.includes(item.path))
-            throw new Error(t('conflictDialog.unresolved', { path: item.path }))
-          completed.value.push(item.path)
+          currentFile.value = item.path
+          try {
+            const result = await repositoryResolve(request.workspace, item.path, choice, info.url)
+            if (isCurrent() && !(await useWorkspace().applyStatusPatch(result.status || null)))
+              flow.refreshWarning = true
+            if (result.error) throw new Error(result.error)
+            if (result.conflicts.includes(item.path))
+              throw new Error(t('conflictDialog.unresolved', { path: item.path }))
+            completed.value.push(item.path)
+          } catch (e) {
+            failures.value.push({ path: item.path, error: String(e) })
+          }
         }
-        return { strategy: choice, paths: completed.value, error: null }
+        return {
+          strategy: choice,
+          paths: completed.value,
+          error: failures.value.length
+            ? t('conflictActions.failed', { count: failures.value.length })
+            : null,
+        }
       },
       true,
       false
     )
-    if (current === generation && isCurrent()) emit('resolved')
+    if (current === generation && isCurrent()) {
+      if (!failures.value.length && !loadIssues.value.length) emit('resolved')
+      else if (!failures.value.length)
+        error.value = t('conflictActions.failed', { count: loadIssues.value.length })
+      else
+        error.value = `${t('conflictDialog.partial', { count: completed.value.length })}\n${failures.value.map((item) => `${item.path}: ${item.error}`).join('\n')}`
+    }
   } catch (e) {
     if (current === generation && isCurrent())
       error.value = `${t('conflictDialog.partial', { count: completed.value.length })}\n${String(e)}`
   } finally {
     executing.value = false
+    currentFile.value = ''
   }
 }
 function close() {

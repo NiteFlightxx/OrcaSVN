@@ -4,20 +4,82 @@ const fs = require('node:fs')
 const vm = require('node:vm')
 const ts = require('typescript')
 const vue = require('vue')
-const compile = source => ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText
-function load(path, globals = {}) { const context = { exports: {}, ...globals }; vm.runInNewContext(compile(fs.readFileSync(path, 'utf8')), context); return context.exports }
+const compile = (source) =>
+  ts.transpileModule(source, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
+  }).outputText
+function load(path, globals = {}) {
+  const context = { exports: {}, ...globals }
+  vm.runInNewContext(compile(fs.readFileSync(path, 'utf8')), context)
+  return context.exports
+}
 const tree = load('src/utils/changeTree.ts')
 const selection = load('src/utils/changeSelection.ts')
-const entry = path => ({ path, status_code: 'modified', prop_status: 'none' })
-function treeHarness() {
-  const props = vue.reactive({ entries: ['Content/A.txt', 'Content/B.txt', 'Source/Game.cpp'].map(entry), selectable: ['Content/A.txt', 'Content/B.txt', 'Source/Game.cpp'], staged: false, workspaceKey: 'fixture', filterKey: 'all', active: true, viewMode: 'tree', disabled: false, actionPending: false })
+const entry = (path) => ({ path, status_code: 'modified', prop_status: 'none' })
+function treeHarness(options = {}) {
+  const props = vue.reactive({
+    entries: ['Content/A.txt', 'Content/B.txt', 'Source/Game.cpp'].map(entry),
+    selectable: ['Content/A.txt', 'Content/B.txt', 'Source/Game.cpp'],
+    staged: false,
+    workspaceKey: 'fixture',
+    filterKey: 'all',
+    active: true,
+    viewMode: 'tree',
+    disabled: false,
+    actionPending: false,
+  })
   const calls = []
-  const mocks = { vue, 'vue-i18n': { useI18n: () => ({ t: key => key }) }, './VirtualViewport.vue': {}, '@/utils/changeTree': tree, '@/utils/changeSelection': selection, '@/composables/useSvnStatus': { getStatusClass: status => status, getStatusLabelKey: status => status } }
-  const source = fs.readFileSync('src/components/WorkspaceChangeTree.vue', 'utf8').match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1]
-  const context = { exports: {}, localStorage: { getItem: () => null, setItem() {} }, defineProps: () => props, defineExpose() {}, defineEmits: () => (...args) => { calls.push(args); if (args[0] === 'toggle-selection') props.entries = props.entries.filter(file => !args[1].includes(file.path)) }, require: name => { assert.ok(name in mocks, name); return mocks[name] } }
+  Object.assign(props, options)
+  const mocks = {
+    vue,
+    'vue-i18n': { useI18n: () => ({ t: (key) => key }) },
+    './VirtualViewport.vue': {},
+    '@/utils/changeTree': tree,
+    '@/utils/changeSelection': selection,
+    '@/composables/useSvnStatus': {
+      getStatusClass: (status) => status,
+      getStatusLabelKey: (status) => status,
+    },
+  }
+  const source = fs
+    .readFileSync('src/components/WorkspaceChangeTree.vue', 'utf8')
+    .match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1]
+  const context = {
+    exports: {},
+    localStorage: { getItem: () => null, setItem() {} },
+    defineProps: () => props,
+    defineExpose() {},
+    defineEmits:
+      () =>
+      (...args) => {
+        calls.push(args)
+        if (args[0] === 'toggle-selection')
+          props.entries = props.entries.filter((file) => !args[1].includes(file.path))
+      },
+    require: (name) => {
+      assert.ok(name in mocks, name)
+      return mocks[name]
+    },
+  }
   const scope = vue.effectScope()
-  scope.run(() => vm.runInNewContext(compile(source + '\nexports.actions = { rows, selectedRows, selectedTargets, selectNode, openContext, doubleClick, navigate, toggleFolder };'), context))
-  return { ...context.exports.actions, props, calls, node(path) { return this.rows.value.find(row => row.node.path === path)?.node }, stop: () => scope.stop() }
+  scope.run(() =>
+    vm.runInNewContext(
+      compile(
+        source +
+          '\nexports.actions = { rows, selectedRows, selectedTargets, selectNode, openContext, doubleClick, navigate, toggleFolder };'
+      ),
+      context
+    )
+  )
+  return {
+    ...context.exports.actions,
+    props,
+    calls,
+    node(path) {
+      return this.rows.value.find((row) => row.node.path === path)?.node
+    },
+    stop: () => scope.stop(),
+  }
 }
 test('single click selects a folder without expanding or staging and file click opens only its diff', () => {
   const h = treeHarness()
@@ -25,7 +87,10 @@ test('single click selects a folder without expanding or staging and file click 
   h.selectNode(h.node('Content'))
   assert.equal(h.rows.value.length, before)
   assert.deepEqual(Array.from(h.selectedTargets.value), ['Content/A.txt', 'Content/B.txt'])
-  assert.equal(h.calls.filter(call => call[0] === 'select' || call[0] === 'toggle-selection').length, 0)
+  assert.equal(
+    h.calls.filter((call) => call[0] === 'select' || call[0] === 'toggle-selection').length,
+    0
+  )
   h.selectNode(h.node('Content/A.txt'))
   assert.equal(h.calls.at(-1)[0], 'select')
   assert.equal(h.calls.at(-1)[1].path, 'Content/A.txt')
@@ -43,8 +108,40 @@ test('Ctrl selection and Shift range use visible rows; folder and child targets 
   assert.deepEqual(Array.from(h.selectedTargets.value), ['Content/A.txt', 'Content/B.txt'])
   h.stop()
 })
+test('conflict tree supports folder selection, Ctrl/Shift and right-click without staging', () => {
+  const h = treeHarness({ conflictMode: true, selectable: [] })
+  h.selectNode(h.node('Content'))
+  h.selectNode(h.node('Content/A.txt'), { ctrlKey: true })
+  assert.deepEqual(Array.from(h.selectedTargets.value), ['Content/A.txt', 'Content/B.txt'])
+  h.openContext({ clientX: 1, clientY: 1 }, h.node('Content'))
+  assert.deepEqual(Array.from(h.calls.at(-1)[4].targets), ['Content/A.txt', 'Content/B.txt'])
+  h.selectNode(h.node('Content/A.txt'))
+  h.selectNode(h.node('Content/B.txt'), { shiftKey: true })
+  h.navigate(
+    { key: 'Enter', preventDefault() {}, ctrlKey: false, metaKey: false },
+    h.rows.value.findIndex((row) => row.node.path === 'Content/A.txt')
+  )
+  assert.equal(h.calls.at(-1)[0], 'resolve')
+  assert.deepEqual(Array.from(h.calls.at(-1)[1]), ['Content/A.txt', 'Content/B.txt'])
+  assert.equal(
+    h.calls.some((call) => call[0] === 'toggle-selection'),
+    false
+  )
+  h.stop()
+})
+test('the Delete key in conflict mode cannot discard a selected path', () => {
+  const h = treeHarness({ conflictMode: true })
+  h.selectNode(h.node('Content/A.txt'))
+  h.navigate({ key: 'Delete', preventDefault() {}, ctrlKey: false, metaKey: false }, 1)
+  assert.equal(
+    h.calls.some((call) => call[0] === 'discard-targets'),
+    false
+  )
+  h.stop()
+})
 test('right-click preserves an existing multi-selection and switches to an unselected row', () => {
-  const h = treeHarness(), pointer = { clientX: 1, clientY: 1 }
+  const h = treeHarness(),
+    pointer = { clientX: 1, clientY: 1 }
   h.selectNode(h.node('Content/A.txt'))
   h.selectNode(h.node('Content/B.txt'), { ctrlKey: true })
   h.openContext(pointer, h.node('Content/A.txt'))
@@ -58,13 +155,18 @@ test('double-click expands folders; file double-click stages and focuses a remai
   const h = treeHarness()
   h.selectNode(h.node('Content'))
   h.doubleClick(h.node('Content'))
-  assert.equal(h.rows.value.some(row => row.node.path === 'Content/A.txt'), false)
-  assert.equal(h.calls.filter(call => call[0] === 'toggle-selection').length, 0)
+  assert.equal(
+    h.rows.value.some((row) => row.node.path === 'Content/A.txt'),
+    false
+  )
+  assert.equal(h.calls.filter((call) => call[0] === 'toggle-selection').length, 0)
   h.doubleClick(h.node('Content'))
   h.selectNode(h.node('Content/A.txt'))
   h.doubleClick(h.node('Content/A.txt'))
   await vue.nextTick()
-  assert.deepEqual(Array.from(h.calls.find(call => call[0] === 'toggle-selection')[1]), ['Content/A.txt'])
+  assert.deepEqual(Array.from(h.calls.find((call) => call[0] === 'toggle-selection')[1]), [
+    'Content/A.txt',
+  ])
   assert.deepEqual(Array.from(h.selectedTargets.value), ['Content/B.txt'])
   h.stop()
 })
@@ -72,16 +174,28 @@ test('Enter and Space stage selected rows; Delete requests confirmation for the 
   for (const key of ['Enter', ' ']) {
     const h = treeHarness()
     h.selectNode(h.node('Content'))
-    h.navigate({ key, preventDefault() {} }, h.rows.value.findIndex(row => row.node.path === 'Content'))
-    assert.deepEqual(Array.from(h.calls.find(call => call[0] === 'toggle-selection')[1]), ['Content/A.txt', 'Content/B.txt'])
+    h.navigate(
+      { key, preventDefault() {} },
+      h.rows.value.findIndex((row) => row.node.path === 'Content')
+    )
+    assert.deepEqual(Array.from(h.calls.find((call) => call[0] === 'toggle-selection')[1]), [
+      'Content/A.txt',
+      'Content/B.txt',
+    ])
     await vue.nextTick()
     h.stop()
   }
   const h = treeHarness()
   h.selectNode(h.node('Content/A.txt'))
   h.selectNode(h.node('Content/B.txt'), { ctrlKey: true })
-  h.navigate({ key: 'Delete', preventDefault() {} }, h.rows.value.findIndex(row => row.node.path === 'Content/B.txt'))
-  assert.deepEqual(Array.from(h.calls.find(call => call[0] === 'discard-targets')[1]), ['Content/A.txt', 'Content/B.txt'])
+  h.navigate(
+    { key: 'Delete', preventDefault() {} },
+    h.rows.value.findIndex((row) => row.node.path === 'Content/B.txt')
+  )
+  assert.deepEqual(Array.from(h.calls.find((call) => call[0] === 'discard-targets')[1]), [
+    'Content/A.txt',
+    'Content/B.txt',
+  ])
   h.stop()
 })
 test('view changes retain file selection and filtering clears highlights without staging', async () => {
@@ -90,7 +204,11 @@ test('view changes retain file selection and filtering clears highlights without
   h.props.viewMode = 'list'
   await vue.nextTick()
   assert.deepEqual(Array.from(h.selectedTargets.value), ['Content/A.txt', 'Content/B.txt'])
-  assert.deepEqual(Array.from(h.rows.value.map(row => row.node.label)), ['Content/A.txt', 'Content/B.txt', 'Source/Game.cpp'])
+  assert.deepEqual(Array.from(h.rows.value.map((row) => row.node.label)), [
+    'Content/A.txt',
+    'Content/B.txt',
+    'Source/Game.cpp',
+  ])
   h.props.filterKey = 'only-source'
   await vue.nextTick()
   assert.equal(h.selectedRows.value.length, 0)
@@ -98,25 +216,42 @@ test('view changes retain file selection and filtering clears highlights without
   h.props.active = false
   await vue.nextTick()
   assert.equal(h.selectedRows.value.length, 0)
-  assert.equal(h.calls.filter(call => call[0] === 'toggle-selection').length, 0)
+  assert.equal(h.calls.filter((call) => call[0] === 'toggle-selection').length, 0)
   h.stop()
 })
 test('persisted panel sizes reject malformed values and clamp overlarge settings', () => {
-  const storage = new Map([['bad', 'NaN'], ['wide', '999999'], ['small', '5']])
-  const utils = load('src/utils/changeSelection.ts', { localStorage: { getItem: key => storage.get(key) ?? null } })
+  const storage = new Map([
+    ['bad', 'NaN'],
+    ['wide', '999999'],
+    ['small', '5'],
+  ])
+  const utils = load('src/utils/changeSelection.ts', {
+    localStorage: { getItem: (key) => storage.get(key) ?? null },
+  })
   assert.equal(utils.readPanelSize('missing', 340, 240, 700), 340)
   assert.equal(utils.readPanelSize('bad', 340, 240, 700), 340)
   assert.equal(utils.readPanelSize('wide', 340, 240, 700), 700)
   assert.equal(utils.readPanelSize('small', 340, 240, 700), 240)
 })
 
-
 test('SourceGit full-path copy consumes its shortcut before document inspection handlers', () => {
   const h = treeHarness()
   h.selectNode(h.node('Content'))
   let stopped = false
-  h.navigate({ key: 'C', code: 'KeyC', ctrlKey: true, shiftKey: true, preventDefault() {}, stopPropagation() { stopped = true } }, h.rows.value.findIndex(row => row.node.path === 'Content'))
-  const copy = h.calls.find(call => call[0] === 'copy-paths')
+  h.navigate(
+    {
+      key: 'C',
+      code: 'KeyC',
+      ctrlKey: true,
+      shiftKey: true,
+      preventDefault() {},
+      stopPropagation() {
+        stopped = true
+      },
+    },
+    h.rows.value.findIndex((row) => row.node.path === 'Content')
+  )
+  const copy = h.calls.find((call) => call[0] === 'copy-paths')
   assert.deepEqual(Array.from(copy[1]), ['Content'])
   assert.equal(copy[2], true)
   assert.equal(stopped, true)

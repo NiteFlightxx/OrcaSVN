@@ -107,6 +107,7 @@
             :title="workspaceName"
           />
           <button
+            v-if="!conflictsMode"
             :title="$t('sourceUI.discardVisible')"
             :aria-label="$t('sourceUI.discardVisible')"
             :disabled="
@@ -116,7 +117,7 @@
           >
             <el-icon><RefreshLeft /></el-icon>
           </button>
-          <select v-model="filter" :aria-label="$t('workspace.fileStatus')">
+          <select v-if="!conflictsMode" v-model="filter" :aria-label="$t('workspace.fileStatus')">
             <option value="all">
               {{ $t('common.all') }} ({{ workspaceStore.statusList.length }})
             </option>
@@ -184,29 +185,36 @@
             v-else
             class="workspace-change-groups"
             :style="{
-              gridTemplateRows: `${groupSplit}fr 4px ${100 - groupSplit}fr`,
+              gridTemplateRows: conflictsMode
+                ? 'minmax(0, 1fr)'
+                : `${groupSplit}fr 4px ${100 - groupSplit}fr`,
             }"
           >
             <WorkspaceChangeTree
-              :title="$t('changes.unstaged')"
+              :title="$t(conflictsMode ? 'flow.conflicts' : 'changes.unstaged')"
+              :conflict-mode="conflictsMode"
               :total="
-                workspaceStore.statusList.filter((file) => !selectedSet.has(file.path)).length
+                conflictsMode
+                  ? workspaceStore.conflictedCount
+                  : workspaceStore.statusList.filter((file) => !selectedSet.has(file.path)).length
               "
               :entries="unstagedFiles"
               :selectable="selectablePaths"
               :staged="false"
               :active="activePanel === false"
               :workspace-key="staging.key"
-              :filter-key="`${filter}|${fileQuery}`"
+              :filter-key="`${conflictsMode}|${filter}|${fileQuery}`"
               :view-mode="viewMode"
               :selected-file="selectedFile"
               :disabled="!staging.ready || flow.busy || pendingFileAction !== null"
               :action-pending="pendingFileAction !== null"
               :empty-text="
                 $t(
-                  workspaceStore.statusList.length === 0
-                    ? 'workspace.noChanges'
-                    : 'changes.noUnstaged'
+                  conflictsMode
+                    ? 'conflictReview.empty'
+                    : workspaceStore.statusList.length === 0
+                      ? 'workspace.noChanges'
+                      : 'changes.noUnstaged'
                 )
               "
               @select="selectFile"
@@ -215,8 +223,10 @@
               @context="openFileContextMenu"
               @discard-targets="discardTargets"
               @toggle-selection="staging.stage"
+              @resolve="(paths) => openConflictDialog(paths, false, 'working')"
             />
             <PanelSplitter
+              v-if="!conflictsMode"
               axis="y"
               v-model:value="groupSplit"
               :min="20"
@@ -225,6 +235,7 @@
               :label="$t('sourceUI.resizeGroups')"
             />
             <WorkspaceChangeTree
+              v-if="!conflictsMode"
               :title="$t('changes.staged')"
               :total="staging.paths.length"
               :entries="stagedFiles"
@@ -247,7 +258,7 @@
             />
           </div>
         </div>
-        <p v-if="hiddenStagedCount" class="staging-notice">
+        <p v-if="!conflictsMode && hiddenStagedCount" class="staging-notice">
           {{ $t('changes.hiddenStaged', { count: hiddenStagedCount }) }}
           <button @click="staging.clear()">
             {{ $t('changes.clearSelection') }}
@@ -278,7 +289,11 @@
         <div class="panel-header">
           <span class="panel-title" :title="selectedFile || ''"
             ><el-icon><Connection /></el-icon
-            ><span>{{ selectedFile || $t('diff.title') }}</span></span
+            ><span>{{
+              selectedConflictPaths.length && !selectedFile
+                ? $t('conflictActions.selected', { count: selectedConflictPaths.length })
+                : selectedFile || $t('diff.title')
+            }}</span></span
           >
           <div
             v-if="selectedFile && !selectedConflict && !selectedDetails?.binary"
@@ -306,15 +321,49 @@
         </div>
         <div class="panel-content" :aria-busy="isLoadingDiff">
           <GlassLoading :active="isLoadingDiff" :label="$t('common.loading')" />
-          <div v-if="!selectedFile" class="empty-diff">
+          <ConflictInspector
+            v-if="lastConflictFile"
+            v-show="selectedConflict && selectedConflictPaths.length <= 1"
+            :file="lastConflictFile"
+            :visible="!!selectedConflict && selectedConflictPaths.length <= 1"
+            @resolve="(choice) => openConflictDialog([lastConflictFile!], false, choice)"
+          />
+          <div
+            v-if="
+              selectedConflictPaths.length && (!selectedFile || selectedConflictPaths.length > 1)
+            "
+            class="conflict-batch-summary"
+          >
+            <strong>{{
+              $t('conflictActions.selected', { count: selectedConflictPaths.length })
+            }}</strong>
+            <p>{{ $t('conflictActions.batchHint') }}</p>
+            <div class="conflict-batch-buttons">
+              <el-button
+                :disabled="!staging.ready || flow.busy"
+                @click="openConflictDialog(selectedConflictPaths, false, 'mine-full')"
+                >{{ $t('conflictDialog.local') }}</el-button
+              >
+              <el-button
+                :disabled="!staging.ready || flow.busy"
+                @click="openConflictDialog(selectedConflictPaths, false, 'theirs-full')"
+                >{{ $t('conflictDialog.incoming') }}</el-button
+              >
+              <el-button
+                :disabled="!staging.ready || flow.busy"
+                @click="openConflictDialog(selectedConflictPaths, false, 'working')"
+                >{{ $t('flow.keepWorking') }}</el-button
+              >
+            </div>
+            <ul>
+              <li v-for="path in selectedConflictPaths" :key="path">{{ path }}</li>
+            </ul>
+          </div>
+          <div v-else-if="!selectedFile" class="empty-diff">
             <el-icon><Document /></el-icon>
             <span>{{ $t('diff.selectFile') }}</span>
           </div>
-          <ConflictInspector
-            v-else-if="selectedConflict"
-            :file="selectedFile"
-            @resolved="selectNextConflict"
-          />
+          <template v-else-if="selectedConflict" />
           <div v-else-if="isLoadingDiff" class="loading-diff">
             <el-skeleton :rows="10" />
           </div>
@@ -343,6 +392,7 @@
           </div>
         </div>
         <PanelSplitter
+          v-if="!conflictsMode"
           axis="y"
           v-model:value="composerHeight"
           :min="140"
@@ -350,7 +400,7 @@
           reverse
           :label="$t('sourceUI.resizeCommit')"
         />
-        <div class="workspace-commit-composer">
+        <div v-if="!conflictsMode" class="workspace-commit-composer">
           <CommitMessageEditor compact :disabled="flow.busy" />
           <div class="commit-action-row">
             <small :title="$t('experience.latest')">{{
@@ -376,7 +426,7 @@
       v-if="conflictRequest"
       :request="conflictRequest"
       @close="conflictRequest = null"
-      @resolved="conflictRequest = null"
+      @resolved="onConflictsResolved"
     />
   </div>
 </template>
@@ -418,7 +468,7 @@ import { useWorkspace } from '@/composables/useWorkspace'
 import WorkspaceChangeTree from '@/components/WorkspaceChangeTree.vue'
 import PanelSplitter from '@/components/PanelSplitter.vue'
 import ConflictResolutionDialog from '@/components/ConflictResolutionDialog.vue'
-import type { ConflictRequest } from '@/utils/conflictResolution'
+import type { ConflictRequest, ConflictStrategy } from '@/utils/conflictResolution'
 import { readPanelSize } from '@/utils/changeSelection'
 import { useStagingStore } from '@/stores/staging'
 import { useCommitDraftStore } from '@/stores/commitDraft'
@@ -441,6 +491,7 @@ import type { SvnStatus, DiffResult } from '@/types'
 const { t } = useI18n()
 const router = useRouter(),
   route = useRoute()
+const conflictsMode = computed(() => route.name === 'conflicts')
 const reviewOpen = ref(false),
   showIgnored = ref(false),
   properties = ref(''),
@@ -487,6 +538,17 @@ watch([changeWidth, groupSplit, composerHeight, viewMode], () => {
   }
 })
 const selectedFile = ref<string | null>(null)
+const lastConflictFile = ref<string | null>(null)
+const selectedChangePaths = ref<string[]>([])
+const selectedConflictPaths = computed(() =>
+  selectedChangePaths.value.filter((path) =>
+    (workspaceStore.rawStatusList || workspaceStore.statusList).some(
+      (entry) =>
+        entry.path === path &&
+        (entry.status_code === 'conflicted' || entry.prop_status === 'conflicted')
+    )
+  )
+)
 const isLoadingDiff = ref(false)
 const diffResult = ref<DiffResult | null>(null)
 let diffRequestGeneration = 0
@@ -531,6 +593,23 @@ const contextItems = computed<FileMenuItem[]>(() => {
       fileContextMenu.targets.includes(entry.path) &&
       (entry.status_code === 'conflicted' || entry.prop_status === 'conflicted')
   )
+  if (
+    conflicts.length &&
+    (conflictsMode.value || conflicts.length === fileContextMenu.targets.length)
+  )
+    return [
+      { id: 'resolve-local', label: t('conflictDialog.local'), disabled: !ready },
+      { id: 'resolve-incoming', label: t('conflictDialog.incoming'), disabled: !ready },
+      { id: 'resolve-working', label: t('flow.keepWorking'), disabled: !ready },
+      {
+        id: 'reveal',
+        label: t('flow.openFile'),
+        separator: true,
+        disabled: !current || fileContextMenu.multiple,
+      },
+      { id: 'copy-relative', label: t('workspace.copyPath'), disabled: !current },
+      { id: 'copy-absolute', label: t('workspace.copyAbsolutePath'), disabled: !current },
+    ]
   return [
     {
       id: 'open',
@@ -589,6 +668,9 @@ const contextItems = computed<FileMenuItem[]>(() => {
             label: t('conflictDialog.menu', { count: conflicts.length }),
             disabled: !ready,
           },
+          { id: 'resolve-local', label: t('conflictDialog.local'), disabled: !ready },
+          { id: 'resolve-incoming', label: t('conflictDialog.incoming'), disabled: !ready },
+          { id: 'resolve-working', label: t('flow.keepWorking'), disabled: !ready },
         ]
       : []),
     {
@@ -676,13 +758,15 @@ const filteredFiles = computed(() => {
   return displayedStatus.value
     .filter((file) => !query || normalizePath(file.path).toLocaleLowerCase().includes(query))
     .filter((f) => {
+      if (conflictsMode.value)
+        return f.status_code === 'conflicted' || f.prop_status === 'conflicted'
       if (filter.value === 'modified')
         return (
           ['modified', 'added', 'deleted', 'replaced'].includes(f.status_code) ||
           f.prop_status === 'modified'
         )
       if (filter.value === 'added') return f.status_code === 'unversioned'
-      if (filter.value === 'conflicted')
+      if (conflictsMode.value || filter.value === 'conflicted')
         return f.status_code === 'conflicted' || f.prop_status === 'conflicted'
       if (filter.value === 'missing') return f.status_code === 'missing'
       return true
@@ -693,12 +777,15 @@ const ignoredCount = computed(() =>
   Math.max(0, (workspaceStore.rawStatusList || []).length - workspaceStore.statusList.length)
 )
 const selectedConflict = computed(() =>
-  (workspaceStore.rawStatusList || []).some(
+  (workspaceStore.rawStatusList || workspaceStore.statusList).some(
     (entry) =>
       entry.path === selectedFile.value &&
       (entry.status_code === 'conflicted' || entry.prop_status === 'conflicted')
   )
 )
+watch([selectedFile, selectedConflict], () => {
+  if (selectedConflict.value && selectedFile.value) lastConflictFile.value = selectedFile.value
+})
 const selectedSet = computed(() => new Set(staging.paths))
 const selectablePaths = computed(() => staging.eligible.map((entry) => entry.path))
 const selectableSet = computed(() => new Set(selectablePaths.value))
@@ -780,8 +867,14 @@ async function selectNextConflict() {
   const next = (workspaceStore.rawStatusList || []).find(
     (entry) => entry.status_code === 'conflicted' || entry.prop_status === 'conflicted'
   )
-  if (next) await selectFile(next)
-  else if (selectedFile.value) await loadDiff(selectedFile.value)
+  if (next) {
+    activePanel.value = false
+    selectedChangePaths.value = [next.path]
+    await selectFile(next)
+  } else if (conflictsMode.value) {
+    selectedFile.value = null
+    selectedChangePaths.value = []
+  } else if (selectedFile.value) await loadDiff(selectedFile.value)
 }
 let viewOwner = workspaceStore.currentPath
 function saveWorkspaceView() {
@@ -845,7 +938,17 @@ watch(
   },
   { immediate: true }
 )
-onActivated(restoreWorkspaceView)
+onActivated(async () => {
+  restoreWorkspaceView()
+  if (conflictsMode.value && !selectedFile.value) await selectNextConflict()
+})
+watch(conflictsMode, () => {
+  selectedChangePaths.value = []
+  selectedFile.value = null
+  activePanel.value = false
+  hideFileContextMenu()
+  if (conflictsMode.value) void nextTick().then(selectNextConflict)
+})
 
 const doCheckout = () => router.push({ name: 'checkout' })
 
@@ -961,6 +1064,10 @@ const runContextAction = async (action: string) => {
       else staging.stage(targets)
     } else if (action === 'discard') await discardTargets(context.targets)
     else if (action === 'resolve-conflicts') openConflictDialog(context.targets)
+    else if (action === 'resolve-local') openConflictDialog(context.targets, false, 'mine-full')
+    else if (action === 'resolve-incoming')
+      openConflictDialog(context.targets, false, 'theirs-full')
+    else if (action === 'resolve-working') openConflictDialog(context.targets, false, 'working')
     else if (action === 'refresh-status') await refreshStatus()
     else if (action === 'history' && context.details?.historyUrl) {
       await router.push({
@@ -1025,6 +1132,7 @@ const runContextAction = async (action: string) => {
 }
 
 const handleChangeSelection = (_paths: string[], singleFile: boolean, staged: boolean) => {
+  selectedChangePaths.value = [..._paths]
   activePanel.value = staged
   if (!singleFile) {
     diffRequestGeneration += 1
@@ -1033,7 +1141,11 @@ const handleChangeSelection = (_paths: string[], singleFile: boolean, staged: bo
     isLoadingDiff.value = false
   }
 }
-const openConflictDialog = (targets: string[], inspectFresh = false) => {
+const openConflictDialog = (
+  targets: string[],
+  inspectFresh = false,
+  strategy?: ConflictStrategy
+) => {
   const path = workspaceStore.currentPath,
     branch = workspaceStore.svnInfo?.url
   if (!path || !branch || !staging.ready || flow.busy) return
@@ -1051,7 +1163,13 @@ const openConflictDialog = (targets: string[], inspectFresh = false) => {
     branch,
     files: [...files],
     otherCount: inspectFresh ? 0 : targets.length - conflicts.length,
+    strategy,
   }
+}
+async function onConflictsResolved() {
+  conflictRequest.value = null
+  await nextTick()
+  await selectNextConflict()
 }
 const copySelectionPaths = async (paths: string[], absolute: boolean) => {
   const workspace = workspaceStore.currentPath
@@ -1120,6 +1238,8 @@ watch(
     diffResult.value = null
     isLoadingDiff.value = false
     activePanel.value = null
+    selectedChangePaths.value = []
+    lastConflictFile.value = null
     conflictRequest.value = null
     reviewOpen.value = false
     fileQuery.value = ''
@@ -1159,7 +1279,7 @@ onDeactivated(() => {
   saveWorkspaceView()
   fileActionWorkspaceGeneration += 1
   hideFileContextMenu()
-  conflictRequest.value = null
+  if (!flow.busy) conflictRequest.value = null
 })
 
 const discardTargets = async (targets: string[]) => {
@@ -1349,6 +1469,34 @@ const discardTargets = async (targets: string[]) => {
 </script>
 
 <style scoped>
+.conflict-batch-summary {
+  padding: 20px;
+  height: 100%;
+  overflow: auto;
+  box-sizing: border-box;
+}
+.conflict-batch-summary p {
+  font-size: 13px;
+  color: var(--md-sys-color-on-surface-variant);
+  line-height: 1.6;
+}
+.conflict-batch-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 16px 0;
+}
+.conflict-batch-summary ul {
+  max-height: 50vh;
+  overflow: auto;
+  list-style: none;
+  padding: 0;
+  font-size: 12px;
+}
+.conflict-batch-summary li {
+  padding: 5px 0;
+  overflow-wrap: anywhere;
+}
 .selection-hint {
   font-size: var(--app-font-size-xs);
   color: var(--md-sys-color-on-surface-variant);

@@ -1,3 +1,4 @@
+import { conflictActionLocales } from './conflictActions'
 import { updateProgressLocales } from './updateProgress'
 import { historyMenuLocales } from './historyMenu'
 import { commitFlowLocales } from './commitFlow'
@@ -73,6 +74,7 @@ const i18n = createI18n({
       experience: experienceLocales['zh-CN'],
       branchUI: branchUiLocales['zh-CN'],
       conflictDialog: conflictDialogLocales['zh-CN'],
+      conflictActions: conflictActionLocales['zh-CN'],
       conflictReview: conflictReviewLocales['zh-CN'],
       sourceUI: sourceUiLocales['zh-CN'],
       ...zhCN,
@@ -89,6 +91,7 @@ const i18n = createI18n({
       experience: experienceLocales['zh-TW'],
       branchUI: branchUiLocales['zh-TW'],
       conflictDialog: conflictDialogLocales['zh-TW'],
+      conflictActions: conflictActionLocales['zh-TW'],
       conflictReview: conflictReviewLocales['zh-TW'],
       sourceUI: sourceUiLocales['zh-TW'],
       ...zhTW,
@@ -105,6 +108,7 @@ const i18n = createI18n({
       experience: experienceLocales['ja-JP'],
       branchUI: branchUiLocales['ja-JP'],
       conflictDialog: conflictDialogLocales['ja-JP'],
+      conflictActions: conflictActionLocales['ja-JP'],
       conflictReview: conflictReviewLocales['ja-JP'],
       sourceUI: sourceUiLocales['ja-JP'],
       ...jaJP,
@@ -121,6 +125,7 @@ const i18n = createI18n({
       experience: experienceLocales['ko-KR'],
       branchUI: branchUiLocales['ko-KR'],
       conflictDialog: conflictDialogLocales['ko-KR'],
+      conflictActions: conflictActionLocales['ko-KR'],
       conflictReview: conflictReviewLocales['ko-KR'],
       sourceUI: sourceUiLocales['ko-KR'],
       ...koKR,
@@ -137,6 +142,7 @@ const i18n = createI18n({
       experience: experienceLocales['en-US'],
       branchUI: branchUiLocales['en-US'],
       conflictDialog: conflictDialogLocales['en-US'],
+      conflictActions: conflictActionLocales['en-US'],
       conflictReview: conflictReviewLocales['en-US'],
       sourceUI: sourceUiLocales['en-US'],
       ...enUS,

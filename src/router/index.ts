@@ -11,7 +11,7 @@ const router = createRouter({
         {
           path: 'conflicts',
           name: 'conflicts',
-          component: () => import('@/views/ConflictsView.vue'),
+          component: () => import('@/views/WorkspaceView.vue'),
           meta: { title: 'flow.conflicts' },
         },
         {

@@ -35,16 +35,16 @@ Windows 预发布仅生成 NSIS EXE 安装包，因为 MSI 目标不支持 `alph
 
 ## 当前 Fork 的候选版本
 
-当前已准备 `v0.6.5-rc.4`，发布目标是 `https://github.com/NiteFlightxx/OrcaSVN`。代码位于 `codex/fork-svn-workflows`，在合并到 main 前，应从这个分支创建标签。
+当前已准备 `v0.6.5-rc.5`，发布目标是 `https://github.com/NiteFlightxx/OrcaSVN`。代码位于 `codex/fork-svn-workflows`，在合并到 main 前，应从这个分支创建标签。
 
-全部版本已同步，说明位于 `docs/releases/v0.6.5-rc.4.md`。提交并推送发布准备代码后，以下命令才会触发公开预发布：
+全部版本已同步，说明位于 `docs/releases/v0.6.5-rc.5.md`。提交并推送发布准备代码后，以下命令才会触发公开预发布：
 
 ```powershell
 git switch codex/fork-svn-workflows
-$env:RELEASE_TAG = 'v0.6.5-rc.4'
+$env:RELEASE_TAG = 'v0.6.5-rc.5'
 node scripts/validate-prerelease.cjs
-git tag -a v0.6.5-rc.4 -m "OrcaSVN v0.6.5-rc.4"
-git push origin v0.6.5-rc.4
+git tag -a v0.6.5-rc.5 -m "OrcaSVN v0.6.5-rc.5"
+git push origin v0.6.5-rc.5
 ```
 
 首次使用先在 Fork 的 Actions 页面启用工作流。发布任务已声明 `contents: write`，需要仓库策略允许该权限。安装包只有在三个平台都通过检查和构建后才公开；Windows 候选版提供 NSIS EXE，不生成 MSI。

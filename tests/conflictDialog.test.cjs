@@ -31,6 +31,7 @@ function harness(options = {}) {
       branch: workspace.svnInfo.url,
       files: options.files || ['plugin.dll'],
       otherCount: 0,
+      strategy: options.strategy,
     },
   })
   const events = [],
@@ -53,13 +54,18 @@ function harness(options = {}) {
     repositoryIdentity:
       options.identity || (async () => ({ root: '/fixture/wc', url: 'file:///fixture/dev' })),
     repositoryConflicts: async () => options.conflicts || [conflict('plugin.dll')],
-    repositoryConflictDetail: async (_path, file) => ({
-      identity: await (
-        options.identity || (async () => ({ root: '/fixture/wc', url: 'file:///fixture/dev' }))
-      )(),
-      conflict:
-        (options.conflicts || [conflict('plugin.dll')]).find((item) => item.path === file) || null,
-    }),
+    repositoryConflictDetail: async (_path, file) =>
+      options.detail
+        ? options.detail(_path, file)
+        : {
+            identity: await (
+              options.identity ||
+              (async () => ({ root: '/fixture/wc', url: 'file:///fixture/dev' }))
+            )(),
+            conflict:
+              (options.conflicts || [conflict('plugin.dll')]).find((item) => item.path === file) ||
+              null,
+          },
     repositoryResolve: async (...args) => {
       calls.push(args)
       return options.resolve ? options.resolve(...args) : { error: null, conflicts: [] }
@@ -106,7 +112,7 @@ function harness(options = {}) {
     vm.runInNewContext(
       compile(
         source +
-          '\nexports.actions = { items, strategy, manual, canApply, apply, close, completed, error, loading, load };'
+          '\nexports.actions = { items, strategy, manual, canApply, apply, close, completed, error, loading, load, eligible, skipped, failures, loadIssues };'
       ),
       context
     )
@@ -237,5 +243,85 @@ test('a conflict reported as unresolved is retained and does not emit completion
     false
   )
   assert.match(h.error.value, /unresolved/)
+  h.stop()
+})
+test('a fixed incoming choice resolves content conflicts and explicitly retains tree conflicts', async () => {
+  const h = harness({
+    files: ['content.txt', 'folder'],
+    conflicts: [conflict('content.txt'), conflict('folder', 'tree')],
+    strategy: 'theirs-full',
+  })
+  await settle()
+  assert.equal(h.strategy.value, 'theirs-full')
+  assert.equal(h.canApply.value, true)
+  assert.deepEqual(
+    Array.from(h.skipped.value, (item) => item.path),
+    ['folder']
+  )
+  await h.apply()
+  assert.deepEqual(
+    h.calls.map((args) => args[1]),
+    ['content.txt']
+  )
+  assert.equal(h.calls[0][2], 'theirs-full')
+  h.stop()
+})
+test('a single fixed tree resolution still requires manual acknowledgement', async () => {
+  const h = harness({ conflicts: [conflict('plugin.dll', 'tree')], strategy: 'working' })
+  await settle()
+  assert.equal(h.canApply.value, false)
+  h.manual.value = true
+  await h.apply()
+  assert.equal(h.calls[0][2], 'working')
+  h.stop()
+})
+test('batch failures retain successes, continue other paths, and retry only failed paths', async () => {
+  let attempt = 0
+  const h = harness({
+    files: ['first.txt', 'second.txt', 'third.txt'],
+    conflicts: ['first.txt', 'second.txt', 'third.txt'].map((path) => conflict(path)),
+    strategy: 'mine-full',
+    resolve: async (_path, file) =>
+      file === 'second.txt' && attempt++ === 0
+        ? { error: 'locked', conflicts: [file] }
+        : { error: null, conflicts: [] },
+  })
+  await settle()
+  await h.apply()
+  assert.deepEqual(Array.from(h.completed.value), ['first.txt', 'third.txt'])
+  assert.equal(h.failures.value[0].path, 'second.txt')
+  assert.equal(h.calls.length, 3)
+  await h.apply()
+  assert.deepEqual(
+    h.calls.map((args) => args[1]),
+    ['first.txt', 'second.txt', 'third.txt', 'second.txt']
+  )
+  assert.equal(h.events.at(-1)[0], 'resolved')
+  h.stop()
+})
+test('failed detail reads stay visible when other selected paths finish successfully', async () => {
+  const h = harness({
+    files: ['ready.txt', 'unavailable.txt'],
+    strategy: 'working',
+    detail: async (_path, file) => {
+      if (file === 'unavailable.txt') throw new Error('metadata unavailable')
+      return {
+        identity: { root: '/fixture/wc', url: 'file:///fixture/dev' },
+        conflict: conflict(file),
+      }
+    },
+  })
+  await settle()
+  assert.equal(h.loadIssues.value[0].path, 'unavailable.txt')
+  await h.apply()
+  assert.deepEqual(
+    h.calls.map((args) => args[1]),
+    ['ready.txt']
+  )
+  assert.equal(
+    h.events.some((event) => event[0] === 'resolved'),
+    false
+  )
+  assert.equal(h.loadIssues.value.length, 1)
   h.stop()
 })

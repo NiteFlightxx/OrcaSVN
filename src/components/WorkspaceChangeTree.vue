@@ -30,6 +30,7 @@
           <el-icon><CollapseAll /></el-icon>
         </button>
         <button
+          v-if="!conflictMode"
           :disabled="disabled || !selectedSelectable.length"
           :title="$t(staged ? 'changes.unstage' : 'changes.stage') + ' · Space / Enter'"
           :aria-label="$t(staged ? 'changes.unstage' : 'changes.stage')"
@@ -38,6 +39,7 @@
           <el-icon><ArrowUp v-if="staged" /><ArrowDownToLine v-else /></el-icon>
         </button>
         <button
+          v-if="!conflictMode"
           :disabled="disabled || !batchTargets.length"
           :title="$t(staged ? 'changes.unstageAll' : 'changes.stageAll')"
           :aria-label="$t(staged ? 'changes.unstageAll' : 'changes.stageAll')"
@@ -122,7 +124,7 @@
           <span v-if="row.node.children.length" class="tree-count">{{
             row.node.targets.length
           }}</span>
-          <div class="tree-row-actions">
+          <div v-if="!conflictMode" class="tree-row-actions">
             <button
               v-if="selectableTargets(row.node).length"
               :disabled="disabled"
@@ -139,16 +141,20 @@
             </button>
             <button
               :disabled="disabled || actionPending || !row.node.targets.length"
-              :title="$t('fileMenu.discard')"
-              :aria-label="$t('fileMenu.discard')"
+              :title="$t(nodeIsConflict(row.node) ? 'conflictReview.handle' : 'fileMenu.discard')"
+              :aria-label="
+                $t(nodeIsConflict(row.node) ? 'conflictReview.handle' : 'fileMenu.discard')
+              "
               @click.stop="
                 () => {
                   selectNode(row.node)
-                  $emit('discard-targets', row.node.targets)
+                  nodeIsConflict(row.node)
+                    ? $emit('resolve', row.node.targets)
+                    : $emit('discard-targets', row.node.targets)
                 }
               "
             >
-              <el-icon><RefreshLeft /></el-icon>
+              <el-icon><Warning v-if="nodeIsConflict(row.node)" /><RefreshLeft v-else /></el-icon>
             </button>
           </div>
         </div>
@@ -182,6 +188,7 @@ const props = defineProps<{
   emptyText: string
   active?: boolean
   viewMode?: 'tree' | 'list' | 'compact'
+  conflictMode?: boolean
 }>()
 const emit = defineEmits<{
   select: [entry: SvnStatus]
@@ -195,6 +202,7 @@ const emit = defineEmits<{
   'copy-paths': [paths: string[], absolute: boolean]
   'discard-targets': [paths: string[]]
   'toggle-selection': [paths: string[]]
+  resolve: [paths: string[]]
 }>()
 const { t } = useI18n()
 const viewport = ref<InstanceType<typeof VirtualViewport> | null>(null)
@@ -221,6 +229,17 @@ const batchTargets = computed(() =>
   props.entries.filter((entry) => allowed.value.has(entry.path)).map((entry) => entry.path)
 )
 const selectedTargets = computed(() => changeTargets(tree.value, selectedRows.value))
+const isConflict = (entry: SvnStatus) =>
+  entry.status_code === 'conflicted' || entry.prop_status === 'conflicted'
+const nodeIsConflict = (node: ChangeNode) =>
+  !!node.entry && isConflict(node.entry) && !node.children.length
+const allSelectedConflicts = computed(
+  () =>
+    selectedTargets.value.length > 0 &&
+    selectedTargets.value.every((path) =>
+      props.entries.some((entry) => entry.path === path && isConflict(entry))
+    )
+)
 const selectedSelectable = computed(() =>
   selectedTargets.value.filter((path) => allowed.value.has(path))
 )
@@ -286,7 +305,7 @@ watch(
     if (retained.length !== selectedRows.value.length) {
       selectedRows.value = retained
       announceSelection()
-    }
+    } else if (props.active) announceSelection()
   }
 )
 function clearSelection() {
@@ -327,7 +346,9 @@ function announceSelection() {
     selectedRows.value.length === 1
       ? rows.value.find((row) => row.node.path === selectedRows.value[0])?.node
       : undefined
-  const single = Boolean(node?.entry && !node.children.length)
+  const single = Boolean(
+    node?.entry && (!node.children.length || (props.conflictMode && node.targets.length === 1))
+  )
   emit('selection-change', selectedTargets.value, single, props.staged)
   if (single) emit('select', node!.entry!)
 }
@@ -356,6 +377,10 @@ function openContext(event: MouseEvent, node: ChangeNode) {
   })
 }
 function doubleClick(node: ChangeNode) {
+  if ((props.conflictMode || nodeIsConflict(node)) && node.entry && !node.children.length) {
+    emit('resolve', selectedTargets.value)
+    return
+  }
   if (node.children.length) toggleFolder(node.path)
   else toggleSelected()
 }
@@ -472,10 +497,11 @@ function navigate(event: KeyboardEvent, index: number) {
   } else if (event.key === ' ' || event.key === 'Enter') {
     event.preventDefault()
     if (!selectedRows.value.includes(row.node.path)) selectNode(row.node)
-    toggleSelected()
+    if (props.conflictMode || allSelectedConflicts.value) emit('resolve', selectedTargets.value)
+    else toggleSelected()
   } else if (event.key === 'Delete' || event.key === 'Backspace') {
     event.preventDefault()
-    if (!props.disabled && !props.actionPending) {
+    if (!props.conflictMode && !props.disabled && !props.actionPending) {
       if (!selectedRows.value.includes(row.node.path)) selectNode(row.node)
       emit('discard-targets', selectedTargets.value)
     }
