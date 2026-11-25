@@ -468,7 +468,20 @@ async fn restore_missing<T>(path: &str, files: &[String], error: SvnError) -> Re
 }
 
 pub async fn status(path: &str) -> Result<Vec<SvnStatus>, SvnError> {
-    let output = execute_svn(&["status", "--xml"], Some(path)).await?;
+    status_scan(path, false).await.map(|(entries, _)| entries)
+}
+
+/// A native watcher can skip descendants of ignored directories only when
+/// SVN has identified their collapsed status in this full scan.
+pub(super) async fn status_scan(
+    path: &str,
+    include_ignored: bool,
+) -> Result<(Vec<SvnStatus>, Vec<String>), SvnError> {
+    let mut args = vec!["status", "--xml"];
+    if include_ignored {
+        args.push("--no-ignore");
+    }
+    let output = execute_svn(&args, Some(path)).await?;
     let mut entries = parse_status_xml(&output)?;
     // Default status collapses deleted directories. Expand only affected
     // targets, avoiding a second verbose traversal of the whole workspace.
@@ -488,14 +501,17 @@ pub async fn status(path: &str) -> Result<Vec<SvnStatus>, SvnError> {
         entries.extend(parse_status_xml(&output)?);
     }
     let mut changed = std::collections::BTreeMap::new();
+    let mut ignored = Vec::new();
     for entry in entries {
-        if !matches!(entry.status_code.as_str(), "normal" | "none")
+        if include_ignored && entry.status_code == "ignored" {
+            ignored.push(entry.path);
+        } else if !matches!(entry.status_code.as_str(), "normal" | "none")
             || matches!(entry.prop_status.as_str(), "modified" | "conflicted")
         {
             changed.insert(entry.path.clone(), entry);
         }
     }
-    Ok(changed.into_values().collect())
+    Ok((changed.into_values().collect(), ignored))
 }
 
 /// Query only exact paths. The filesystem event queue chooses these

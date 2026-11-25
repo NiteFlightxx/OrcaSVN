@@ -1,0 +1,50 @@
+[
+  {
+    "command": [
+      "info",
+      "--xml"
+    ],
+    "ms": 553.4,
+    "exit": 0,
+    "admin_metadata_changed": false,
+    "drive_type": 3
+  },
+  {
+    "first_notification_bytes": 150,
+    "events": [
+      [
+        "working-tree",
+        3
+      ],
+      [
+        "working-tree",
+        3
+      ]
+    ],
+    "command": [
+      "status",
+      "--xml"
+    ],
+    "ms": 15350.3,
+    "exit": 0,
+    "admin_metadata_changed": false,
+    "drive_type": 3
+  },
+  {
+    "first_notification_bytes": 58,
+    "events": [
+      [
+        "working-tree",
+        3
+      ]
+    ],
+    "command": [
+      "status",
+      "--xml"
+    ],
+    "ms": 21015.3,
+    "exit": 0,
+    "admin_metadata_changed": false,
+    "drive_type": 3
+  }
+]

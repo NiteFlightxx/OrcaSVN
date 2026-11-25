@@ -999,25 +999,36 @@ pub async fn asset_stash_apply(
     apply(&w::data_dir(&app)?, &path, &id, pop, &overwrite).await
 }
 #[tauri::command]
-pub fn asset_stash_delete(app: tauri::AppHandle, id: String) -> Result<()> {
+pub async fn asset_stash_delete(app: tauri::AppHandle, id: String) -> Result<()> {
     let data = w::data_dir(&app)?;
-    let _guard = w::acquire_key(format!("stash:{}", directory(&data, &id)?.display()))?;
-    let mut manifest = read(&data, &id)?;
-    // Retain recovery materials. Explicit deletion removes the record from the active list.
-    manifest.phase = "deleted".into();
-    save(&directory(&data, &id)?, &manifest)
+    tokio::task::spawn_blocking(move || {
+        let dir = directory(&data, &id)?;
+        let _guard = w::acquire_key(format!("stash:{}", dir.display()))?;
+        let mut manifest = read(&data, &id)?;
+        // Retain recovery materials. Explicit deletion removes the record from the active list.
+        manifest.phase = "deleted".into();
+        save(&dir, &manifest)
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 #[tauri::command]
-pub fn asset_stash_export(
+pub async fn asset_stash_export(
     app: tauri::AppHandle,
     id: String,
     destination: String,
 ) -> Result<String> {
     let data = w::data_dir(&app)?;
-    let manifest = read(&data, &id)?;
-    let source = directory(&data, &id)?;
+    tokio::task::spawn_blocking(move || export(&data, &id, Path::new(&destination)))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+fn export(data: &Path, id: &str, destination: &Path) -> Result<String> {
+    let manifest = read(data, id)?;
+    let source = directory(data, id)?;
     verify(&source, &manifest)?;
-    let target = Path::new(&destination).join(format!("OrcaSVN-{id}"));
+    let target = destination.join(format!("OrcaSVN-{id}"));
     fs::create_dir(&target).map_err(|e| e.to_string())?;
     fs::create_dir(target.join("payload")).map_err(|e| e.to_string())?;
     for node in &manifest.nodes {
@@ -1031,7 +1042,14 @@ pub fn asset_stash_export(
     Ok(target.to_string_lossy().into_owned())
 }
 #[tauri::command]
-pub fn asset_stash_import(app: tauri::AppHandle, source: String) -> Result<Manifest> {
+pub async fn asset_stash_import(app: tauri::AppHandle, source: String) -> Result<Manifest> {
+    let data = w::data_dir(&app)?;
+    tokio::task::spawn_blocking(move || import(&data, Path::new(&source)))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+fn import(data: &Path, source: &Path) -> Result<Manifest> {
     let source = fs::canonicalize(source).map_err(|e| e.to_string())?;
     let mut manifest: Manifest =
         serde_json::from_slice(&fs::read(source.join("manifest.json")).map_err(|e| e.to_string())?)
@@ -1041,7 +1059,7 @@ pub fn asset_stash_import(app: tauri::AppHandle, source: String) -> Result<Manif
     }
     verify(&source, &manifest)?;
     manifest.id = w::id();
-    let target = directory(&w::data_dir(&app)?, &manifest.id)?;
+    let target = directory(data, &manifest.id)?;
     fs::create_dir_all(target.join("payload")).map_err(|e| e.to_string())?;
     for node in &manifest.nodes {
         for name in [&node.working, &node.base].into_iter().flatten() {
@@ -1125,11 +1143,14 @@ pub fn migrate_legacy(data: &Path, records: Vec<serde_json::Value>) -> Result<Ve
     Ok(migrated)
 }
 #[tauri::command]
-pub fn asset_stash_migrate(
+pub async fn asset_stash_migrate(
     app: tauri::AppHandle,
     records: Vec<serde_json::Value>,
 ) -> Result<Vec<String>> {
-    migrate_legacy(&w::data_dir(&app)?, records)
+    let data = w::data_dir(&app)?;
+    tokio::task::spawn_blocking(move || migrate_legacy(&data, records))
+        .await
+        .map_err(|error| error.to_string())?
 }
 
 fn legacy_data(

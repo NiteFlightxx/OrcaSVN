@@ -29,6 +29,32 @@ export function useSvnUpdate() {
   const { t } = useI18n()
   const updating = computed(() => svnUpdateFeedback.running)
 
+  // The command transcript records the original conflict. The result badge
+  // follows fresh local status, including later automatic/manual resolution.
+  watch(
+    () => [
+      workspace.rawStatusList,
+      workspace.statusIsStale,
+      workspace.isLoading,
+      svnUpdateFeedback.running,
+    ],
+    () => {
+      if (
+        svnUpdateFeedback.running ||
+        svnUpdateFeedback.state !== 'conflicts' ||
+        svnUpdateFeedback.workspace !== workspace.currentPath ||
+        workspace.statusIsStale ||
+        workspace.isLoading ||
+        !workspace.rawStatusList
+      )
+        return
+      svnUpdateFeedback.conflicts = workspace.rawStatusList
+        .filter((item) => item.status_code === 'conflicted' || item.prop_status === 'conflicted')
+        .map((item) => item.path)
+      if (!svnUpdateFeedback.conflicts.length) svnUpdateFeedback.state = 'completed'
+    }
+  )
+
   async function updateWorkspace(revision?: number) {
     const path = workspace.currentPath
     const url = workspace.svnInfo?.url || ''

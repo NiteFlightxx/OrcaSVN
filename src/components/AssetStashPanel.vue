@@ -435,7 +435,8 @@ async function restore(entry: AssetStash, pop: boolean) {
 async function remove(entry: AssetStash) {
   try {
     await ElMessageBox.confirm(t('flow.deleteConfirm'), entry.name, { type: 'warning' })
-    await flow.perform(t('flow.delete'), () => assetStashDelete(entry.id))
+    await flow.perform(t('flow.delete'), () => assetStashDelete(entry.id), true, false)
+    void flow.refreshStashes()
     if (selected.value?.id === entry.id) selected.value = null
   } catch (e) {
     if (e !== 'cancel' && e !== 'close') ElMessage.error(String(e))
@@ -454,7 +455,8 @@ async function importStash() {
   try {
     const source = await open({ directory: true, title: t('flow.importHint') })
     if (typeof source === 'string') {
-      const entry = await flow.perform(t('flow.import'), () => assetStashImport(source))
+      const entry = await flow.perform(t('flow.import'), () => assetStashImport(source), true, false)
+      void flow.refreshStashes()
       selected.value = entry
     }
   } catch (e) {
@@ -464,8 +466,10 @@ async function importStash() {
 async function migrate() {
   try {
     const ids = await flow.perform(t('flow.migrate'), () =>
-      assetStashMigrate(selectedLegacy.value ? [selectedLegacy.value] : [...legacyStore.entries])
+      assetStashMigrate(selectedLegacy.value ? [selectedLegacy.value] : [...legacyStore.entries]),
+      true, false
     )
+    void flow.refreshStashes()
     for (const id of ids) legacyStore.removeEntry(id)
     selectedKey.value = ''
     selected.value = null

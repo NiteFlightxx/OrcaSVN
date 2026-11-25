@@ -1,7 +1,11 @@
 use super::executor::SvnError;
+#[cfg(windows)]
+use super::operations::status_scan;
 use super::operations::{status, status_for_paths};
 use super::status_snapshot::{self, Inventory};
 use crate::SvnStatus;
+#[cfg(windows)]
+use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -45,6 +49,8 @@ struct WorkspaceStatus {
     watcher: Option<super::status_watch::Watcher>,
     #[cfg(windows)]
     watcher_ready: bool,
+    #[cfg(windows)]
+    ignored: Vec<String>,
     #[cfg(test)]
     last_query: Option<QueryMode>,
 }
@@ -60,6 +66,8 @@ impl WorkspaceStatus {
             watcher: None,
             #[cfg(windows)]
             watcher_ready: false,
+            #[cfg(windows)]
+            ignored: Vec::new(),
             #[cfg(test)]
             last_query: None,
         }
@@ -182,14 +190,30 @@ async fn start_watcher(workspace: &mut WorkspaceStatus, root: &Path) {
 }
 
 #[cfg(windows)]
-async fn watch_paths(workspace: &mut WorkspaceStatus, root: &Path) -> Option<Vec<String>> {
+fn collapsed_paths(entries: &[SvnStatus], ignored: &[String]) -> Arc<HashSet<String>> {
+    Arc::new(
+        entries
+            .iter()
+            .filter(|entry| entry.status_code == "unversioned")
+            .map(|entry| entry.path.clone())
+            .chain(ignored.iter().cloned())
+            .collect(),
+    )
+}
+
+#[cfg(windows)]
+async fn watch_paths(
+    workspace: &mut WorkspaceStatus,
+    root: &Path,
+    collapsed: Arc<HashSet<String>>,
+) -> Option<Vec<String>> {
     let mut watcher = workspace.watcher.take()?;
     let inventory = workspace.inventory.clone()?;
     let watch_root = root.to_path_buf();
     match tokio::task::spawn_blocking(move || {
-        let result = watcher
-            .poll(&watch_root)
-            .and_then(|paths| status_snapshot::watch_changes(&watch_root, &inventory, paths));
+        let result = watcher.poll(&watch_root).and_then(|paths| {
+            status_snapshot::watch_changes(&watch_root, &inventory, paths, &collapsed)
+        });
         (watcher, result)
     })
     .await
@@ -224,7 +248,19 @@ pub async fn cached_status(
         .map_err(|error| SvnError::CommandFailed(error.to_string()))?
         .map_err(|error| SvnError::CommandFailed(format!("无法访问工作副本：{error}")))?;
     let cache = get_workspace(&root)?;
-    let mut workspace = cache.lock().await;
+    let mut workspace = if force {
+        match cache.state.try_lock() {
+            Ok(state) => state,
+            Err(_) => {
+                // Explicit refresh must query after the user's action. An
+                // older scan owns the cache lock and cannot satisfy it.
+                cache.invalidated.store(true, Ordering::Release);
+                return status(&root.to_string_lossy()).await;
+            }
+        }
+    } else {
+        cache.lock().await
+    };
     let invalidated = cache.invalidated.swap(false, Ordering::AcqRel);
     if invalidated {
         workspace.entries = None;
@@ -234,6 +270,7 @@ pub async fn cached_status(
         {
             workspace.watcher = None;
             workspace.watcher_ready = false;
+            workspace.ignored.clear();
         }
     }
     let force = force || invalidated;
@@ -259,7 +296,11 @@ pub async fn cached_status(
                 && workspace.entries.is_some()
                 && workspace.inventory.is_some()
             {
-                if let Some(paths) = watch_paths(&mut workspace, &root).await {
+                let collapsed = collapsed_paths(
+                    workspace.entries.as_deref().unwrap_or_default(),
+                    &workspace.ignored,
+                );
+                if let Some(paths) = watch_paths(&mut workspace, &root, collapsed).await {
                     let result = if paths.is_empty() {
                         Ok(workspace.entries.clone().unwrap_or_default())
                     } else {
@@ -338,7 +379,9 @@ pub async fn cached_status(
         workspace.inventory.clone()
     };
     #[cfg(windows)]
-    if workspace.watcher.is_some() && (rescan_due || workspace.entries.is_none()) {
+    let needs_baseline = rescan_due || workspace.entries.is_none();
+    #[cfg(windows)]
+    if workspace.watcher.is_some() && needs_baseline {
         // Changes that preceded this complete query are already covered by it.
         // Start a fresh request so only edits during the parallel operations
         // can invalidate their shared baseline (e.g. after an SVN mutation).
@@ -355,13 +398,13 @@ pub async fn cached_status(
     // overlapping baselines are stable. Without one, preserve the original
     // scan-before-SVN ordering so edits during a query remain detectable.
     #[cfg(windows)]
-    let prefetched = if workspace.watcher.is_some() && (rescan_due || workspace.entries.is_none()) {
-        Some(status(&root.to_string_lossy()).await)
+    let prefetched = if workspace.watcher.is_some() && needs_baseline {
+        Some(status_scan(&root.to_string_lossy(), true).await)
     } else {
         None
     };
     #[cfg(not(windows))]
-    let prefetched: Option<Result<Vec<SvnStatus>, SvnError>> = None;
+    let prefetched: Option<Result<(Vec<SvnStatus>, Vec<String>), SvnError>> = None;
     let scan = scan_task
         .await
         .map_err(|error| SvnError::CommandFailed(error.to_string()))?;
@@ -387,7 +430,12 @@ pub async fn cached_status(
         // timestamps cover that gap. Return SVN's result, but let the next poll
         // build its baseline with the scan-before-SVN ordering.
         workspace.inventory = current.clone();
-        let quiet = watch_paths(&mut workspace, &root)
+        let collapsed = prefetched
+            .as_ref()
+            .and_then(|result| result.as_ref().ok())
+            .map(|(entries, ignored)| collapsed_paths(entries, ignored))
+            .unwrap_or_default();
+        let quiet = watch_paths(&mut workspace, &root, collapsed.clone())
             .await
             .is_some_and(|paths| paths.is_empty());
         let settled = current.as_deref().is_some_and(|inventory| {
@@ -396,8 +444,10 @@ pub async fn cached_status(
                 inventory,
                 query_started - PARALLEL_QUERY_MARGIN,
                 now + PARALLEL_QUERY_MARGIN,
+                &collapsed,
             )
         });
+        tracing::debug!(quiet, settled, "parallel status baseline verification");
         if quiet && settled {
             current
         } else {
@@ -442,10 +492,18 @@ pub async fn cached_status(
     }
     let mut used_full_scan = full;
     let result = if let Some(result) = prefetched {
-        result
+        result.map(|(entries, ignored)| {
+            #[cfg(windows)]
+            {
+                workspace.ignored = ignored;
+            }
+            #[cfg(not(windows))]
+            let _ = ignored;
+            entries
+        })
     } else if full {
         tracing::debug!(workspace = %cwd, "complete SVN status scan");
-        status(&cwd).await
+        full_status(&cwd, &mut workspace).await
     } else {
         tracing::debug!(workspace = %cwd, ?paths, "filesystem changes scoped SVN status");
         match status_for_paths(&cwd, &paths).await {
@@ -457,7 +515,7 @@ pub async fn cached_status(
             Err(error) => {
                 tracing::debug!(%error, "scoped status failed; retrying complete scan");
                 used_full_scan = true;
-                status(&cwd).await
+                full_status(&cwd, &mut workspace).await
             }
         }
     };
@@ -497,6 +555,21 @@ pub async fn cached_status(
             Err(error)
         }
     }
+}
+
+async fn full_status(
+    path: &str,
+    workspace: &mut WorkspaceStatus,
+) -> Result<Vec<SvnStatus>, SvnError> {
+    #[cfg(windows)]
+    if workspace.watcher.is_some() {
+        let (entries, ignored) = status_scan(path, true).await?;
+        workspace.ignored = ignored;
+        return Ok(entries);
+    }
+    #[cfg(not(windows))]
+    let _ = workspace;
+    status(path).await
 }
 
 #[cfg(test)]
@@ -681,6 +754,50 @@ mod tests {
             let actual = cached_status(path, false).await.unwrap();
             assert_eq!(statuses(&actual), expected);
             assert_query_mode(&fixture.wc, QueryMode::Full).await;
+        });
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn directory_fallback_ignores_generated_descendants_but_rechecks_their_root_and_svn_metadata() {
+        let Some(fixture) = Fixture::new() else {
+            return;
+        };
+        fixture.init();
+        let build = fixture.wc.join("build");
+        fs::create_dir_all(build.join("logs")).unwrap();
+        let path = fixture.wc.to_str().unwrap();
+        runtime().block_on(async {
+            let root = fs::canonicalize(&fixture.wc).unwrap();
+            let cache = get_workspace(&root).unwrap();
+            let mut state = cache.lock().await;
+            let inventory = status_snapshot::capture(&root).unwrap().without_journal();
+            state.inventory = Some(Arc::new(inventory));
+            start_watcher(&mut state, &root).await;
+            assert!(state.watcher.is_some());
+            state.entries = Some(full_status(path, &mut state).await.unwrap());
+            state.last_full_check = Some(Instant::now());
+            state.watcher_ready = true;
+            assert!(state.ignored.contains(&"build".into()));
+            drop(state);
+            fs::create_dir(build.join("logs/run")).unwrap();
+            fs::write(build.join("logs/run/trace.txt"), "generated").unwrap();
+            crate::svn::capture_commands(path);
+            let actual = cached_status(path, false).await.unwrap();
+            assert!(crate::svn::take_commands(path).is_empty());
+            assert_query_mode(&root, QueryMode::Reuse).await;
+            assert!(actual.is_empty());
+            // Changing SVN's ignore property can make the anchored directory
+            // visible immediately even when the directory contents stay put.
+            fixture.svn(&["propdel", "svn:ignore", path]);
+            let actual = cached_status(path, false).await.unwrap();
+            assert_query_mode(&root, QueryMode::Full).await;
+            assert_eq!(statuses(&actual), statuses(&status(path).await.unwrap()));
+            assert!(actual.iter().any(|entry| entry.path == "build"));
+            fs::rename(&build, fixture.wc.join("visible-build")).unwrap();
+            let actual = cached_status(path, false).await.unwrap();
+            assert_eq!(statuses(&actual), statuses(&status(path).await.unwrap()));
+            assert!(actual.iter().any(|entry| entry.path == "visible-build"));
         });
     }
 
@@ -1005,6 +1122,32 @@ mod tests {
     }
 
     #[test]
+    fn forced_status_does_not_queue_behind_an_older_status_scan() {
+        let Some(fixture) = Fixture::new() else {
+            return;
+        };
+        fixture.init();
+        runtime().block_on(async {
+            let path = fixture.wc.to_str().unwrap();
+            let root = fs::canonicalize(path).unwrap();
+            let cache = get_workspace(&root).unwrap();
+            let older_scan = cache.lock().await;
+            fs::write(root.join("src/sub/other.txt"), "new\n").unwrap();
+            let result = tokio::time::timeout(Duration::from_secs(5), cached_status(path, true))
+                .await
+                .expect("refresh waited on the older scan")
+                .unwrap();
+            assert!(result.iter().any(|entry| entry.path == "src/sub/other.txt"));
+            assert!(cache.invalidated.load(Ordering::Acquire));
+            drop(older_scan);
+            assert_eq!(
+                statuses(&cached_status(path, false).await.unwrap()),
+                statuses(&result)
+            );
+        });
+    }
+
+    #[test]
     #[ignore = "creates a real 20,000-file working copy for performance measurement"]
     fn benchmark_twenty_thousand_files_forty_changes() {
         let Some(fixture) = Fixture::new() else {
@@ -1069,6 +1212,58 @@ mod tests {
             eprintln!("Filesystem inventory only: {inventory_ms:.1} ms");
             eprintln!("Disk snapshot reopen: 40 offline changes {reopen_changed_ms:.1} ms, unchanged {reopen_unchanged_ms:.1} ms (includes inventory and JSON loading)");
             eprintln!("20,000 files / 40 changes: initial + snapshot {initial_ms:.1} ms, filesystem-scoped {scoped_ms:.1} ms, full SVN {full_ms:.1} ms, unchanged {unchanged_ms:.1} ms");
+        });
+    }
+
+    #[test]
+    #[ignore = "read-only status timings; set ORCASVN_BENCH_WORKSPACE"]
+    fn benchmark_workspace_refresh() {
+        let _ = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::DEBUG)
+            .with_ansi(false)
+            .try_init();
+        let path = std::env::var("ORCASVN_BENCH_WORKSPACE").expect("working copy path");
+        let root = fs::canonicalize(&path).unwrap();
+        runtime().block_on(async {
+            let started = Instant::now();
+            let inventory = status_snapshot::capture(&root).unwrap();
+            eprintln!(
+                "REFRESH inventory entries={} journal={} elapsed_ms={:.1}",
+                inventory.len(),
+                inventory.journal_available(),
+                started.elapsed().as_secs_f64() * 1000.
+            );
+            let started = Instant::now();
+            let expected = statuses(&status(&path).await.unwrap());
+            eprintln!(
+                "REFRESH direct entries={} elapsed_ms={:.1}",
+                expected.len(),
+                started.elapsed().as_secs_f64() * 1000.
+            );
+            for (label, force) in [
+                ("open", false),
+                ("poll", false),
+                ("manual", true),
+                ("poll", false),
+            ] {
+                crate::svn::capture_commands(&path);
+                let started = Instant::now();
+                let result = super::cached_status(&path, force, None).await.unwrap();
+                let elapsed = started.elapsed().as_secs_f64() * 1000.;
+                let commands = crate::svn::take_commands(&path);
+                assert!(
+                    statuses(&result) == expected,
+                    "working copy changed during benchmark"
+                );
+                let cache = get_workspace(&root).unwrap();
+                let state = cache.lock().await;
+                eprintln!(
+                    "REFRESH {label} query={:?} svn_commands={} elapsed_ms={elapsed:.1}",
+                    state.last_query,
+                    commands.len(),
+                );
+            }
+            forget_workspace(&root);
         });
     }
 

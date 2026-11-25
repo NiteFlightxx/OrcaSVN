@@ -1,0 +1,34 @@
+[
+  {
+    "args": [
+      "--no-ignore",
+      "--depth",
+      "empty",
+      "--",
+      "Saved@"
+    ],
+    "ms": 40.2,
+    "bytes": 198,
+    "counts": {
+      "ignored": 1
+    },
+    "saved_status": "ignored",
+    "saved_descendants": 0
+  },
+  {
+    "args": [
+      "--no-ignore"
+    ],
+    "ms": 15329.3,
+    "bytes": 266316,
+    "counts": {
+      "ignored": 614,
+      "unversioned": 507,
+      "conflicted": 61,
+      "modified": 206,
+      "added": 3
+    },
+    "saved_status": "ignored",
+    "saved_descendants": 0
+  }
+]

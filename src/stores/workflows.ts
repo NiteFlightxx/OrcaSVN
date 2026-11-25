@@ -69,6 +69,7 @@ export const useWorkflowStore = defineStore('workflows', () => {
   const branchName = computed(() => (identity.value ? nameFromUrl(identity.value.url) : ''))
   let generation = 0
   let browseGeneration = 0
+  let stashGeneration = 0
   function configureRoot(url: string) {
     if (!identity.value) return
     localStorage.setItem(`orcasvn-branch-root-${identity.value.uuid}`, url)
@@ -194,6 +195,18 @@ export const useWorkflowStore = defineStore('workflows', () => {
       if (request === browseGeneration) directoryLoading.value = false
     }
   }
+  async function refreshStashes() {
+    const request = ++stashGeneration
+    const path = workspace.currentPath
+    if (!path) return
+    try {
+      const records = await assetStashList(path)
+      if (request === stashGeneration && workspace.currentPath === path)
+        stashes.value = records.filter(s => !['deleted', 'popped'].includes(s.phase))
+    } catch (e) {
+      if (request === stashGeneration && workspace.currentPath === path) error.value = String(e)
+    }
+  }
   async function refresh(retryBranches = false) {
     const path = workspace.currentPath
     const request = ++generation
@@ -230,9 +243,7 @@ export const useWorkflowStore = defineStore('workflows', () => {
       const nextBrowserUrl = changed || !browserUrl.value ? configured || parent : browserUrl.value
       if (retryBranches || !branchAccessDenied.value || browserUrl.value !== nextBrowserUrl)
         void browse(nextBrowserUrl)
-      const records = await assetStashList(path)
-      if (request === generation && workspace.currentPath === path)
-        stashes.value = records.filter((s) => !['deleted', 'popped'].includes(s.phase))
+      await refreshStashes()
     } catch (e) {
       if (request === generation) {
         if (!identityVerified) identity.value = null
@@ -313,6 +324,7 @@ export const useWorkflowStore = defineStore('workflows', () => {
     () => {
       generation++
       browseGeneration++
+      stashGeneration++
       directoryLoading.value = false
       switchRequest.value = null
       identity.value = null
@@ -356,6 +368,7 @@ export const useWorkflowStore = defineStore('workflows', () => {
     progress,
     activities,
     refresh,
+    refreshStashes,
     browse,
     configureRoot,
     addBranch,

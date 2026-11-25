@@ -1,0 +1,191 @@
+{
+  "date": "2026-11-25",
+  "baseline": "b883e03 plus the existing uncommitted automatic binary resolution changes",
+  "environment": "Windows, SVN 1.14.5, debug native test binaries, warm filesystem",
+  "workspace_refresh": {
+    "scenario": "read-only in an active existing local working copy, no app disk cache or desktop UI",
+    "baseline_runs": [
+      {
+        "inventory": {
+          "entries": 256220,
+          "usn_available": false,
+          "ms": 12180.4
+        },
+        "direct_status": {
+          "entries": 777,
+          "ms": 16151.3
+        },
+        "queries": [
+          {
+            "scenario": "open",
+            "query": "Full",
+            "svn_commands": 1,
+            "ms": 17454.2
+          },
+          {
+            "scenario": "poll",
+            "query": "Full",
+            "svn_commands": 1,
+            "ms": 26102.0
+          },
+          {
+            "scenario": "manual",
+            "query": "Full",
+            "svn_commands": 1,
+            "ms": 16593.3
+          },
+          {
+            "scenario": "poll",
+            "query": "Full",
+            "svn_commands": 1,
+            "ms": 27569.5
+          }
+        ],
+        "all_statuses_matched_direct_query": true
+      },
+      {
+        "inventory": {
+          "entries": 256271,
+          "usn_available": false,
+          "ms": 15454.7
+        },
+        "direct_status": {
+          "entries": 777,
+          "ms": 18828.6
+        },
+        "queries": [
+          {
+            "scenario": "open",
+            "query": "Full",
+            "svn_commands": 1,
+            "ms": 19825.7
+          },
+          {
+            "scenario": "poll",
+            "query": "Full",
+            "svn_commands": 1,
+            "ms": 29663.3
+          },
+          {
+            "scenario": "manual",
+            "query": "Full",
+            "svn_commands": 1,
+            "ms": 17001.4
+          },
+          {
+            "scenario": "poll",
+            "query": "Full",
+            "svn_commands": 1,
+            "ms": 31761.1
+          }
+        ],
+        "all_statuses_matched_direct_query": true
+      }
+    ],
+    "intermediate_ignore_filter_only": {
+      "inventory": {
+        "entries": 256363,
+        "usn_available": false,
+        "ms": 11827.7
+      },
+      "direct_status": {
+        "entries": 777,
+        "ms": 14053.2
+      },
+      "queries": [
+        {
+          "scenario": "open",
+          "query": "Full",
+          "svn_commands": 1,
+          "ms": 17773.6
+        },
+        {
+          "scenario": "poll",
+          "query": "Full",
+          "svn_commands": 1,
+          "ms": 25109.3
+        },
+        {
+          "scenario": "manual",
+          "query": "Full",
+          "svn_commands": 1,
+          "ms": 19153.0
+        },
+        {
+          "scenario": "poll",
+          "query": "Full",
+          "svn_commands": 1,
+          "ms": 28308.5
+        }
+      ],
+      "all_statuses_matched_direct_query": true
+    },
+    "fixed_runs": [
+      {
+        "inventory": {
+          "entries": 256406,
+          "usn_available": false,
+          "ms": 12051.5
+        },
+        "direct_status": {
+          "entries": 777,
+          "ms": 17799.2
+        },
+        "queries": [
+          {
+            "scenario": "open",
+            "query": "Full",
+            "svn_commands": 1,
+            "ms": 18575.2
+          },
+          {
+            "scenario": "poll",
+            "query": "Reuse",
+            "svn_commands": 0,
+            "ms": 3.4
+          },
+          {
+            "scenario": "manual",
+            "query": "Full",
+            "svn_commands": 1,
+            "ms": 19331.8
+          },
+          {
+            "scenario": "poll",
+            "query": "Reuse",
+            "svn_commands": 0,
+            "ms": 3.4
+          }
+        ],
+        "all_statuses_matched_direct_query": true
+      }
+    ]
+  },
+  "automatic_binary_resolution": {
+    "scenario": "same isolated local SVN fixture and eight supplied paths, excludes fixture setup and frontend time",
+    "before": {
+      "candidates": 8,
+      "resolved": 5,
+      "svn_commands": 104,
+      "by_command": {
+        "info": 75,
+        "proplist": 12,
+        "resolve": 5,
+        "status": 12
+      },
+      "ms": 7791.3
+    },
+    "after": {
+      "candidates": 8,
+      "resolved": 5,
+      "svn_commands": 20,
+      "by_command": {
+        "info": 10,
+        "proplist": 7,
+        "resolve": 1,
+        "status": 2
+      },
+      "ms": 1629.3
+    }
+  }
+}

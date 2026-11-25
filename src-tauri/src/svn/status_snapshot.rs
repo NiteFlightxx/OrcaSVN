@@ -2,6 +2,8 @@
 use crate::SvnStatus;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+#[cfg(any(windows, test))]
+use std::collections::HashSet;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -467,7 +469,8 @@ pub(super) struct Scan {
 pub(super) fn watch_changes(
     root: &Path,
     previous: &Inventory,
-    paths: Vec<String>,
+    paths: BTreeMap<String, bool>,
+    collapsed: &HashSet<String>,
 ) -> io::Result<Vec<String>> {
     if configuration()? != previous.configuration
         || ancestor_administration(root)? != previous.administration
@@ -476,29 +479,57 @@ pub(super) fn watch_changes(
             "SVN configuration or ancestor administration changed",
         ));
     }
-    for path in &paths {
+    let mut visible = Vec::new();
+    for (path, name_changed) in paths {
+        let administration = path
+            .split('/')
+            .any(|part| part.eq_ignore_ascii_case(".svn") || part.eq_ignore_ascii_case("_svn"));
+        if !administration && below_collapsed(&path, collapsed) {
+            continue;
+        }
         let before_directory = previous
             .files
-            .binary_search_by(|(name, _)| name.cmp(path))
+            .binary_search_by(|(name, _)| name.cmp(&path))
             .ok()
             .is_some_and(|index| previous.files[index].1.kind == 0);
-        if before_directory
-            || path
-                .split('/')
-                .any(|part| part.eq_ignore_ascii_case(".svn") || part.eq_ignore_ascii_case("_svn"))
-        {
-            return Err(io::Error::other("directory or SVN administration changed"));
+        if administration {
+            return Err(io::Error::other("SVN administration changed"));
         }
-        match fs::symlink_metadata(root.join(path)) {
-            Ok(metadata) if metadata.is_dir() || metadata.file_type().is_symlink() => {
+        match fs::symlink_metadata(root.join(&path)) {
+            Ok(metadata) if metadata.is_dir() && before_directory && !name_changed => {
+                use std::os::windows::fs::MetadataExt;
+                use windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_REPARSE_POINT;
+                if metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+                    return Err(io::Error::other("directory became a reparse point"));
+                }
+                // NTFS separately reports children being added, removed and
+                // renamed. The ordinary directory's own timestamp/attributes
+                // do not change SVN status; property edits touch wc.db.
+                continue;
+            }
+            Ok(metadata)
+                if before_directory || metadata.is_dir() || metadata.file_type().is_symlink() =>
+            {
+                tracing::debug!(candidate = %path, name_changed, "directory or link notification needs a full scan");
                 return Err(io::Error::other("directory or link requires metadata scan"));
             }
             Ok(_) => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound && before_directory => {
+                tracing::debug!(candidate = %path, name_changed, "directory removed");
+                return Err(io::Error::other("known directory removed"));
+            }
             Err(error) if error.kind() == io::ErrorKind::NotFound => {}
             Err(error) => return Err(error),
         }
+        visible.push(path);
     }
-    Ok(paths)
+    Ok(visible)
+}
+
+#[cfg(any(windows, test))]
+fn below_collapsed(path: &str, collapsed: &HashSet<String>) -> bool {
+    path.rmatch_indices('/')
+        .any(|(index, _)| collapsed.contains(&path[..index]))
 }
 
 /// Whether an entry changed at or after `since`. A scan running alongside SVN
@@ -510,6 +541,7 @@ pub(super) fn modified_between(
     inventory: &Inventory,
     since: SystemTime,
     until: SystemTime,
+    collapsed: &HashSet<String>,
 ) -> bool {
     let nanos = |time: SystemTime| {
         time.duration_since(UNIX_EPOCH)
@@ -519,14 +551,18 @@ pub(super) fn modified_between(
     inventory
         .files
         .iter()
-        .map(|(_, stamp)| stamp.modified)
+        .map(|(path, stamp)| (path, stamp.modified, false))
         .chain(
             inventory
                 .directories
-                .values()
-                .map(|directory| directory.stamp.modified),
+                .iter()
+                .map(|(path, directory)| (path, directory.stamp.modified, true)),
         )
-        .any(|modified| (since..=until).contains(&modified))
+        .any(|(path, modified, directory)| {
+            (since..=until).contains(&modified)
+                && !below_collapsed(path, collapsed)
+                && !(directory && collapsed.contains(path))
+        })
 }
 
 #[cfg(windows)]
@@ -919,9 +955,10 @@ mod tests {
         let at = |nanos| UNIX_EPOCH + Duration::from_nanos(nanos);
         let mut files = inventory(1);
         files.files[0].1.modified = 1000;
-        assert!(modified_between(&files, at(1000), at(1000)));
-        assert!(!modified_between(&files, at(1100), at(2000)));
-        assert!(!modified_between(&files, at(100), at(900)));
+        let collapsed = HashSet::new();
+        assert!(modified_between(&files, at(1000), at(1000), &collapsed));
+        assert!(!modified_between(&files, at(1100), at(2000), &collapsed));
+        assert!(!modified_between(&files, at(100), at(900), &collapsed));
 
         let mut directories = inventory(0);
         directories.directories.insert(
@@ -936,7 +973,22 @@ mod tests {
                 children: Vec::new(),
             },
         );
-        assert!(modified_between(&directories, at(500), at(2000)));
+        assert!(modified_between(
+            &directories,
+            at(500),
+            at(2000),
+            &collapsed
+        ));
+        let collapsed = HashSet::from(["src".to_string()]);
+        assert!(!modified_between(
+            &directories,
+            at(500),
+            at(2000),
+            &collapsed
+        ));
+        assert!(below_collapsed("src/nested/file", &collapsed));
+        assert!(!below_collapsed("src", &collapsed));
+        assert!(!below_collapsed("src-neighbor/file", &collapsed));
     }
 
     #[test]

@@ -184,10 +184,13 @@ impl Drop for Writer {
 }
 pub async fn acquire(path: &str) -> Result<Writer> {
     let info = identity(path).await?;
+    acquire_identity(&info)
+}
+pub(crate) fn acquire_identity(info: &Identity) -> Result<Writer> {
     #[cfg(windows)]
     let key = info.root.to_lowercase();
     #[cfg(not(windows))]
-    let key = info.root;
+    let key = info.root.clone();
     acquire_key(key)
 }
 pub fn acquire_key(key: String) -> Result<Writer> {
@@ -981,8 +984,8 @@ pub async fn undo(data: &Path, operation_id: &str) -> Result<Outcome> {
         &plan.identity.root,
         &repository_conflicts(plan.identity.root.clone()).await?,
         &backup,
-    )
-    .await?;
+        None,
+    )?;
     atomic_json(
         &backup.join("manifest.json"),
         &serde_json::json!({"operation":journal, "conflicts":conflict_backup}),
@@ -1152,7 +1155,24 @@ pub async fn repository_conflict_detail(path: String, file: String) -> Result<Co
 }
 
 async fn read_conflict(info: &Identity, entry: &crate::SvnStatus) -> Result<Conflict> {
+    inspect_conflict(info, entry, true).await
+}
+
+pub(crate) async fn inspect_conflict(
+    info: &Identity,
+    entry: &crate::SvnStatus,
+    preview_text: bool,
+) -> Result<Conflict> {
     let xml = run(&info.root, &["info", "--xml", "--", &target(&entry.path)]).await?;
+    if !preview_text {
+        let owner = field(&xml, "wcroot-abspath");
+        if owner.is_empty()
+            || fs::canonicalize(owner).map_err(|e| e.to_string())?
+                != fs::canonicalize(&info.root).map_err(|e| e.to_string())?
+        {
+            return Err(format!("External or nested working copy: {}", entry.path));
+        }
+    }
     let working = if entry.path == "." {
         PathBuf::from(&info.root)
     } else {
@@ -1192,7 +1212,7 @@ async fn read_conflict(info: &Identity, entry: &crate::SvnStatus) -> Result<Conf
             .replace('\\', "/");
         safe_child(&root, &relative)?;
         let size = fs::metadata(&full).map_err(|e| e.to_string())?.len();
-        let text = if size <= 512 * 1024 {
+        let text = if preview_text && size <= 512 * 1024 {
             fs::read(&full)
                 .ok()
                 .filter(|b| !b.contains(&0))
@@ -1209,7 +1229,7 @@ async fn read_conflict(info: &Identity, entry: &crate::SvnStatus) -> Result<Conf
     }
     if working.is_file() {
         let size = fs::metadata(&working).map_err(|e| e.to_string())?.len();
-        let text = if size <= 512 * 1024 {
+        let text = if preview_text && size <= 512 * 1024 {
             fs::read(&working)
                 .ok()
                 .filter(|b| !b.contains(&0))
@@ -1233,10 +1253,11 @@ async fn read_conflict(info: &Identity, entry: &crate::SvnStatus) -> Result<Conf
     })
 }
 
-async fn backup_conflicts(
+fn backup_conflicts(
     root: &str,
     conflicts: &[Conflict],
     recovery: &Path,
+    working_backup: Option<(&str, &str)>,
 ) -> Result<Vec<serde_json::Value>> {
     let mut records = Vec::new();
     for conflict in conflicts {
@@ -1262,12 +1283,49 @@ async fn backup_conflicts(
         paths.dedup();
         for path in paths {
             let full = safe_child(Path::new(root), &path)?;
-            let name = format!("conflict-{}", records.len());
-            let hash = crate::asset_stash::copy_file(&full, &recovery.join(&name))?;
+            let (name, hash) =
+                if let Some((_, hash)) = working_backup.filter(|(file, _)| *file == path) {
+                    ("working-file".into(), hash.to_owned())
+                } else {
+                    let name = format!("conflict-{}", records.len());
+                    let hash = crate::asset_stash::copy_file(&full, &recovery.join(&name))?;
+                    (name, hash)
+                };
             records.push(serde_json::json!({"path":path,"backup":name,"hash":hash}));
         }
     }
     Ok(records)
+}
+
+pub(crate) fn resolution_backup(
+    data: &Path,
+    info: &Identity,
+    current: &Conflict,
+    strategy: &str,
+    properties: Option<&str>,
+) -> Result<()> {
+    let file = current.path.as_str();
+    let actual = if file == "." {
+        PathBuf::from(&info.root)
+    } else {
+        safe_child(Path::new(&info.root), file)?
+    };
+    let recovery = data.join("recovery").join(id());
+    fs::create_dir_all(&recovery).map_err(|e| e.to_string())?;
+    let working_hash = actual
+        .is_file()
+        .then(|| crate::asset_stash::copy_file(&actual, &recovery.join("working-file")))
+        .transpose()?;
+    let artifacts = backup_conflicts(
+        &info.root,
+        std::slice::from_ref(current),
+        &recovery,
+        working_hash.as_deref().map(|hash| (file, hash)),
+    )?;
+    atomic_json(
+        &recovery.join("manifest.json"),
+        &serde_json::json!({"identity":info,"path":file,"strategy":strategy,"conflict":current,"artifacts":artifacts,"properties":properties}),
+    )
 }
 #[tauri::command]
 pub async fn repository_resolve(
@@ -1320,17 +1378,6 @@ pub async fn resolve(
                 .into(),
         );
     }
-    let actual = if file == "." {
-        PathBuf::from(&info.root)
-    } else {
-        safe_child(Path::new(&info.root), file)?
-    };
-    let recovery = data.join("recovery").join(id());
-    fs::create_dir_all(&recovery).map_err(|e| e.to_string())?;
-    if actual.is_file() {
-        crate::asset_stash::copy_file(&actual, &recovery.join("working-file"))?;
-    }
-    let artifacts = backup_conflicts(&info.root, std::slice::from_ref(&current), &recovery).await?;
     let properties = match run(
         &info.root,
         &["proplist", "--xml", "--verbose", "--", &target(file)],
@@ -1341,10 +1388,7 @@ pub async fn resolve(
         Err(_) if current.kind == "tree" => None,
         Err(error) => return Err(error),
     };
-    atomic_json(
-        &recovery.join("manifest.json"),
-        &serde_json::json!({"identity":info,"path":file,"strategy":strategy,"conflict":current,"artifacts":artifacts,"properties":properties}),
-    )?;
+    resolution_backup(data, &info, &current, strategy, properties.as_deref())?;
     let result = run(
         &info.root,
         &[

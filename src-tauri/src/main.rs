@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod asset_stash;
+mod binary_conflicts;
 mod conflict_review;
 mod discard;
 mod external_tools;
@@ -1035,6 +1036,7 @@ fn main() {
             workflows::repository_conflict_detail,
             conflict_review::conflict_children,
             workflows::repository_resolve,
+            binary_conflicts::repository_resolve_binaries,
             workflows::repository_activities,
             configure_svn_executable,
             launch_workspace_path,

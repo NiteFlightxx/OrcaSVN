@@ -1,7 +1,7 @@
 //! Ordinary directory permissions suffice; this is an in-process fallback for
 //! volumes whose USN journal cannot be read. Offline changes still require the
 //! existing snapshot comparison, and lost notifications always request a scan.
-use std::collections::BTreeSet;
+use std::collections::BTreeMap;
 use std::io;
 use std::path::{Component, Path};
 
@@ -9,8 +9,12 @@ fn invalid(message: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message)
 }
 
-fn paths(bytes: &[u8]) -> io::Result<Vec<String>> {
-    let mut paths = BTreeSet::new();
+type Changes = BTreeMap<String, bool>;
+
+// Values are true if any event for the path added, removed or renamed a
+// directory entry. Metadata-only notifications cannot be treated as renames.
+fn paths(bytes: &[u8]) -> io::Result<Changes> {
+    let mut paths = Changes::new();
     let mut offset = 0usize;
     loop {
         let record = bytes
@@ -49,7 +53,7 @@ fn paths(bytes: &[u8]) -> io::Result<Vec<String>> {
         // These trees cannot affect SVN status. Keep all other administration
         // changes: wc.db/property/ignore changes require complete verification.
         if !super::status_usn::excluded(&name) {
-            paths.insert(name);
+            *paths.entry(name).or_default() |= action != 3;
             if paths.len() > 256 {
                 return Err(invalid("directory notifications exceed scoped limit"));
             }
@@ -64,7 +68,7 @@ fn paths(bytes: &[u8]) -> io::Result<Vec<String>> {
             .checked_add(next)
             .ok_or_else(|| invalid("notification offset overflow"))?;
     }
-    Ok(paths.into_iter().collect())
+    Ok(paths)
 }
 
 #[cfg(windows)]
@@ -135,7 +139,7 @@ mod native {
         unsafe { GetDriveTypeW(name.as_ptr()) == DRIVE_FIXED }
     }
 
-    type PollReply = mpsc::Sender<io::Result<Vec<String>>>;
+    type PollReply = mpsc::Sender<io::Result<Changes>>;
 
     /// Windows cancels a thread's pending I/O when that thread exits, so the
     /// request must not be issued from Tokio's short-lived blocking pool. One
@@ -177,7 +181,7 @@ mod native {
             Ok(watcher)
         }
 
-        pub(in crate::svn) fn poll(&mut self, root: &Path) -> io::Result<Vec<String>> {
+        pub(in crate::svn) fn poll(&mut self, root: &Path) -> io::Result<Changes> {
             let stopped = || io::Error::other("directory notification thread stopped");
             let (reply, response) = mpsc::channel();
             self.commands
@@ -261,7 +265,7 @@ mod native {
             Ok(())
         }
 
-        fn poll(&mut self, root: &Path) -> io::Result<Vec<String>> {
+        fn poll(&mut self, root: &Path) -> io::Result<Changes> {
             // A watched directory can be moved/replaced without a child event.
             let current = open(root, FILE_READ_ATTRIBUTES, 0)?;
             let current_identity = identity(current);
@@ -271,7 +275,7 @@ mod native {
             if current_identity? != self.identity {
                 return Err(invalid("watched root replaced"));
             }
-            let mut all = BTreeSet::new();
+            let mut all = Changes::new();
             // Bound work on a busy tree. On failure the caller discards this
             // watcher, starts a new one, and establishes a fresh full baseline.
             for _ in 0..16 {
@@ -281,7 +285,7 @@ mod native {
                 {
                     let error = io::Error::last_os_error();
                     if error.raw_os_error() == Some(ERROR_IO_INCOMPLETE as i32) {
-                        return Ok(all.into_iter().collect());
+                        return Ok(all);
                     }
                     self.pending = false;
                     return Err(error);
@@ -296,7 +300,9 @@ mod native {
                 // Re-arm before metadata/SVN work. Windows queues notifications
                 // on this same directory handle between consecutive requests.
                 self.arm()?;
-                all.extend(changed);
+                for (path, name_changed) in changed {
+                    *all.entry(path).or_default() |= name_changed;
+                }
                 if all.len() > 256 {
                     return Err(invalid("too many directory changes"));
                 }
@@ -347,14 +353,20 @@ mod tests {
         let next = first.len() as u32;
         first[..4].copy_from_slice(&next.to_le_bytes());
         first.extend(record("src\\新名.txt", 5));
-        assert_eq!(paths(&first).unwrap(), ["src/新名.txt", "src/旧名.txt"]);
+        assert_eq!(
+            paths(&first).unwrap(),
+            Changes::from([("src/新名.txt".into(), true), ("src/旧名.txt".into(), true)])
+        );
         assert!(paths(&record(".svn\\pristine\\a", 3)).unwrap().is_empty());
         assert!(paths(&record(".svn\\tmp\\a", 3)).unwrap().is_empty());
         assert_eq!(
             paths(&record("src\\pristine\\a", 3)).unwrap(),
-            ["src/pristine/a"]
+            Changes::from([("src/pristine/a".into(), false)])
         );
-        assert_eq!(paths(&record(".svn\\wc.db", 3)).unwrap(), [".svn/wc.db"]);
+        assert_eq!(
+            paths(&record(".svn\\wc.db", 3)).unwrap(),
+            Changes::from([(".svn/wc.db".into(), false)])
+        );
     }
 
     #[test]
@@ -429,9 +441,9 @@ mod tests {
 
         fn wait(watcher: &mut Watcher, root: &Path, expected: &[&str]) {
             let started = Instant::now();
-            let mut seen = BTreeSet::new();
+            let mut seen = std::collections::BTreeSet::new();
             loop {
-                seen.extend(watcher.poll(root).unwrap());
+                seen.extend(watcher.poll(root).unwrap().into_keys());
                 if expected.iter().all(|path| seen.contains(*path)) {
                     return;
                 }

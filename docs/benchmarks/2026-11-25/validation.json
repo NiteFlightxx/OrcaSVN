@@ -1,0 +1,23 @@
+{
+  "date": "2026-11-25",
+  "frontend": {
+    "build": "passed",
+    "tests_passed": 309,
+    "failed": 0
+  },
+  "rust": {
+    "format": "passed",
+    "tests_passed": 156,
+    "failed": 0,
+    "ignored": 6
+  },
+  "installer": {
+    "file": "OrcaSVN_0.6.5-rc.5-Windows-x64-performance-setup.exe",
+    "version": "0.6.5-rc.5",
+    "platform": "Windows x64",
+    "format": "NSIS",
+    "bytes": 4311764,
+    "sha256": "c431c770e20e695b22eb47dc62f559cea136b589dd4adcbf1c3f39917ca277db",
+    "installed": false
+  }
+}

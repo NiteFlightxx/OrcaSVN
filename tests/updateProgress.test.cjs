@@ -87,3 +87,23 @@ test('completion is attributed to the original workspace when the selected repos
   assert.equal(h.calls.some(call=>call[0]==='success'),false)
   h.verification.resolve(true)
 })
+
+test('fresh conflict status updates the result after automatic resolution without hiding remaining conflicts', async () => {
+  const h = harness(), pending = h.updateWorkspace()
+  h.workspace.statusIsStale = true
+  h.update.resolve({ success: true, output: 'C    Binaries/a.dll', conflicts: ['Binaries/a.dll'] })
+  await pending
+  h.workspace.rawStatusList = []
+  await vue.nextTick()
+  assert.equal(h.feedback.state, 'conflicts')
+  h.workspace.rawStatusList = [{ path: 'Content/manual.uasset', status_code: 'conflicted', prop_status: 'none' }]
+  h.workspace.statusIsStale = false
+  await vue.nextTick()
+  assert.deepEqual(Array.from(h.feedback.conflicts), ['Content/manual.uasset'])
+  h.workspace.rawStatusList = []
+  await vue.nextTick()
+  assert.equal(h.feedback.state, 'completed')
+  assert.equal(h.feedback.conflicts.length, 0)
+  assert.match(h.feedback.output, /Binaries\/a.dll/)
+  h.verification.resolve(true)
+})

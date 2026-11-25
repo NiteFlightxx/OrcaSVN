@@ -8,7 +8,14 @@ const vue = require('vue')
 function harness(inspect, options = {}) {
   const calls = [], route = vue.reactive({ query: options.query || {} })
   const workspace = vue.reactive({ currentPath: '/wc', statusList: options.statusList || [] })
-  const flow = vue.reactive({ stashes: [], busy: false, identity: { url: 'file:///repo/dev' }, perform: async (_name, operation) => operation() })
+  const flow = vue.reactive({
+    stashes: [], busy: false, identity: { url: 'file:///repo/dev' },
+    refreshStashes: () => calls.push(['stash-refresh']),
+    perform: async (name, operation, mutation, refreshLocal) => {
+      calls.push(['perform', name, mutation, refreshLocal])
+      return operation()
+    },
+  })
   const mocks = {
     '@/utils/changeTree': { buildChangeTree: () => [] },
     '@/utils/changeSelection': { readPanelSize: (_key,fallback) => fallback },
@@ -16,21 +23,44 @@ function harness(inspect, options = {}) {
     vue,
     'vue-router': { useRoute: () => route, useRouter: () => ({ replace: async value => { calls.push(['route', value]); route.query = value.query } }) },
     'vue-i18n': { useI18n: () => ({ t: key => key, te: () => false }) },
-    'element-plus': { ElMessage: { error: error => calls.push(['error',error]), warning: message => calls.push(['warning',message]) } },
-    '@tauri-apps/plugin-dialog': {},
+    'element-plus': {
+      ElMessage: { error: error => calls.push(['error',error]), warning: message => calls.push(['warning',message]) },
+      ElMessageBox: { confirm: async () => {} },
+    },
+    '@tauri-apps/plugin-dialog': { open: async () => '/stash-bundle' },
     '@/stores/workflows': { useWorkflowStore: () => flow },
     '@/stores/stash': { useStashStore: () => ({ entries: [] }) },
     '@/stores/workspace': { useWorkspaceStore: () => workspace },
-    '@/api/workflows': { assetStashCandidates: async (...args) => { calls.push(['inspect', ...args]); return inspect(...args) }, assetStashCreate: async (...args) => { calls.push(['create', ...args]); return { id: 'synthetic-stash', warning: null } } },
+    '@/api/workflows': {
+      assetStashCandidates: async (...args) => { calls.push(['inspect', ...args]); return inspect(...args) },
+      assetStashCreate: async (...args) => { calls.push(['create', ...args]); return { id: 'synthetic-stash', warning: null } },
+      assetStashDelete: async id => calls.push(['delete', id]),
+      assetStashImport: async path => { calls.push(['import', path]); return { id: 'imported' } },
+      assetStashMigrate: async () => { calls.push(['migrate']); return [] },
+    },
   }
   const script = fs.readFileSync('src/components/AssetStashPanel.vue', 'utf8').match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1]
   const context = { exports: {}, require: name => { assert.ok(name in mocks, name); return mocks[name] } }
-  const code = ts.transpileModule(script + '\nexports.state = { selected, select, inspect, preview, inspecting, files, openCreate, startCreate, creatingDialog, creationContext, canCreate, create, name, error };', { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText
+  const code = ts.transpileModule(script + '\nexports.state = { selected, select, inspect, preview, inspecting, files, openCreate, startCreate, creatingDialog, creationContext, canCreate, create, name, error, importStash, remove, migrate };', { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText
   const scope = vue.effectScope()
   scope.run(() => vm.runInNewContext(code, context))
   if (!context.exports.state.creationContext.value) context.exports.state.creationContext.value = {path:'/wc',url:flow.identity.url}
   return { ...context.exports.state, workspace, flow, route, calls, stop: () => scope.stop() }
 }
+
+test('stash library operations refresh only the library after a successful write', async () => {
+  const h = harness(async () => [])
+  await h.importStash()
+  await h.remove({ id: 'imported', name: 'Imported' })
+  await h.migrate()
+  assert.deepEqual(h.calls.filter(call => call[0] === 'perform' || call[0] === 'stash-refresh'), [
+    ['perform', 'flow.import', true, false], ['stash-refresh'],
+    ['perform', 'flow.delete', true, false], ['stash-refresh'],
+    ['perform', 'flow.migrate', true, false], ['stash-refresh'],
+  ])
+  assert.deepEqual(h.calls.filter(call => call[0] === 'error'), [])
+  h.stop()
+})
 
 test('stash panel initializes real Vue watchers and clears previews on record change', async () => {
   const h = harness(async () => [])

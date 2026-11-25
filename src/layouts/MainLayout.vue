@@ -374,6 +374,7 @@ import { useWorkspace } from '@/composables/useWorkspace'
 import { useWorkspaceErrorToast } from '@/composables/useWorkspaceErrorToast'
 import { useUpdateCheck } from '@/composables/useUpdateCheck'
 import { useSvnUpdate } from '@/composables/useSvnUpdate'
+import { useAutomaticBinaryResolution } from '@/composables/useAutomaticBinaryResolution'
 import { persistRepositoryUi, repositoryUi, reorderTabs, tabsToClose } from '@/utils/repositoryUi'
 import FileContextMenu from '@/components/FileContextMenu.vue'
 import BranchSidebar from '@/components/BranchSidebar.vue'
@@ -395,6 +396,7 @@ const { t } = useI18n()
 const workspaceStore = useWorkspaceStore()
 const stashStore = useStashStore()
 const workflow = useWorkflowStore()
+onUnmounted(useAutomaticBinaryResolution())
 const { updateWorkspace, updating } = useSvnUpdate()
 const { loadWorkspace, openWorkspace, refreshStatus, refreshStatusIfStale, openStartupWorkspace } =
   useWorkspace()

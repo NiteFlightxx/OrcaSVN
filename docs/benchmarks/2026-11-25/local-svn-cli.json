@@ -1,0 +1,134 @@
+{
+  "scenario": "existing large Windows working copy, local read-only, warm repetitions, no remote",
+  "svn_version": "1.14.5",
+  "runs": [
+    {
+      "command": "svn.exe status --xml",
+      "run": 1,
+      "ms": 13946.0,
+      "exit": 0,
+      "stdout_bytes": 167724,
+      "items": {
+        "unversioned": 507,
+        "conflicted": 61,
+        "modified": 206,
+        "added": 3
+      }
+    },
+    {
+      "command": "svnversion.exe --no-newline .",
+      "run": 1,
+      "ms": 433.5,
+      "exit": 0,
+      "stdout_bytes": 12
+    },
+    {
+      "command": "svn.exe info --xml",
+      "run": 1,
+      "ms": 36.6,
+      "exit": 0,
+      "stdout_bytes": 612
+    },
+    {
+      "command": "svn.exe status --xml --verbose",
+      "run": 1,
+      "ms": 15385.8,
+      "exit": 0,
+      "stdout_bytes": 37581834,
+      "items": {
+        "normal": 121212,
+        "unversioned": 507,
+        "conflicted": 61,
+        "modified": 206,
+        "added": 3
+      }
+    },
+    {
+      "command": "svn.exe status --xml",
+      "run": 2,
+      "ms": 16981.0,
+      "exit": 0,
+      "stdout_bytes": 167724,
+      "items": {
+        "unversioned": 507,
+        "conflicted": 61,
+        "modified": 206,
+        "added": 3
+      }
+    },
+    {
+      "command": "svnversion.exe --no-newline .",
+      "run": 2,
+      "ms": 512.0,
+      "exit": 0,
+      "stdout_bytes": 12
+    },
+    {
+      "command": "svn.exe info --xml",
+      "run": 2,
+      "ms": 147.5,
+      "exit": 0,
+      "stdout_bytes": 612
+    },
+    {
+      "command": "svn.exe status --xml --verbose",
+      "run": 2,
+      "ms": 17882.5,
+      "exit": 0,
+      "stdout_bytes": 37581834,
+      "items": {
+        "normal": 121212,
+        "unversioned": 507,
+        "conflicted": 61,
+        "modified": 206,
+        "added": 3
+      }
+    },
+    {
+      "command": "svn.exe status --xml",
+      "run": 3,
+      "ms": 16501.8,
+      "exit": 0,
+      "stdout_bytes": 167724,
+      "items": {
+        "unversioned": 507,
+        "conflicted": 61,
+        "modified": 206,
+        "added": 3
+      }
+    },
+    {
+      "command": "svnversion.exe --no-newline .",
+      "run": 3,
+      "ms": 345.7,
+      "exit": 0,
+      "stdout_bytes": 12
+    },
+    {
+      "command": "svn.exe info --xml",
+      "run": 3,
+      "ms": 35.3,
+      "exit": 0,
+      "stdout_bytes": 612
+    },
+    {
+      "command": "svn.exe status --xml --verbose",
+      "run": 3,
+      "ms": 16371.6,
+      "exit": 0,
+      "stdout_bytes": 37581834,
+      "items": {
+        "normal": 121212,
+        "unversioned": 507,
+        "conflicted": 61,
+        "modified": 206,
+        "added": 3
+      }
+    }
+  ],
+  "ignore_externals_probe": {
+    "ms": 19692.0,
+    "conflicted_paths": 61,
+    "conflicted_paths_in_binaries": 61
+  }
+}

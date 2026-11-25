@@ -13,6 +13,212 @@ struct Fixture {
 }
 
 #[test]
+fn automatic_binaries_resolution_keeps_bytes_and_skips_text_and_assets() {
+    let f = Fixture::new();
+    let binaries = [
+        "Binaries/Win64/Build@.dll",
+        "Plugins/Test/Binaries/Linux/lib.so",
+        "Binaries/NoMime.bin",
+        "Binaries/Property.bin",
+        "Binaries/Tree.bin",
+    ];
+    let texts = ["Binaries/Notes.txt", "Binaries/Fake.dll"];
+    for file in binaries.iter().chain(texts.iter()) {
+        let full = f.root().join(file);
+        fs::create_dir_all(full.parent().unwrap()).unwrap();
+        if binaries.contains(file) {
+            fs::write(full, [0, 1, 255]).unwrap();
+        } else {
+            fs::write(full, "base\n").unwrap();
+        }
+    }
+    f.svn(
+        Some(&f.dev),
+        &["add", "--no-ignore", "--", "Binaries", "Plugins"],
+    );
+    f.svn(
+        Some(&f.dev),
+        &["propset", "test-property", "base", "Binaries/Property.bin"],
+    );
+    f.svn(
+        Some(&f.dev),
+        &["commit", "-m", "synthetic binary policy base"],
+    );
+    let observer = f
+        .temp
+        .join("binary-observer")
+        .to_string_lossy()
+        .into_owned();
+    f.svn(None, &["checkout", &format!("{}/dev", f.url), &observer]);
+    for file in binaries
+        .iter()
+        .chain(texts.iter())
+        .chain(["asset.uasset"].iter())
+    {
+        if binaries.contains(file) || *file == "asset.uasset" {
+            fs::write(f.root().join(file), [0, 7, 8]).unwrap();
+            fs::write(Path::new(&observer).join(file), [0, 9, 10]).unwrap();
+        } else {
+            fs::write(f.root().join(file), "incoming\n").unwrap();
+            fs::write(Path::new(&observer).join(file), "local\n").unwrap();
+        }
+    }
+    f.svn(
+        Some(&f.dev),
+        &[
+            "propset",
+            "test-property",
+            "incoming",
+            "Binaries/Property.bin",
+        ],
+    );
+    f.svn(
+        Some(&observer),
+        &["propset", "test-property", "local", "Binaries/Property.bin"],
+    );
+    f.svn(
+        Some(&f.dev),
+        &["delete", "--force", "--", "Binaries/Tree.bin"],
+    );
+    f.svn(
+        Some(&f.dev),
+        &["commit", "-m", "synthetic binary policy incoming"],
+    );
+    f.svn(Some(&observer), &["update", "--accept", "postpone"]);
+    runtime().block_on(async {
+        let data = f.temp.join("binary-policy-data");
+        // Also handle a real binary whose MIME property is missing locally.
+        f.svn(
+            Some(&observer),
+            &["propdel", "svn:mime-type", "Binaries/NoMime.bin"],
+        );
+        let url = format!("{}/dev", f.url);
+        let conflicts = w::repository_conflicts(observer.clone()).await.unwrap();
+        assert_eq!(conflicts.len(), 8, "{conflicts:?}");
+        let before: Vec<_> = conflicts
+            .iter()
+            .map(|c| {
+                (
+                    c.path.clone(),
+                    fs::read(Path::new(&observer).join(&c.path)).unwrap(),
+                )
+            })
+            .collect();
+        crate::svn::capture_commands(&observer);
+        let started = std::time::Instant::now();
+        let files: Vec<_> = conflicts.iter().map(|conflict| conflict.path.clone()).collect();
+        let result = crate::binary_conflicts::resolve_batch(&data, &observer, &files, &url)
+            .await
+            .unwrap();
+        assert!(result.failures.is_empty(), "{result:?}");
+        assert!(!result.verification_failed);
+        let resolved = result.resolved;
+        assert_eq!(result.status.unwrap().paths, resolved);
+        let commands = crate::svn::take_commands(&observer);
+        let mut counts = std::collections::BTreeMap::new();
+        for command in &commands {
+            *counts.entry(command[0].as_str()).or_insert(0) += 1;
+        }
+        eprintln!(
+            "AUTO_BINARY candidates={} resolved={} commands={} by_command={counts:?} elapsed_ms={:.1}",
+            conflicts.len(),
+            resolved.len(),
+            commands.len(),
+            started.elapsed().as_secs_f64() * 1000.
+        );
+        assert_eq!(counts.get("status"), Some(&2));
+        assert_eq!(counts.get("resolve"), Some(&1));
+        assert!(commands.len() <= 20, "{counts:?}");
+        assert_eq!(resolved.len(), 5, "{resolved:?}");
+        for file in &binaries {
+            assert!(resolved.contains(&file.to_string()));
+        }
+        for (file, bytes) in before {
+            assert_eq!(fs::read(Path::new(&observer).join(file)).unwrap(), bytes);
+        }
+        assert_eq!(
+            f.svn(
+                Some(&observer),
+                &["propget", "test-property", "Binaries/Property.bin"]
+            )
+            .trim(),
+            "local"
+        );
+        assert_eq!(
+            w::repository_conflicts(observer.clone())
+                .await
+                .unwrap()
+                .len(),
+            3
+        );
+        assert!(crate::binary_conflicts::resolve_batch(&data, &observer, &[binaries[0].into()], &url)
+            .await.unwrap().status.is_none());
+        assert!(crate::binary_conflicts::resolve_batch(
+            &data, &observer, &[binaries[0].into()], "file:///wrong/dev",
+        ).await.is_err());
+        let outside = crate::binary_conflicts::resolve_batch(
+            &data, &observer, &["../escape.dll".into()], &url,
+        ).await.unwrap();
+        assert!(outside.failures.contains_key("../escape.dll"));
+        assert!(outside.status.is_none());
+    });
+}
+
+#[test]
+fn automatic_binaries_resolution_maps_subworkspace_paths_and_respects_writer_lock() {
+    let f = Fixture::new();
+    fs::create_dir_all(f.root().join("Plugins/P/Binaries/Win64")).unwrap();
+    let file = "Plugins/P/Binaries/Win64/Local.dll";
+    fs::write(f.root().join(file), [0, 1, 2]).unwrap();
+    f.svn(Some(&f.dev), &["add", "Plugins"]);
+    f.svn(
+        Some(&f.dev),
+        &["commit", "-m", "synthetic subworkspace base"],
+    );
+    let observer = f
+        .temp
+        .join("binary-subworkspace")
+        .to_string_lossy()
+        .into_owned();
+    f.svn(None, &["checkout", &format!("{}/dev", f.url), &observer]);
+    fs::write(f.root().join(file), [0, 5, 6]).unwrap();
+    fs::write(Path::new(&observer).join(file), [0, 8, 9]).unwrap();
+    f.svn(
+        Some(&f.dev),
+        &["commit", "-m", "synthetic subworkspace incoming"],
+    );
+    f.svn(Some(&observer), &["update", "--accept", "postpone"]);
+    runtime().block_on(async {
+        let path = Path::new(&observer)
+            .join("Plugins/P/Binaries")
+            .to_string_lossy()
+            .into_owned();
+        let url = format!("{}/dev/Plugins/P/Binaries", f.url);
+        let data = f.temp.join("binary-subworkspace-data");
+        let guard = w::acquire(&observer).await.unwrap();
+        let files = ["Win64/Local.dll".into()];
+        assert!(
+            crate::binary_conflicts::resolve_batch(&data, &path, &files, &url)
+                .await
+                .is_err()
+        );
+        drop(guard);
+        let result = crate::binary_conflicts::resolve_batch(&data, &path, &files, &url)
+            .await
+            .unwrap();
+        assert!(result.failures.is_empty(), "{result:?}");
+        let patch = result.status.unwrap();
+        assert_eq!(patch.workspace, path);
+        assert_eq!(patch.expected_url, url);
+        assert_eq!(patch.paths, ["Win64/Local.dll"]);
+        assert_eq!(
+            fs::read(Path::new(&observer).join(file)).unwrap(),
+            [0, 8, 9]
+        );
+    });
+}
+
+#[test]
 fn history_presence_checks_mixed_versions_and_never_changes_working_files() {
     let f = Fixture::new();
     let runtime = tokio::runtime::Runtime::new().unwrap();
