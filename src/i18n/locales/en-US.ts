@@ -59,6 +59,13 @@ export default {
     encoding: 'Default Encoding',
     gitignore: 'Ignore File (.gitignore)',
     gitignoreHint: 'Hide matching unversioned files only; tracked SVN changes stay visible',
+    autoResolveBinaries: 'Binaries conflict handling',
+    binaryConflictPolicy_off: 'Turn off automatic resolution',
+    binaryConflictPolicy_local: 'Automatically use local files',
+    binaryConflictPolicy_incoming: 'Automatically use incoming files',
+    autoResolveBinariesHint: 'Applies to eligible binary and .modules conflicts. Using incoming files backs up the local file before taking the incoming version from the conflict.',
+    hideUnstagedBinaries: 'Hide Binaries in Unstaged',
+    hideUnstagedBinariesHint: 'Hide unstaged changes under project and plugin Binaries folders. Files remain available in Staged and Conflicts.',
     autoDeleteMissingOnCommit: 'Auto-delete missing files',
     autoDeleteMissingOnCommitHint:
       'Off by default. When enabled, selected missing files are scheduled with svn delete --force before commit.',

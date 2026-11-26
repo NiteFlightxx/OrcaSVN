@@ -59,6 +59,13 @@ export default {
     encoding: '기본 인코딩',
     gitignore: '무시 파일 (.gitignore)',
     gitignoreHint: '일치하는 버전 관리 외 파일만 숨깁니다. SVN 관리 파일 변경은 계속 표시됩니다',
+    autoResolveBinaries: 'Binaries 충돌 처리',
+    binaryConflictPolicy_off: '자동 해결 끄기',
+    binaryConflictPolicy_local: '로컬 파일로 자동 해결',
+    binaryConflictPolicy_incoming: '수신 파일로 자동 해결',
+    autoResolveBinariesHint: '조건을 충족하는 바이너리와 .modules 충돌에 적용됩니다. 수신 파일을 선택하면 로컬 파일을 백업한 뒤 이 충돌의 수신 버전을 적용합니다.',
+    hideUnstagedBinaries: '미선택 목록에서 Binaries 숨기기',
+    hideUnstagedBinariesHint: '프로젝트와 플러그인의 Binaries 폴더에 있는 미선택 변경을 숨깁니다. 선택됨 목록과 충돌 페이지에서는 계속 확인할 수 있습니다.',
     autoDeleteMissingOnCommit: '누락 파일 자동 삭제',
     autoDeleteMissingOnCommitHint:
       '기본값은 꺼짐입니다. 켜면 선택한 누락 파일에 대해 커밋 전에 svn delete --force를 실행합니다.',

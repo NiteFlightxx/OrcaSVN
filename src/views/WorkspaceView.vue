@@ -114,19 +114,19 @@
           </button>
           <select v-if="!conflictsMode" v-model="filter" :aria-label="$t('workspace.fileStatus')">
             <option value="all">
-              {{ $t('common.all') }} ({{ workspaceStore.statusList.length }})
+              {{ $t('common.all') }} ({{ visibleStatus.length }})
             </option>
             <option value="modified">
-              {{ $t('workspace.statusChanged') }} ({{ workspaceStore.changedCount }})
+              {{ $t('workspace.statusChanged') }} ({{ visibleStatusCounts.modified }})
             </option>
             <option value="added">
-              {{ $t('workspace.statusUnversioned') }} ({{ workspaceStore.unversionedCount }})
+              {{ $t('workspace.statusUnversioned') }} ({{ visibleStatusCounts.added }})
             </option>
             <option value="conflicted">
-              {{ $t('status.conflicted') }} ({{ workspaceStore.conflictedCount }})
+              {{ $t('status.conflicted') }} ({{ visibleStatusCounts.conflicted }})
             </option>
             <option value="missing">
-              {{ $t('status.missing') }} ({{ workspaceStore.missingCount }})
+              {{ $t('status.missing') }} ({{ visibleStatusCounts.missing }})
             </option>
           </select>
           <button
@@ -155,6 +155,9 @@
 
         <p v-if="flow.busy || pendingFileAction !== null" class="staging-notice" role="status">
           {{ actionBlockReason }}
+        </p>
+        <p v-if="hiddenUnstagedBinariesCount" class="staging-notice" role="status">
+          {{ $t('changes.hiddenUnstagedBinaries', { count: hiddenUnstagedBinariesCount }) }}
         </p>
         <!-- 文件列表 -->
         <div class="file-list" :aria-busy="workspaceStore.isLoading">
@@ -188,11 +191,7 @@
             <WorkspaceChangeTree
               :title="$t(conflictsMode ? 'flow.conflicts' : 'changes.unstaged')"
               :conflict-mode="conflictsMode"
-              :total="
-                conflictsMode
-                  ? workspaceStore.conflictedCount
-                  : workspaceStore.statusList.filter((file) => !selectedSet.has(file.path)).length
-              "
+              :total="conflictsMode ? workspaceStore.conflictedCount : unstagedTotal"
               :entries="unstagedFiles"
               :selectable="selectablePaths"
               :staged="false"
@@ -518,6 +517,7 @@ import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus/es/components/message/index'
 import { ElMessageBox } from 'element-plus/es/components/message-box/index'
 import { useWorkspace } from '@/composables/useWorkspace'
+import { useSettings } from '@/composables/useSettings'
 import WorkspaceChangeTree from '@/components/WorkspaceChangeTree.vue'
 import PanelSplitter from '@/components/PanelSplitter.vue'
 import ConflictResolutionDialog from '@/components/ConflictResolutionDialog.vue'
@@ -539,6 +539,7 @@ import DiffViewer from '@/components/DiffViewer.vue'
 import GlassLoading from '@/components/GlassLoading.vue'
 import { writeClipboardText } from '@/utils/clipboard'
 import { retainedSelection } from '@/utils/statusSelection'
+import { toWorkspaceRelativePath } from '@/utils/workspacePath'
 import type { SvnStatus, DiffResult } from '@/types'
 
 const { t } = useI18n()
@@ -556,6 +557,7 @@ const workspaceStore = useWorkspaceStore()
 const staging = useStagingStore()
 const draft = useCommitDraftStore()
 const flow = useWorkflowStore()
+const { settings } = useSettings()
 const {
   openWorkspace: openWorkspaceDialog,
   refreshStatus,
@@ -878,24 +880,58 @@ const displayedStatus = computed(() =>
 const displayedStatusByPath = computed(
   () => new Map(displayedStatus.value.map((entry) => [entry.path, entry]))
 )
+const selectedSet = computed(() => new Set(staging.paths))
+const hideUnstagedBinaries = computed(() => !conflictsMode.value && settings.hideUnstagedBinaries)
+const binariesFolder = /(?:^|[\\/])binaries(?:[\\/]|$)/i
+const workspaceInBinaries = computed(() => {
+  const path = workspaceStore.currentPath
+  if (!path) return false
+  const root = flow.identity?.root
+  const relative = root ? toWorkspaceRelativePath(path, root) : null
+  return binariesFolder.test(relative ?? path)
+})
+const isHiddenUnstagedBinary = (path: string) =>
+  hideUnstagedBinaries.value &&
+  !selectedSet.value.has(path) &&
+  (workspaceInBinaries.value || binariesFolder.test(path))
+
+const visibleStatus = computed(() =>
+  hideUnstagedBinaries.value
+    ? displayedStatus.value.filter((file) => !isHiddenUnstagedBinary(file.path))
+    : displayedStatus.value
+)
+const hiddenUnstagedBinariesCount = computed(() =>
+  displayedStatus.value.length - visibleStatus.value.length
+)
+const unstagedTotal = computed(() =>
+  visibleStatus.value.filter((file) => !selectedSet.value.has(file.path)).length
+)
+const statusFilters = {
+  all: () => true,
+  modified: (file: SvnStatus) =>
+    ['modified', 'added', 'deleted', 'replaced'].includes(file.status_code) ||
+    file.prop_status === 'modified',
+  added: (file: SvnStatus) => file.status_code === 'unversioned',
+  conflicted: (file: SvnStatus) =>
+    file.status_code === 'conflicted' || file.prop_status === 'conflicted',
+  missing: (file: SvnStatus) => file.status_code === 'missing',
+}
+const visibleStatusCounts = computed(() => {
+  const counts = { modified: 0, added: 0, conflicted: 0, missing: 0 }
+  for (const file of visibleStatus.value) {
+    if (statusFilters.modified(file)) counts.modified++
+    if (statusFilters.added(file)) counts.added++
+    if (statusFilters.conflicted(file)) counts.conflicted++
+    if (statusFilters.missing(file)) counts.missing++
+  }
+  return counts
+})
 const filteredFiles = computed(() => {
   const query = fileQuery.value.trim().toLocaleLowerCase()
-  return displayedStatus.value
-    .filter((file) => !query || normalizePath(file.path).toLocaleLowerCase().includes(query))
-    .filter((f) => {
-      if (conflictsMode.value)
-        return f.status_code === 'conflicted' || f.prop_status === 'conflicted'
-      if (filter.value === 'modified')
-        return (
-          ['modified', 'added', 'deleted', 'replaced'].includes(f.status_code) ||
-          f.prop_status === 'modified'
-        )
-      if (filter.value === 'added') return f.status_code === 'unversioned'
-      if (conflictsMode.value || filter.value === 'conflicted')
-        return f.status_code === 'conflicted' || f.prop_status === 'conflicted'
-      if (filter.value === 'missing') return f.status_code === 'missing'
-      return true
-    })
+  const matchesStatus = statusFilters[conflictsMode.value ? 'conflicted' : filter.value]
+  return visibleStatus.value.filter(
+    (file) => matchesStatus(file) && (!query || normalizePath(file.path).toLocaleLowerCase().includes(query))
+  )
 })
 
 const ignoredCount = computed(() =>
@@ -911,7 +947,6 @@ const selectedConflict = computed(() =>
 watch([selectedFile, selectedConflict], () => {
   if (selectedConflict.value && selectedFile.value) lastConflictFile.value = selectedFile.value
 })
-const selectedSet = computed(() => new Set(staging.paths))
 const selectablePaths = computed(() => staging.eligible.map((entry) => entry.path))
 const selectableSet = computed(() => new Set(selectablePaths.value))
 const stagedFiles = computed(() =>
@@ -990,7 +1025,7 @@ async function openExternal() {
 }
 async function selectNextConflict() {
   const next = (workspaceStore.rawStatusList || []).find(
-    (entry) => entry.status_code === 'conflicted' || entry.prop_status === 'conflicted'
+    (entry) => statusFilters.conflicted(entry) && !isHiddenUnstagedBinary(entry.path)
   )
   if (next) {
     activePanel.value = false
@@ -1025,7 +1060,7 @@ async function restoreWorkspaceView() {
   await nextTick()
   if (path !== workspaceStore.currentPath) return
   const entry = workspaceStore.statusList.find((entry) => entry.path === saved.selected)
-  if (entry) {
+  if (entry && !isHiddenUnstagedBinary(entry.path)) {
     activePanel.value = staging.paths.includes(entry.path)
     await selectFile(entry)
   }
@@ -1452,7 +1487,7 @@ const handleDocumentKeydown = (event: KeyboardEvent) => {
 }
 
 watch(
-  () => workspaceStore.statusList.map((file) => file.path),
+  () => visibleStatus.value.map((file) => file.path),
   (paths) => {
     if (retainedSelection(selectedFile.value, paths) === selectedFile.value) return
     diffRequestGeneration += 1
@@ -1483,7 +1518,7 @@ watch(
 )
 
 watch(
-  [() => staging.key, () => [...staging.paths].sort().join('\n'), filter, fileQuery],
+  [() => staging.key, () => [...staging.paths].sort().join('\n'), filter, fileQuery, hideUnstagedBinaries],
   () => {
     fileActionWorkspaceGeneration += 1
     hideFileContextMenu()

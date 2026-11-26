@@ -205,7 +205,13 @@ test('narrow navigation opens the branch drawer without changing desktop sidebar
 })
 
 
-test('repository cleanup runs only for the active working copy when the writer is idle', async () => {
+test('toolbar cleanup follows Update and runs only for the active idle working copy', async () => {
+  const source = fs.readFileSync('src/layouts/MainLayout.vue', 'utf8')
+  const toolbar = source.split('class="toolbar-group toolbar-primary"')[1].split('</div>')[0]
+  const buttons = Array.from(toolbar.matchAll(/<button\b[^>]*>/g), match => match[0])
+  const update = buttons.findIndex(button => button.includes("@click=\"updateWorkspace()\""))
+  assert.notEqual(update, -1)
+  assert.match(buttons[update + 1], /@click="handleShellCommand\('cleanup'\)"/)
   const h = shellHarness()
   h.workflow.busy = true
   await h.handleShellCommand('cleanup')

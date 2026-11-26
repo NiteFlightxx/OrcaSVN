@@ -1,11 +1,18 @@
 //! Automatic conflict resolution for generated binaries and Unreal module manifests.
-//! Uses the same guarded working-result resolution as the manual command.
+//! Backs up each conflict before applying the selected version.
 use crate::workflows as w;
 use quick_xml::{events::Event, Reader};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, fs, io::Read, path::Path};
 
 const MAX_BATCH: usize = 8;
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum ResolutionSide {
+    Local,
+    Incoming,
+}
 
 fn in_binaries(path: &str) -> bool {
     let parts: Vec<_> = path.split(['/', '\\']).collect();
@@ -69,6 +76,7 @@ fn module_resolution(root: &Path, full: &Path, conflict: &w::Conflict) -> w::Res
 async fn automatic_resolution(
     info: &w::Identity,
     conflict: &w::Conflict,
+    side: ResolutionSide,
 ) -> w::Result<Option<(&'static str, String)>> {
     if !conflict.summary.as_ref().is_some_and(|s| {
         s.node_kind == "file"
@@ -80,7 +88,12 @@ async fn automatic_resolution(
     }) {
         return Ok(None);
     }
-    let full = w::safe_child(Path::new(&info.root), &conflict.path)?;
+    // Replacing file contents cannot safely resolve tree or property conflicts.
+    if matches!(side, ResolutionSide::Incoming) && conflict.kind != "content" {
+        return Ok(None);
+    }
+    let root = Path::new(&info.root);
+    let full = w::safe_child(root, &conflict.path)?;
     if !full.is_file() {
         return Ok(None);
     }
@@ -95,20 +108,45 @@ async fn automatic_resolution(
         ],
     )
     .await?;
-    if full
+    let modules = full
         .extension()
-        .is_some_and(|extension| extension.eq_ignore_ascii_case("modules"))
-    {
-        let strategy = module_resolution(Path::new(&info.root), &full, conflict)?;
-        return Ok(Some((strategy, xml)));
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("modules"));
+    if !modules && !is_binary(&full, &xml)? {
+        return Ok(None);
     }
-    let mime = mime_type(&xml)?.trim().to_ascii_lowercase();
+
+    let strategy = match side {
+        ResolutionSide::Local if modules => module_resolution(root, &full, conflict)?,
+        ResolutionSide::Local => "working",
+        ResolutionSide::Incoming => {
+            // Use the version recorded for this conflict, which may differ from HEAD.
+            let incoming = conflict
+                .versions
+                .iter()
+                .find(|version| version.side == "incoming")
+                .ok_or("Incoming conflict artifact is unavailable")?;
+            let incoming = w::safe_child(root, &incoming.path)?;
+            if !incoming.is_file() {
+                return Err("Incoming conflict artifact is unavailable".into());
+            }
+            if modules && has_conflict_markers(&fs::read(incoming).map_err(|e| e.to_string())?) {
+                return Err(
+                    "The incoming .modules version already contains conflict markers".into(),
+                );
+            }
+            "theirs-full"
+        }
+    };
+    Ok(Some((strategy, xml)))
+}
+
+fn is_binary(full: &Path, properties: &str) -> w::Result<bool> {
+    let mime = mime_type(properties)?.trim().to_ascii_lowercase();
     if !mime.is_empty() {
         // Match SVN's binary MIME rule, including its two text exceptions.
-        return Ok((!mime.starts_with("text/")
+        return Ok(!mime.starts_with("text/")
             && mime != "image/x-xbitmap"
-            && mime != "image/x-xpixmap")
-            .then_some(("working", xml)));
+            && mime != "image/x-xpixmap");
     }
     let mut bytes = Vec::new();
     fs::File::open(full)
@@ -121,12 +159,9 @@ async fn automatic_resolution(
         || bytes.starts_with(&[0xfe, 0xff])
         || bytes.starts_with(&[0, 0, 0xfe, 0xff])
     {
-        return Ok(None);
+        return Ok(false);
     }
-    Ok(
-        (bytes.contains(&0) || std::str::from_utf8(&bytes).is_err_and(|e| e.error_len().is_some()))
-            .then_some(("working", xml)),
-    )
+    Ok(bytes.contains(&0) || std::str::from_utf8(&bytes).is_err_and(|e| e.error_len().is_some()))
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -168,6 +203,7 @@ pub(crate) async fn resolve_batch(
     path: &str,
     files: &[String],
     expected_url: &str,
+    side: ResolutionSide,
 ) -> w::Result<BatchResult> {
     if files.is_empty() || files.len() > MAX_BATCH {
         return Err("Invalid automatic resolution batch size".into());
@@ -215,7 +251,8 @@ pub(crate) async fn resolve_batch(
         };
         let prepare = async {
             let current = w::inspect_conflict(&info, entry, false).await?;
-            let Some((strategy, properties)) = automatic_resolution(&info, &current).await? else {
+            let Some((strategy, properties)) = automatic_resolution(&info, &current, side).await?
+            else {
                 return Ok(None);
             };
             let data = data.to_path_buf();
@@ -245,7 +282,7 @@ pub(crate) async fn resolve_batch(
     verify_source(path, &info, expected_url, prefix.as_os_str().is_empty()).await?;
     let targets: Vec<_> = prepared.keys().map(|file| w::target(file)).collect();
     let mut errors = BTreeMap::new();
-    for strategy in ["working", "mine-full"] {
+    for strategy in ["working", "mine-full", "theirs-full"] {
         let selected: Vec<_> = prepared
             .iter()
             .filter(|(_, accept)| **accept == strategy)
@@ -334,8 +371,9 @@ pub(crate) async fn repository_resolve_binaries(
     path: String,
     files: Vec<String>,
     expected_url: String,
+    side: ResolutionSide,
 ) -> w::Result<BatchResult> {
-    resolve_batch(&w::data_dir(&app)?, &path, &files, &expected_url).await
+    resolve_batch(&w::data_dir(&app)?, &path, &files, &expected_url, side).await
 }
 
 #[cfg(test)]

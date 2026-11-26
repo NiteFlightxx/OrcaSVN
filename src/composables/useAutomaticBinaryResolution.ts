@@ -3,6 +3,7 @@ import { useI18n } from 'vue-i18n'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useWorkflowStore } from '@/stores/workflows'
 import { useWorkspace } from '@/composables/useWorkspace'
+import { useSettings } from '@/composables/useSettings'
 import { repositoryResolveBinaries } from '@/api/workflows'
 
 const BATCH_SIZE = 8
@@ -11,6 +12,7 @@ const BATCH_SIZE = 8
 export function useAutomaticBinaryResolution() {
   const workspace = useWorkspaceStore()
   const flow = useWorkflowStore()
+  const { settings } = useSettings()
   const { applyStatusPatch, refreshStatusIfStale } = useWorkspace()
   const { t } = useI18n()
   const attempted = new Set<string>()
@@ -19,6 +21,7 @@ export function useAutomaticBinaryResolution() {
   let disposed = false
   const stop = watch(
     () => [
+      settings.binaryConflictPolicy,
       workspace.rawStatusList,
       workspace.isLoading,
       workspace.statusIsStale,
@@ -30,10 +33,12 @@ export function useAutomaticBinaryResolution() {
       running.value,
     ],
     async () => {
+      const side = settings.binaryConflictPolicy
       const path = workspace.currentPath
       const url = workspace.svnInfo?.url
       if (
         disposed ||
+        (side !== 'local' && side !== 'incoming') ||
         running.value ||
         flow.busy ||
         workspace.isLoading ||
@@ -42,7 +47,7 @@ export function useAutomaticBinaryResolution() {
         !url
       )
         return
-      const scope = JSON.stringify([path, url, workspace.epoch, workspace.historyEpoch])
+      const scope = JSON.stringify([path, url, workspace.epoch, workspace.historyEpoch, side])
       if (attemptScope !== scope) {
         attempted.clear()
         attemptScope = scope
@@ -72,7 +77,7 @@ export function useAutomaticBinaryResolution() {
           async () => {
             for (const file of candidates) attempted.add(file)
             const { resolved, failures, status, verificationFailed } =
-              await repositoryResolveBinaries(path, candidates, url)
+              await repositoryResolveBinaries(path, candidates, url, side)
             if (isCurrent()) {
               const needsRefresh = verificationFailed || (status && !(await applyStatusPatch(status)))
               if (needsRefresh && isCurrent()) {
@@ -85,7 +90,12 @@ export function useAutomaticBinaryResolution() {
             return {
               output: [
                 resolved.length
-                  ? t('conflictActions.autoBinaryResolved', { count: resolved.length }) +
+                  ? t(
+                      side === 'local'
+                        ? 'conflictActions.autoBinaryResolved'
+                        : 'conflictActions.autoBinaryResolvedIncoming',
+                      { count: resolved.length }
+                    ) +
                     '\n' +
                     resolved.join('\n')
                   : '',

@@ -1,4 +1,8 @@
-use crate::{asset_stash as stash, workflows as w};
+use crate::{
+    asset_stash as stash,
+    binary_conflicts::{resolve_batch, ResolutionSide},
+    workflows as w,
+};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -385,7 +389,7 @@ fn automatic_binaries_resolution_keeps_bytes_and_skips_text_and_assets() {
         crate::svn::capture_commands(&observer);
         let started = std::time::Instant::now();
         let files: Vec<_> = conflicts.iter().map(|conflict| conflict.path.clone()).collect();
-        let result = crate::binary_conflicts::resolve_batch(&data, &observer, &files, &url)
+        let result = resolve_batch(&data, &observer, &files, &url, ResolutionSide::Local)
             .await
             .unwrap();
         assert!(result.failures.is_empty(), "{result:?}");
@@ -429,13 +433,13 @@ fn automatic_binaries_resolution_keeps_bytes_and_skips_text_and_assets() {
                 .len(),
             3
         );
-        assert!(crate::binary_conflicts::resolve_batch(&data, &observer, &[binaries[0].into()], &url)
+        assert!(resolve_batch(&data, &observer, &[binaries[0].into()], &url, ResolutionSide::Local)
             .await.unwrap().status.is_none());
-        assert!(crate::binary_conflicts::resolve_batch(
-            &data, &observer, &[binaries[0].into()], "file:///wrong/dev",
+        assert!(resolve_batch(
+            &data, &observer, &[binaries[0].into()], "file:///wrong/dev", ResolutionSide::Local,
         ).await.is_err());
-        let outside = crate::binary_conflicts::resolve_batch(
-            &data, &observer, &["../escape.dll".into()], &url,
+        let outside = resolve_batch(
+            &data, &observer, &["../escape.dll".into()], &url, ResolutionSide::Local,
         ).await.unwrap();
         assert!(outside.failures.contains_key("../escape.dll"));
         assert!(outside.status.is_none());
@@ -502,7 +506,7 @@ fn automatic_modules_resolution_restores_valid_local_manifests_and_keeps_working
         let data = f.temp.join("modules-data");
         let files = files.map(String::from);
         crate::svn::capture_commands(&observer);
-        let result = crate::binary_conflicts::resolve_batch(&data, &observer, &files, &url)
+        let result = resolve_batch(&data, &observer, &files, &url, ResolutionSide::Local)
             .await
             .unwrap();
         let commands = crate::svn::take_commands(&observer);
@@ -549,6 +553,94 @@ fn automatic_modules_resolution_restores_valid_local_manifests_and_keeps_working
 }
 
 #[test]
+fn automatic_incoming_resolution_uses_conflict_versions_and_preserves_unsafe_conflicts() {
+    let f = Fixture::new();
+    let binary = "Binaries/Editor.dll";
+    let module = "Plugins/Test/Binaries/Editor.modules";
+    let marked = "Binaries/Marked.modules";
+    let property = "Binaries/Property.dll";
+    let notes = "Binaries/Notes.txt";
+    let tree = "Binaries/Deleted.dll";
+    let files: [(&str, &[u8], &[u8], &[u8]); 6] = [
+        (binary, &[0, 1], &[0, 2], &[0, 3]),
+        (module, b"base\n", b"local\n", b"incoming\n"),
+        (marked, b"base\n", b"local\n", b"<<<<<<< invalid\n"),
+        (property, &[0, 1], &[0, 2], &[0, 3]),
+        (notes, b"base\n", b"local\n", b"incoming\n"),
+        (tree, &[0, 1], &[0, 2], &[0, 3]),
+    ];
+    for (file, base, _, _) in files {
+        let path = f.root().join(file);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, base).unwrap();
+    }
+    f.svn(Some(&f.dev), &["add", "Binaries", "Plugins"]);
+    f.svn(
+        Some(&f.dev),
+        &["propset", "test-property", "base", property],
+    );
+    f.svn(Some(&f.dev), &["commit", "-m", "incoming policy base"]);
+    let observer = f.temp.join("incoming-observer");
+    let path = observer.to_str().unwrap();
+    let url = format!("{}/dev", f.url);
+    f.svn(None, &["checkout", &url, path]);
+
+    for (file, _, local, incoming) in files {
+        fs::write(observer.join(file), local).unwrap();
+        fs::write(f.root().join(file), incoming).unwrap();
+    }
+    f.svn(
+        Some(&f.dev),
+        &["propset", "test-property", "incoming", property],
+    );
+    f.svn(Some(path), &["propset", "test-property", "local", property]);
+    f.svn(Some(&f.dev), &["delete", "--force", "--", tree]);
+    f.svn(Some(&f.dev), &["commit", "-m", "recorded incoming changes"]);
+    f.svn(Some(path), &["update", "--accept", "postpone"]);
+    fs::write(f.root().join(binary), [0, 4]).unwrap();
+    f.svn(
+        Some(&f.dev),
+        &["commit", "-m", "newer than the conflict", binary],
+    );
+
+    runtime().block_on(async {
+        let data = f.temp.join("incoming-policy-data");
+        let candidates = files.map(|(file, _, _, _)| file.to_owned());
+        let result = resolve_batch(&data, path, &candidates, &url, ResolutionSide::Incoming)
+            .await
+            .unwrap();
+        assert_eq!(result.resolved, [binary, module]);
+        assert!(!result.verification_failed, "{result:?}");
+        assert_eq!(result.failures.len(), 1, "{result:?}");
+        assert!(result.failures[marked].contains("conflict markers"));
+        assert_eq!(result.status.unwrap().paths, [binary, module]);
+        assert_eq!(fs::read(observer.join(binary)).unwrap(), [0, 3]);
+        assert_eq!(fs::read(observer.join(module)).unwrap(), b"incoming\n");
+        let remaining: std::collections::BTreeSet<_> = w::repository_conflicts(path.into())
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|conflict| conflict.path)
+            .collect();
+        assert_eq!(
+            remaining,
+            [marked, property, notes, tree].map(String::from).into()
+        );
+        let snapshots = fs::read_dir(data.join("recovery")).unwrap();
+        let backup = snapshots
+            .map(|snapshot| snapshot.unwrap().path())
+            .find(|snapshot| {
+                let record: serde_json::Value =
+                    serde_json::from_slice(&fs::read(snapshot.join("manifest.json")).unwrap())
+                        .unwrap();
+                record["path"] == binary && record["strategy"] == "theirs-full"
+            })
+            .expect("the incoming strategy must back up the original bytes");
+        assert_eq!(fs::read(backup.join("working-file")).unwrap(), [0, 2]);
+    });
+}
+
+#[test]
 fn automatic_binaries_resolution_maps_subworkspace_paths_and_respects_writer_lock() {
     let f = Fixture::new();
     fs::create_dir_all(f.root().join("Plugins/P/Binaries/Win64")).unwrap();
@@ -582,12 +674,12 @@ fn automatic_binaries_resolution_maps_subworkspace_paths_and_respects_writer_loc
         let guard = w::acquire(&observer).await.unwrap();
         let files = ["Win64/Local.dll".into()];
         assert!(
-            crate::binary_conflicts::resolve_batch(&data, &path, &files, &url)
+            resolve_batch(&data, &path, &files, &url, ResolutionSide::Local)
                 .await
                 .is_err()
         );
         drop(guard);
-        let result = crate::binary_conflicts::resolve_batch(&data, &path, &files, &url)
+        let result = resolve_batch(&data, &path, &files, &url, ResolutionSide::Local)
             .await
             .unwrap();
         assert!(result.failures.is_empty(), "{result:?}");

@@ -59,6 +59,13 @@ export default {
     encoding: 'デフォルトのエンコーディング',
     gitignore: '無視ファイル (.gitignore)',
     gitignoreHint: '一致する未管理ファイルのみ非表示。SVN 管理対象の変更は表示されます',
+    autoResolveBinaries: 'Binaries の競合処理',
+    binaryConflictPolicy_off: '自動解決をオフ',
+    binaryConflictPolicy_local: 'ローカルファイルで自動解決',
+    binaryConflictPolicy_incoming: '受信ファイルで自動解決',
+    autoResolveBinariesHint: '対象はバイナリと .modules の競合です。受信ファイルを使う場合、ローカルファイルをバックアップしてから今回の競合の受信版を採用します。',
+    hideUnstagedBinaries: '未選択の Binaries を非表示',
+    hideUnstagedBinariesHint: 'プロジェクトやプラグインの Binaries フォルダーにある未選択の変更を隠します。選択済み一覧と競合ページでは引き続き確認できます。',
     autoDeleteMissingOnCommit: '欠落ファイルを自動削除',
     autoDeleteMissingOnCommitHint:
       'デフォルトではオフです。有効にすると、選択した欠落ファイルに対してコミット前に svn delete --force を実行します。',

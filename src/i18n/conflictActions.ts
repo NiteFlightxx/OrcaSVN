@@ -2,6 +2,7 @@ export const conflictActionLocales = {
   'zh-CN': {
     autoBinaryTitle: '自动解决 Binaries 冲突',
     autoBinaryResolved: '已保留本地版本并解决 {count} 项冲突',
+    autoBinaryResolvedIncoming: '已采用传入版本并解决 {count} 项冲突',
     selected: '已选择 {count} 个冲突路径',
     batchHint:
       '选择处理方式后确认范围。文件版本替换仅适用于内容冲突；树与属性冲突需确认手动处理结果。',
@@ -14,6 +15,7 @@ export const conflictActionLocales = {
   'zh-TW': {
     autoBinaryTitle: '自動解決 Binaries 衝突',
     autoBinaryResolved: '已保留本機版本並解決 {count} 項衝突',
+    autoBinaryResolvedIncoming: '已採用傳入版本並解決 {count} 項衝突',
     selected: '已選擇 {count} 個衝突路徑',
     batchHint:
       '選擇處理方式後確認範圍。檔案版本取代僅適用於內容衝突；樹與屬性衝突需確認手動處理結果。',
@@ -26,6 +28,7 @@ export const conflictActionLocales = {
   'en-US': {
     autoBinaryTitle: 'Automatically resolve Binaries conflicts',
     autoBinaryResolved: 'Kept local versions and resolved {count} conflicts',
+    autoBinaryResolvedIncoming: 'Used incoming versions and resolved {count} conflicts',
     selected: '{count} conflict paths selected',
     batchHint:
       'Choose a resolution, then confirm its scope. File replacement applies to content conflicts. Tree and property conflicts require confirmation of manual handling.',
@@ -39,6 +42,7 @@ export const conflictActionLocales = {
   'ja-JP': {
     autoBinaryTitle: 'Binaries の競合を自動解決',
     autoBinaryResolved: 'ローカル版を保持し、{count} 件の競合を解決しました',
+    autoBinaryResolvedIncoming: '受信版を採用し、{count} 件の競合を解決しました',
     selected: '競合パス {count} 件を選択',
     batchHint:
       '解決方法を選んで対象を確認してください。ファイル置換は内容の競合に適用されます。ツリーと属性の競合には手動処理の確認が必要です。',
@@ -51,6 +55,7 @@ export const conflictActionLocales = {
   'ko-KR': {
     autoBinaryTitle: 'Binaries 충돌 자동 해결',
     autoBinaryResolved: '로컬 버전을 유지하고 충돌 {count}개를 해결했습니다',
+    autoBinaryResolvedIncoming: '수신 버전을 적용하고 충돌 {count}개를 해결했습니다',
     selected: '충돌 경로 {count}개 선택됨',
     batchHint:
       '처리 방법을 선택한 후 범위를 확인하세요. 파일 교체는 내용 충돌에 적용됩니다. 트리 및 속성 충돌은 수동 처리 확인이 필요합니다.',

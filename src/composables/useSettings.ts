@@ -1,5 +1,8 @@
 import { reactive, watch } from 'vue'
 import { detectSystemLocale } from '@/i18n'
+import type { BinaryConflictSide } from '@/api/workflows'
+
+export type BinaryConflictPolicy = 'off' | BinaryConflictSide
 
 export interface AppSettings {
   svnPath: string
@@ -8,6 +11,8 @@ export interface AppSettings {
   theme: 'light' | 'dark' | 'auto'
   language: string
   gitignoreEnabled: boolean
+  binaryConflictPolicy: BinaryConflictPolicy
+  hideUnstagedBinaries: boolean
   autoDeleteMissingOnCommit: boolean
   diffToolPath: string
   diffToolArgs: string
@@ -24,6 +29,8 @@ const defaults: AppSettings = {
   theme: 'auto',
   language: detectSystemLocale(),
   gitignoreEnabled: false,
+  binaryConflictPolicy: 'local',
+  hideUnstagedBinaries: false,
   autoDeleteMissingOnCommit: false,
   diffToolPath: '',
   diffToolArgs: '["{left}", "{right}"]',
@@ -35,7 +42,14 @@ function loadSettings(): AppSettings {
   try {
     const stored = localStorage.getItem(STORAGE_KEY)
     if (stored) {
-      return { ...defaults, ...JSON.parse(stored) }
+      const { binaryConflictPolicy: policy, autoResolveBinaries, ...saved } = JSON.parse(stored)
+      const fallbackPolicy = autoResolveBinaries === false ? 'off' : defaults.binaryConflictPolicy
+      return {
+        ...defaults,
+        ...saved,
+        binaryConflictPolicy:
+          policy === 'off' || policy === 'local' || policy === 'incoming' ? policy : fallbackPolicy,
+      }
     }
   } catch {
     // ignore parse errors

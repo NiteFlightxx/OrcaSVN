@@ -116,6 +116,27 @@
             <span class="form-item-hint">{{ $t('settings.gitignoreHint') }}</span>
           </el-form-item>
 
+          <el-form-item :label="$t('settings.autoResolveBinaries')" class="form-item">
+            <el-select
+              v-model="settings.binaryConflictPolicy"
+              class="settings-control"
+              popper-class="settings-select-dropdown"
+            >
+              <el-option
+                v-for="policy in binaryConflictPolicies"
+                :key="policy"
+                :label="$t('settings.binaryConflictPolicy_' + policy)"
+                :value="policy"
+              />
+            </el-select>
+            <span class="form-item-hint">{{ $t('settings.autoResolveBinariesHint') }}</span>
+          </el-form-item>
+
+          <el-form-item :label="$t('settings.hideUnstagedBinaries')" class="form-item">
+            <el-switch v-model="settings.hideUnstagedBinaries" />
+            <span class="form-item-hint">{{ $t('settings.hideUnstagedBinariesHint') }}</span>
+          </el-form-item>
+
           <el-form-item :label="$t('settings.autoDeleteMissingOnCommit')" class="form-item">
             <el-switch v-model="settings.autoDeleteMissingOnCommit" />
             <span class="form-item-hint">{{ $t('settings.autoDeleteMissingOnCommitHint') }}</span>
@@ -174,7 +195,7 @@ import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus/es/components/message/index'
 import { configureSvnExecutable } from '@/api/svn'
 import { useLocale } from '@/composables/useLocale'
-import { useSettings } from '@/composables/useSettings'
+import { useSettings, type BinaryConflictPolicy } from '@/composables/useSettings'
 import { applyTheme } from '@/composables/useTheme'
 import { useWorkspace } from '@/composables/useWorkspace'
 import { useUpdateCheck } from '@/composables/useUpdateCheck'
@@ -204,6 +225,7 @@ function handleTabKeydown(event: KeyboardEvent, index: number) {
 }
 const { setLocale } = useLocale()
 const { settings } = useSettings()
+const binaryConflictPolicies: BinaryConflictPolicy[] = ['off', 'local', 'incoming']
 const { refreshStatusAfterMutation } = useWorkspace()
 const {
   currentVersion: appVersion,

@@ -26,9 +26,12 @@ export const repositoryConflicts = (path: string) => invoke<Conflict[]>('reposit
 export const repositoryConflictDetail = (path: string, file: string) => invoke<ConflictDetail>('repository_conflict_detail', { path, file })
 export const conflictChildren = (path: string, file: string, side: 'local' | 'incoming') => invoke<ConflictChildren>('conflict_children', { path, file, side })
 export const repositoryResolve = (path: string, file: string, strategy: string, expectedUrl: string) => invoke<Outcome>('repository_resolve', { path, file, strategy, expectedUrl })
-export const repositoryResolveBinaries = (path: string, files: string[], expectedUrl: string) =>
+export type BinaryConflictSide = 'local' | 'incoming'
+export const repositoryResolveBinaries = (
+  path: string, files: string[], expectedUrl: string, side: BinaryConflictSide
+) =>
   invoke<{ resolved: string[]; failures: Record<string, string>; status: WorkspaceStatusPatch | null; verificationFailed: boolean }>(
-    'repository_resolve_binaries', { path, files, expectedUrl },
+    'repository_resolve_binaries', { path, files, expectedUrl, side },
   )
 export const repositoryActivities = () => invoke<Record<string, unknown>[]>('repository_activities')
 export const assetStashCandidates = (path: string, files: string[]) => invoke<AssetNode[]>('asset_stash_candidates', { path, files })

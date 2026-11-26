@@ -59,6 +59,13 @@ export default {
     encoding: '預設編碼',
     gitignore: '忽略文件 (.gitignore)',
     gitignoreHint: '僅篩選符合規則的未版本控制檔案；已受 SVN 管理的修改仍會顯示',
+    autoResolveBinaries: 'Binaries 衝突處理',
+    binaryConflictPolicy_off: '關閉自動解決',
+    binaryConflictPolicy_local: '自動解決，使用本機檔案',
+    binaryConflictPolicy_incoming: '自動解決，使用遠端檔案',
+    autoResolveBinariesHint: '適用於符合條件的二進位檔案和 .modules。使用遠端檔案時，會先備份本機檔案，再採用這次衝突的傳入版本。',
+    hideUnstagedBinaries: '未暫存隱藏 Binaries',
+    hideUnstagedBinariesHint: '隱藏專案及外掛 Binaries 資料夾的未暫存變更。已暫存與衝突頁仍可查看相關檔案。',
     autoDeleteMissingOnCommit: '提交時自動刪除缺失檔案',
     autoDeleteMissingOnCommitHint:
       '預設關閉；啟用後，提交已選取的缺失檔案時會先執行 svn delete --force',

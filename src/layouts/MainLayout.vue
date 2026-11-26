@@ -124,6 +124,15 @@
           <el-icon :class="{ 'is-loading': updating }"><RefreshRight /></el-icon
           ><span>{{ $t('menu.update') }}</span>
         </button>
+        <button
+          class="tool-button"
+          :disabled="!workspaceStore.currentPath || workflow.busy"
+          :title="$t('svnTools.cleanup') + ' · ' + $t('svnTools.cleanupHint')"
+          :aria-label="$t('svnTools.cleanup')"
+          @click="handleShellCommand('cleanup')"
+        >
+          <el-icon><Brush /></el-icon><span>{{ $t('common.cleanup') }}</span>
+        </button>
       </div>
       <button
         class="repository-identity"

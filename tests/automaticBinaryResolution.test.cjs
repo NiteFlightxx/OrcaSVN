@@ -30,6 +30,7 @@ function harness(options = {}) {
       this.statusIsStale = value
     },
   })
+  const settings = vue.reactive({ binaryConflictPolicy: 'local', ...options.settings })
   const flow = vue.reactive({
     busy: false,
     refreshWarning: false,
@@ -53,6 +54,7 @@ function harness(options = {}) {
     },
     '@/stores/workspace': { useWorkspaceStore: () => workspace },
     '@/stores/workflows': { useWorkflowStore: () => flow },
+    '@/composables/useSettings': { useSettings: () => ({ settings }) },
     '@/composables/useWorkspace': {
       useWorkspace: () => ({
         refreshStatusIfStale: async age => { refreshes.push(age) },
@@ -92,6 +94,7 @@ function harness(options = {}) {
   const stop = scope.run(() => context.exports.useAutomaticBinaryResolution())
   return {
     workspace,
+    settings,
     flow,
     calls,
     patches,
@@ -263,4 +266,102 @@ test('a write with unverified status schedules recovery without waiting for it',
   assert.deepEqual(h.refreshes, [0])
   assert.equal(h.patches.length, 0)
   h.stop()
+})
+
+
+test('disabled automation preserves existing conflicts until enabled, independently of hiding', async () => {
+  const path = 'Plugins/P/Binaries/a.dll'
+  const h = harness({
+    settings: { binaryConflictPolicy: 'off', hideUnstagedBinaries: true },
+    workspace: { rawStatusList: [entry(path)] },
+  })
+  await settle()
+  assert.equal(h.calls.length, 0)
+  h.workspace.epoch++
+  await settle()
+  assert.deepEqual(h.workspace.rawStatusList.map(item => item.path), [path])
+  assert.equal(h.calls.length, 0)
+  h.settings.binaryConflictPolicy = 'local'
+  await settle()
+  assert.deepEqual(Array.from(h.calls[0][1]), [path])
+  assert.equal(h.workspace.rawStatusList.length, 0)
+  h.stop()
+})
+
+test('turning automation off during a batch applies its result and stops the next batch', async () => {
+  let finish
+  const resolveFirstBatch = new Promise(resolve => { finish = resolve })
+  const h = harness({
+    resolve: (_workspace, files) => files.length === 8 ? resolveFirstBatch :
+      Promise.resolve({ resolved: files, failures: {}, status: { paths: files } }),
+  })
+  const paths = Array.from({ length: 9 }, (_, i) => 'Binaries/' + i + '.dll')
+  h.workspace.rawStatusList = paths.map(path => entry(path))
+  await settle()
+  assert.equal(h.calls.length, 1)
+  h.settings.binaryConflictPolicy = 'off'
+  finish({ resolved: paths.slice(0, 8), failures: {}, status: { paths: paths.slice(0, 8) } })
+  await settle()
+  assert.equal(h.patches.length, 1)
+  assert.equal(h.calls.length, 1)
+  assert.deepEqual(h.workspace.rawStatusList.map(item => item.path), paths.slice(8))
+  h.settings.binaryConflictPolicy = 'local'
+  await settle()
+  assert.equal(h.calls.length, 2)
+  assert.deepEqual(Array.from(h.calls[1][1]), paths.slice(8))
+  h.stop()
+})
+
+
+test('incoming resolves with its own policy and retries a conflict attempted under the local policy', async () => {
+  const file = 'Binaries/Editor.dll'
+  const h = harness({
+    workspace: { rawStatusList: [entry(file)] },
+    resolve: async (_workspace, files, _url, side) => side === 'incoming'
+      ? { resolved: files, failures: {}, status: { paths: files } }
+      : { resolved: [], failures: { [file]: 'local version unavailable' } },
+  })
+  await settle()
+  assert.equal(h.calls.length, 1)
+  assert.equal(h.calls[0][3], 'local')
+  h.settings.binaryConflictPolicy = 'incoming'
+  await settle()
+  assert.equal(h.calls.length, 2)
+  assert.equal(h.calls[1][3], 'incoming')
+  assert.match(h.activities[1].result.output, /autoBinaryResolvedIncoming:1/)
+  assert.equal(h.workspace.rawStatusList.length, 0)
+  h.stop()
+})
+
+test('persisted conflict preferences migrate safely and retain all three new choices', async () => {
+  const compiled = ts.transpileModule(fs.readFileSync('src/composables/useSettings.ts', 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS },
+  }).outputText
+  for (const [saved, expected] of [
+    [{}, 'local'],
+    [{ autoResolveBinaries: true }, 'local'],
+    [{ autoResolveBinaries: false }, 'off'],
+    [{ autoResolveBinaries: false, binaryConflictPolicy: 'unknown' }, 'off'],
+    [{ autoResolveBinaries: false, binaryConflictPolicy: 'incoming' }, 'incoming'],
+    [{ binaryConflictPolicy: 'off' }, 'off'],
+    [{ binaryConflictPolicy: 'local' }, 'local'],
+  ]) {
+    let stored = JSON.stringify({ hideUnstagedBinaries: true, ...saved })
+    const localStorage = { getItem: () => stored, setItem: (_key, value) => { stored = value } }
+    const exports = {}
+    const scope = vue.effectScope()
+    scope.run(() => vm.runInNewContext(compiled, {
+      exports, localStorage,
+      require: name => name === 'vue' ? vue : { detectSystemLocale: () => 'en-US' },
+    }))
+    const { settings, updateSettings } = exports.useSettings()
+    assert.equal(settings.binaryConflictPolicy, expected)
+    assert.equal(settings.hideUnstagedBinaries, true)
+    updateSettings({ binaryConflictPolicy: expected === 'incoming' ? 'off' : 'incoming' })
+    await vue.nextTick()
+    const savedAgain = JSON.parse(stored)
+    assert.equal(savedAgain.binaryConflictPolicy, settings.binaryConflictPolicy)
+    assert.equal(Object.hasOwn(savedAgain, 'autoResolveBinaries'), false)
+    scope.stop()
+  }
 })

@@ -7,6 +7,7 @@ const vue = require('vue')
 const compile = source => ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText
 function load(path) { const context = { exports: {} }; vm.runInNewContext(compile(fs.readFileSync(path, 'utf8')), context); return context.exports }
 const tree = load('src/utils/changeTree.ts')
+const workspacePaths = load('src/utils/workspacePath.ts')
 const stagingUtils = load('src/utils/staging.ts')
 const changeSelection = load('src/utils/changeSelection.ts')
 const { fitMenu } = load('src/utils/fileMenu.ts')
@@ -16,6 +17,8 @@ function harness(options = {}) {
   const files = [entry('Content/A.txt'), entry('Content/B.txt'), entry('Source/Game.cpp')]
   const workspace = vue.reactive({ currentPath: '/wc', svnInfo: { url: 'file:///repo/dev' }, statusList: files, statusIsStale: false, setError() {} })
   const calls = [], messages = []
+  const route = vue.reactive({ name: 'workspace', query: {} })
+  const settings = vue.reactive({ hideUnstagedBinaries: false })
   const staging = vue.reactive({ key: vue.computed(() => stagingUtils.stagingKey(workspace.currentPath, workspace.svnInfo?.url)), paths: [], eligible: files, ready: vue.computed(() => !workspace.statusIsStale), stage: paths => calls.push(['stage', paths]), unstage: paths => calls.push(['unstage', paths]) })
   const details = { kind: 'file', exists: true, binary: false, historyUrl: 'file:///repo/dev/Content/A.txt' }
   const mocks = {
@@ -23,7 +26,7 @@ function harness(options = {}) {
     '@tauri-apps/api/core': { invoke: async () => '' },
     '@/utils/repositoryUi': { repositoryUi: () => ({}) },
     vue: { ...vue, onMounted() {}, onDeactivated() {}, onBeforeUnmount() {} },
-    'vue-router': { useRoute: () => ({ query: {} }), useRouter: () => ({ push: value => calls.push(['route', value]) }) },
+    'vue-router': { useRoute: () => route, useRouter: () => ({ push: value => calls.push(['route', value]) }) },
     'vue-i18n': { useI18n: () => ({ t: key => key }) },
     '@/stores/workspace': { useWorkspaceStore: () => workspace }, '@/stores/staging': { useStagingStore: () => staging },
     '@/stores/commitDraft': { useCommitDraftStore: () => ({ key: 'draft', message: '' }) },
@@ -43,6 +46,8 @@ function harness(options = {}) {
     '@tauri-apps/plugin-dialog': { save: options.save || (async () => '/export/file.patch') },
     'element-plus/es/components/message/index': { ElMessage: { error: message => messages.push(message), success() {} } },
     'element-plus/es/components/message-box/index': { ElMessageBox: { confirm: async () => calls.push(['confirm']) } },
+    '@/composables/useSettings': { useSettings: () => ({ settings }) },
+    '@/utils/workspacePath': workspacePaths,
     '@/composables/useWorkspace': { useWorkspace: () => ({ refreshStatusAfterMutation: async () => calls.push(['refresh']), refreshStatusAfterDiscard: async () => calls.push(['refresh']) }) },
     '@/components/ConflictResolutionDialog.vue': {}, '@/components/PanelSplitter.vue': {}, '@/components/WorkspaceChangeTree.vue': {}, '@/components/FileContextMenu.vue': {}, '@/components/CommitMessageEditor.vue': {}, '@/components/DiffViewer.vue': {}, '@/components/GlassLoading.vue': {},
     '@/utils/changeSelection': changeSelection, '@/utils/changeTree': tree, '@/utils/statusSelection': { retainedSelection: (selected, paths) => paths.includes(selected) ? selected : null },
@@ -51,9 +56,9 @@ function harness(options = {}) {
   const source = fs.readFileSync('src/views/WorkspaceView.vue', 'utf8').match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1]
   const context = { exports: {}, require: name => { assert.ok(name in mocks, name); return mocks[name] } }
   const scope = vue.effectScope()
-  scope.run(() => vm.runInNewContext(compile(source + '\nexports.state = { openFileContextMenu, runContextAction, fileTool, canApplyFileTool, executeFileTool, fileContextMenu, contextItems, actionBlockReason, pendingFileAction, fileActionPhase, fileQuery, filteredFiles, handleChangeSelection, selectedFile, activePanel, conflictRequest };'), context))
+  scope.run(() => vm.runInNewContext(compile(source + '\nexports.state = { openFileContextMenu, runContextAction, fileTool, canApplyFileTool, executeFileTool, fileContextMenu, contextItems, actionBlockReason, pendingFileAction, fileActionPhase, fileQuery, filteredFiles, stagedFiles, unstagedFiles, unstagedTotal, hiddenUnstagedBinariesCount, discardTargets, handleChangeSelection, selectedFile, activePanel, conflictRequest };'), context))
   const folder = tree.buildChangeTree(files)[0].children.find(node => node.path === 'Content')
-  return { ...context.exports.state, calls, messages, details, workspace, staging, folder, file: folder.children[0], stop: () => scope.stop() }
+  return { ...context.exports.state, calls, messages, details, workspace, staging, route, settings, folder, file: folder.children[0], stop: () => scope.stop() }
 }
 const pointer = { clientX: 100, clientY: 200 }
 
@@ -430,5 +435,63 @@ test('refreshing the same repository URL does not close an open file menu', asyn
   assert.equal(h.fileContextMenu.visible, true)
   await h.runContextAction('svn-file-info')
   assert.equal(h.fileTool.value.output, 'SVN output')
+  h.stop()
+})
+
+
+test('Binaries visibility filters only unstaged project/plugin changes and preserves conflicts and staging', async () => {
+  const h = harness()
+  const project = entry('Binaries/Win64/app.dll')
+  const plugin = entry('Plugins/P\\bINARIES\\editor.modules', 'conflicted')
+  const directory = entry('Plugins/Other/Binaries', 'deleted')
+  const similar = entry('Source/BinariesOld/a.dll')
+  const filename = entry('Content/Binaries.txt')
+  const staged = entry('Binaries/Staged.dll')
+  h.workspace.statusList = [project, plugin, directory, similar, filename, staged]
+  h.staging.eligible = h.workspace.statusList
+  h.staging.paths = [staged.path]
+  const paths = files => Array.from(files.value, file => file.path)
+
+  assert.equal(h.unstagedTotal.value, 5)
+  await h.openFileContextMenu(pointer, h.file, false)
+  h.selectedFile.value = project.path
+  h.settings.hideUnstagedBinaries = true
+  await vue.nextTick()
+  assert.equal(h.fileContextMenu.visible, false)
+  assert.equal(h.selectedFile.value, null)
+  assert.equal(h.hiddenUnstagedBinariesCount.value, 3)
+  assert.equal(h.unstagedTotal.value, 2)
+  assert.deepEqual(paths(h.unstagedFiles), [similar.path, filename.path])
+  assert.deepEqual(paths(h.stagedFiles), [staged.path])
+  assert.deepEqual(h.staging.paths, [staged.path])
+  assert.equal(h.workspace.statusList.length, 6)
+
+  h.route.name = 'conflicts'
+  assert.deepEqual(paths(h.unstagedFiles), [plugin.path])
+  h.route.name = 'workspace'
+
+  const displayedFile = tree.buildChangeTree([similar])[0].children[0]
+  await h.openFileContextMenu(pointer, displayedFile, false)
+  await h.runContextAction('stage-all')
+  assert.deepEqual(Array.from(h.calls.find(call => call[0] === 'stage')[1]), [similar.path, filename.path])
+  await h.discardTargets(paths(h.filteredFiles))
+  const preview = h.calls.find(call => call[0] === 'preview-discard')
+  assert.deepEqual(Array.from(preview[2]), [similar.path, filename.path, staged.path])
+  assert.deepEqual(Array.from(preview[4]), [project.path, tree.normalizePath(plugin.path), directory.path])
+  h.settings.hideUnstagedBinaries = false
+  assert.equal(h.unstagedTotal.value, 5)
+  h.stop()
+})
+
+test('a subworkspace under Binaries hides relative rows, and directories above the SVN root are excluded', () => {
+  const flow = vue.reactive({ busy: false, identity: { root: '/fixture/Binaries/project' } })
+  const h = harness({ flow })
+  h.workspace.currentPath = '/fixture/Binaries/project'
+  h.settings.hideUnstagedBinaries = true
+  assert.equal(h.unstagedTotal.value, 3)
+  h.workspace.currentPath += '/Plugins/P/Binaries/Win64'
+  assert.equal(h.unstagedTotal.value, 0)
+  h.route.name = 'conflicts'
+  assert.equal(h.hiddenUnstagedBinariesCount.value, 0)
   h.stop()
 })

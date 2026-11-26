@@ -35,6 +35,8 @@ function harness(status = 'modified', path = 'file.ts') {
     'element-plus/es/components/message/index': { ElMessage: { success: message => messages.push(message) } },
     'element-plus/es/components/message-box/index': { ElMessageBox: { confirm: (...args) => { dialogs.push(args); return confirmation.promise } } },
     '@/composables/useSvnStatus': {},
+    '@/composables/useSettings': { useSettings: () => ({ settings: { hideUnstagedBinaries: false } }) },
+    '@/utils/workspacePath': {},
     '@/composables/useWorkspace': { useWorkspace: () => ({ refreshStatusAfterMutation: async () => { refreshes++; return true }, refreshStatusAfterDiscard: async patch => { refreshes++; discardRefreshes.push(patch); if (!patch) store.setError(null); return true } }) },
     '@/components/VirtualViewport.vue': {},
     '@/components/ConflictResolutionDialog.vue': {}, '@/components/PanelSplitter.vue': {}, '@/components/WorkspaceChangeTree.vue': {},
