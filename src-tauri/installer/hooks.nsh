@@ -15,8 +15,37 @@
   SendMessage 0xFFFF 0x1A 0 "STR:Environment" /TIMEOUT=5000
 !macroend
 
+; OrcaSVN and ForkSVN share the executable and app identifier. Migrate only the
+; legacy per-user registration whose uninstaller points to this exact install.
+!macro FORKSVN_MIGRATE_SHORTCUT DIRECTORY
+  !insertmacro IsShortcutTarget "${DIRECTORY}\OrcaSVN.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"
+  Pop $0
+  ${If} $0 = 1
+    ${IfNot} ${FileExists} "${DIRECTORY}\ForkSVN.lnk"
+      Rename "${DIRECTORY}\OrcaSVN.lnk" "${DIRECTORY}\ForkSVN.lnk"
+    ${Else}
+      !insertmacro IsShortcutTarget "${DIRECTORY}\ForkSVN.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"
+      Pop $0
+      ${If} $0 = 1
+        Delete "${DIRECTORY}\OrcaSVN.lnk"
+      ${EndIf}
+    ${EndIf}
+  ${EndIf}
+!macroend
+
 ; Register the install directory in the per-user PATH so `orcasvn` works from a new terminal.
 !macro NSIS_HOOK_POSTINSTALL
+  Push $0
+  Push $1
+  ReadRegStr $0 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\OrcaSVN" "UninstallString"
+  StrCpy $1 '"$INSTDIR\uninstall.exe"'
+  ${If} $0 == $1
+    !insertmacro FORKSVN_MIGRATE_SHORTCUT "$SMPROGRAMS"
+    !insertmacro FORKSVN_MIGRATE_SHORTCUT "$DESKTOP"
+    DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\OrcaSVN"
+  ${EndIf}
+  Pop $1
+  Pop $0
   !insertmacro ORCASVN_UPDATE_USER_PATH "$$k.SetValue('Path',((@($$parts)+$$d) -join ';'),[Microsoft.Win32.RegistryValueKind]::ExpandString)"
 !macroend
 

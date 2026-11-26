@@ -2,24 +2,8 @@
   <div ref="workspaceElement" class="workspace-view" @keydown="handleWorkspaceKeydown">
     <!-- 未打开工作区时的空状态 -->
     <div v-if="!workspaceStore.currentPath" class="empty-state">
-      <aside class="welcome-sidebar">
-        <div class="sidebar-section">
-          <div class="sidebar-heading">{{ $t('workspace.quickActions') }}</div>
-          <button class="sidebar-row active" @click="openWorkspace">
-            <el-icon><FolderOpened /></el-icon>
-            {{ $t('workspace.openWorkspace') }}
-          </button>
-          <button class="sidebar-row" @click="doCheckout">
-            <el-icon><Download /></el-icon>
-            {{ $t('common.checkout') }}
-          </button>
-        </div>
-      </aside>
       <div class="empty-content">
-        <div class="welcome-mark">
-          <el-icon><FolderOpened /></el-icon>
-        </div>
-        <span class="welcome-eyebrow">{{ $t('workspace.svnClient') }}</span>
+        <img class="welcome-mark" src="/forksvn.svg" alt="" />
         <h2>{{ $t('workspace.welcomeTitle') }}</h2>
         <p>{{ $t('workspace.emptyDescription') }}</p>
         <div class="empty-actions">
@@ -44,63 +28,19 @@
         '--composer-height': `${composerHeight}px`,
       }"
     >
-      <!-- 左侧面板：工作区信息 -->
-      <aside class="left-panel">
-        <div class="repository-name">
-          <strong>{{ workspaceName }}</strong>
-          <button
-            :aria-label="$t('workspace.closeWorkspace')"
-            :title="$t('workspace.closeWorkspace')"
-            @click="closeWorkspace"
-          >
-            <el-icon><Close /></el-icon>
-          </button>
-        </div>
-        <div class="sidebar-section">
-          <div class="sidebar-heading">{{ $t('workspace.workingCopy') }}</div>
-          <button class="sidebar-row active" @click="setFilter('all')">
-            <el-icon><Document /></el-icon>
-            <span>{{ $t('workspace.fileStatus') }}</span>
-            <b>{{ workspaceStore.statusList.length }}</b>
-          </button>
-          <button class="sidebar-row" @click="doCommit">
-            <el-icon><Upload /></el-icon>
-            <span>{{ $t('common.commit') }}</span>
-          </button>
-        </div>
-        <div class="sidebar-section">
-          <div class="sidebar-heading">{{ $t('workspace.repository') }}</div>
-          <button class="sidebar-row" @click="router.push({ name: 'log' })">
-            <el-icon><List /></el-icon>
-            <span>{{ $t('menu.log') }}</span>
-          </button>
-          <button class="sidebar-row" @click="router.push({ name: 'blame' })">
-            <el-icon><Edit /></el-icon>
-            <span>{{ $t('menu.blame') }}</span>
-          </button>
-        </div>
-        <div v-if="workspaceStore.svnInfo" class="repository-meta">
-          <div>
-            <span>URL</span><strong>{{ workspaceStore.svnInfo.url }}</strong>
-          </div>
-          <div>
-            <span>{{ $t('workspace.revision') }}</span
-            ><strong>r{{ workspaceStore.svnInfo.revision }}</strong>
-          </div>
-        </div>
-      </aside>
-
-      <!-- 中间面板：文件列表 -->
       <main class="center-panel">
         <div class="changes-filterbar">
-          <input
-            ref="changeSearchInput"
-            v-model="fileQuery"
-            type="search"
-            :placeholder="$t('sourceUI.filterChanges')"
-            :aria-label="$t('sourceUI.filterChanges')"
-            :title="workspaceName"
-          />
+          <label class="changes-search">
+            <el-icon aria-hidden="true"><Search /></el-icon>
+            <input
+              ref="changeSearchInput"
+              v-model="fileQuery"
+              type="search"
+              :placeholder="$t('sourceUI.filterChanges')"
+              :aria-label="$t('sourceUI.filterChanges')"
+              :title="workspaceName"
+            />
+          </label>
           <button
             v-if="!conflictsMode"
             :title="$t('sourceUI.discardVisible')"
@@ -112,7 +52,12 @@
           >
             <el-icon><RefreshLeft /></el-icon>
           </button>
-          <select v-if="!conflictsMode" v-model="filter" :aria-label="$t('workspace.fileStatus')">
+          <select
+            v-if="!conflictsMode"
+            v-model="filter"
+            class="changes-status"
+            :aria-label="$t('workspace.fileStatus')"
+          >
             <option value="all">
               {{ $t('common.all') }} ({{ visibleStatus.length }})
             </option>
@@ -957,10 +902,6 @@ const unstagedFiles = computed(() =>
 )
 const hiddenStagedCount = computed(() => staging.paths.length - stagedFiles.value.length)
 
-const setFilter = (f: typeof filter.value) => {
-  filter.value = f
-}
-
 const selectFile = async (file: SvnStatus) => {
   hideFileContextMenu()
   selectedFile.value = file.path
@@ -1006,14 +947,6 @@ const loadDiff = async (path: string) => {
 }
 
 const openWorkspace = () => openWorkspaceDialog(t('dialog.selectSVNWorkspaceDirectory'))
-
-const closeWorkspace = () => {
-  diffRequestGeneration += 1
-  workspaceStore.clearWorkspace()
-  selectedFile.value = null
-  diffResult.value = null
-  isLoadingDiff.value = false
-}
 
 async function openExternal() {
   if (!selectedFile.value) return
@@ -1801,10 +1734,6 @@ const discardTargets = async (targets: string[]) => {
   grid-template-columns: clamp(240px, var(--changes-width), 46%) 4px minmax(0, 1fr);
   min-height: 0;
 }
-.left-panel,
-.welcome-sidebar {
-  display: none;
-}
 .center-panel {
   display: flex;
   flex-direction: column;
@@ -1821,14 +1750,36 @@ const discardTargets = async (targets: string[]) => {
   min-height: 36px;
   border-bottom: 1px solid var(--md-sys-color-outline-variant);
 }
-.changes-filterbar input {
+.changes-search {
+  display: flex;
+  align-items: center;
   min-width: 40px;
   flex: 1;
-  border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: 12px;
-  padding: 3px 8px;
-  background: var(--md-sys-color-surface-container-lowest);
+  height: 26px;
+  gap: 5px;
+  padding: 0 7px;
+  border-radius: var(--app-radius);
+  background: var(--workbench-field);
+  box-shadow: var(--workbench-stroke);
+}
+.changes-search:focus-within {
+  background: var(--workbench-popover);
+  box-shadow: var(--workbench-focus);
+}
+.changes-search .el-icon {
+  flex-shrink: 0;
+  color: var(--md-sys-color-on-surface-variant);
+}
+.changes-search input {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  padding: 0;
+  background: transparent;
   font-size: var(--app-font-size-sm);
+}
+.changes-filterbar .changes-search input:focus-visible {
+  outline: 0;
 }
 .changes-filterbar button {
   display: grid;
@@ -1837,34 +1788,23 @@ const discardTargets = async (targets: string[]) => {
   height: 24px;
   padding: 2px;
   border: 0;
+  border-radius: var(--app-radius-sm);
   background: none;
   cursor: pointer;
+}
+.changes-filterbar button:hover:not(:disabled) {
+  background: var(--md-sys-state-hover);
 }
 .changes-filterbar button:disabled {
   opacity: 0.35;
   cursor: default;
 }
-.changes-filterbar select,
-.changes-status-filter select {
+.changes-filterbar select {
   border: 0;
   min-width: 0;
   background: var(--md-sys-color-surface-container-lowest);
   font-size: var(--app-font-size-xs);
   max-width: 96px;
-}
-.changes-status-filter {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  height: 26px;
-  min-height: 26px;
-  padding: 0 8px;
-  font-size: var(--app-font-size-xs);
-  border-bottom: 1px solid var(--md-sys-color-outline-variant);
-  color: var(--md-sys-color-on-surface-variant);
-}
-.changes-status-filter select {
-  max-width: 220px;
 }
 .file-list {
   position: relative;
@@ -2011,12 +1951,8 @@ const discardTargets = async (targets: string[]) => {
   padding: 28px;
 }
 .welcome-mark {
-  font-size: 48px;
-  opacity: 0.5;
-}
-.welcome-eyebrow {
-  color: var(--md-sys-color-primary);
-  font-size: var(--app-font-size-sm);
+  width: 52px;
+  height: 52px;
 }
 .empty-content h2 {
   margin: 10px 0;

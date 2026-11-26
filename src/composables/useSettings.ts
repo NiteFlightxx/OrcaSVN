@@ -3,12 +3,14 @@ import { detectSystemLocale } from '@/i18n'
 import type { BinaryConflictSide } from '@/api/workflows'
 
 export type BinaryConflictPolicy = 'off' | BinaryConflictSide
+export type Accent = 'indigo' | 'teal' | 'amber'
 
 export interface AppSettings {
   svnPath: string
   encoding: string
   logLimit: number
   theme: 'light' | 'dark' | 'auto'
+  accent: Accent
   language: string
   gitignoreEnabled: boolean
   binaryConflictPolicy: BinaryConflictPolicy
@@ -27,6 +29,7 @@ const defaults: AppSettings = {
   encoding: 'utf-8',
   logLimit: 50,
   theme: 'auto',
+  accent: 'indigo',
   language: detectSystemLocale(),
   gitignoreEnabled: false,
   binaryConflictPolicy: 'local',

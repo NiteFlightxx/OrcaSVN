@@ -1,5 +1,5 @@
 @import './design-tokens.css';
-@import './sourcegit-theme.css';
+@import './workbench-theme.css';
 
 * {
   box-sizing: border-box;

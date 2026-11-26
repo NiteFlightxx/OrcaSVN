@@ -77,6 +77,16 @@
               </el-radio>
             </el-radio-group>
           </el-form-item>
+          <el-form-item :label="$t('settings.accent')" class="form-item">
+            <el-radio-group v-model="settings.accent" class="theme-group">
+              <el-radio v-for="accent in accents" :key="accent" :value="accent" class="theme-radio">
+                <span class="theme-option">
+                  <i class="accent-swatch" :data-swatch="accent" aria-hidden="true" />
+                  {{ $t('settings.accent_' + accent) }}
+                </span>
+              </el-radio>
+            </el-radio-group>
+          </el-form-item>
         </el-form>
         <el-form
           v-else-if="tab.name === 'svn'"
@@ -146,11 +156,9 @@
         <div v-else class="about-section">
           <div class="about-content">
             <div class="about-logo">
-              <div class="logo-mark">
-                <el-icon><FolderOpened /></el-icon>
-              </div>
+              <img class="logo-mark" src="/forksvn.svg" alt="" />
               <div class="about-info">
-                <h4>OrcaSVN</h4>
+                <h4>ForkSVN</h4>
                 <p class="about-subtitle">{{ $t('settings.aboutSubtitle') }}</p>
               </div>
             </div>
@@ -195,7 +203,7 @@ import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus/es/components/message/index'
 import { configureSvnExecutable } from '@/api/svn'
 import { useLocale } from '@/composables/useLocale'
-import { useSettings, type BinaryConflictPolicy } from '@/composables/useSettings'
+import { useSettings, type Accent, type BinaryConflictPolicy } from '@/composables/useSettings'
 import { applyTheme } from '@/composables/useTheme'
 import { useWorkspace } from '@/composables/useWorkspace'
 import { useUpdateCheck } from '@/composables/useUpdateCheck'
@@ -225,6 +233,7 @@ function handleTabKeydown(event: KeyboardEvent, index: number) {
 }
 const { setLocale } = useLocale()
 const { settings } = useSettings()
+const accents: Accent[] = ['indigo', 'teal', 'amber']
 const binaryConflictPolicies: BinaryConflictPolicy[] = ['off', 'local', 'incoming']
 const { refreshStatusAfterMutation } = useWorkspace()
 const {
@@ -277,16 +286,19 @@ onMounted(() => {
 .preferences-tabs {
   display: flex;
   gap: 4px;
-  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--app-radius);
+  background: var(--workbench-field);
+  box-shadow: var(--workbench-stroke);
   overflow-x: auto;
   flex-shrink: 0;
 }
 .preferences-tabs button {
   border: 0;
-  border-bottom: 2px solid transparent;
+  border-radius: var(--app-radius-sm);
+  margin: 2px;
   background: none;
   color: var(--md-sys-color-on-surface-variant);
-  padding: 9px 14px;
+  padding: 7px 12px;
   white-space: nowrap;
   font: inherit;
   cursor: pointer;
@@ -295,8 +307,9 @@ onMounted(() => {
   background: var(--md-sys-state-hover);
 }
 .preferences-tabs button.active {
-  color: var(--md-sys-color-primary);
-  border-bottom-color: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary-container);
+  background: var(--md-sys-color-primary-container);
+  font-weight: 600;
 }
 .preferences-tabs button:focus-visible {
   outline: 2px solid var(--md-sys-color-primary);
@@ -342,12 +355,36 @@ onMounted(() => {
 }
 .theme-radio {
   margin-right: 0;
+  padding-inline: 8px;
+  border-radius: var(--app-radius);
+  background: var(--workbench-field);
+  box-shadow: var(--workbench-stroke);
+}
+.theme-radio:hover {
+  background: var(--md-sys-state-hover);
+}
+.theme-radio.is-checked {
+  background: var(--md-sys-color-primary-container);
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--md-sys-color-primary) 40%, transparent);
+}
+.theme-radio:has(:focus-visible) {
+  box-shadow: var(--workbench-focus);
 }
 .theme-option {
   display: inline-flex;
   align-items: center;
   gap: 6px;
 }
+.accent-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent-swatch);
+}
+.accent-swatch[data-swatch="indigo"] { --accent-swatch: #5146c9; }
+.accent-swatch[data-swatch="teal"] { --accent-swatch: #067165; }
+.accent-swatch[data-swatch="amber"] { --accent-swatch: #895006; }
 .preferences-hint {
   margin: 8px 8px 0;
   padding-top: 12px;

@@ -266,7 +266,7 @@ async fn execute_svn_inner(
     };
     if output.trim().is_empty() && always_prints_output(&args_vec) {
         return Err(SvnError::CommandFailed(format!(
-            "SVN 命令成功退出但没有任何输出：svn {}\n{} 的输出未能送达 OrcaSVN，可能是透明加密或数据防泄漏软件的进程策略所致。请联系管理员，将 OrcaSVN 及其启动的 SVN 程序加入策略。",
+            "SVN 命令成功退出但没有任何输出：svn {}\n{} 的输出未能送达 ForkSVN，可能是透明加密或数据防泄漏软件的进程策略所致。请联系管理员，将 ForkSVN 及其启动的 SVN 程序加入策略。",
             args_vec.join(" "),
             executable.display()
         )));

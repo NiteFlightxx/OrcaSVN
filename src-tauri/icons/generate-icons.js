@@ -4,8 +4,7 @@ const { spawnSync } = require('child_process');
 
 const iconsDir = __dirname;
 const projectRoot = resolve(iconsDir, '..', '..');
-const sourceSvg = join(iconsDir, 'orca.svg');
-const relativeSourceSvg = 'src-tauri/icons/orca.svg';
+const relativeSourceSvg = 'public/forksvn.svg';
 const relativeIconsDir = 'src-tauri/icons';
 
 const command = 'npm';

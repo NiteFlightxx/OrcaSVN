@@ -3,11 +3,11 @@
     <header>
       <strong
         >{{ title }}
-        <span
-          >({{ entries.length
+        <span class="tree-total"
+          >{{ entries.length
           }}<template v-if="total !== undefined && total !== entries.length">
             / {{ total }}</template
-          >)</span
+          ></span
         ></strong
       >
       <div class="tree-tools">
@@ -531,9 +531,22 @@ defineExpose({ clearSelection })
   font-size: var(--app-font-size-sm);
 }
 .change-tree-panel > header strong {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   white-space: nowrap;
   font-size: var(--app-font-size-xs);
   color: var(--md-sys-color-on-surface-variant);
+}
+.tree-total {
+  border-radius: var(--app-radius-full);
+  padding: 0 5px;
+  background: var(--workbench-popover);
+  box-shadow: var(--workbench-stroke);
+  font-size: var(--app-font-size-2xs);
+  font-variant-numeric: tabular-nums;
+  line-height: 16px;
+  font-weight: 600;
 }
 .tree-tools {
   display: flex;
@@ -545,7 +558,7 @@ defineExpose({ clearSelection })
   background: transparent;
   color: inherit;
   border: 0;
-  border-radius: 3px;
+  border-radius: var(--app-radius-sm);
   padding: 1px 5px;
   cursor: pointer;
   font-size: 16px;
@@ -568,13 +581,26 @@ defineExpose({ clearSelection })
   padding-right: 5px;
   cursor: default;
   font-size: var(--app-font-size-label);
+  position: relative;
+  isolation: isolate;
 }
-.change-row:hover {
+.change-row::before {
+  position: absolute;
+  z-index: -1;
+  inset: 2px 3px;
+  border-radius: var(--app-radius-sm);
+  content: '';
+  pointer-events: none;
+}
+.change-row:hover::before {
   background: var(--md-sys-state-hover);
 }
 .change-row.active {
-  background: var(--md-sys-color-primary-container);
   color: var(--md-sys-color-on-primary-container);
+}
+.change-row.active::before {
+  background: var(--md-sys-color-primary-container);
+  box-shadow: inset 2px 0 var(--md-sys-color-primary);
 }
 .tree-disclosure {
   flex: 0 0 14px;
@@ -612,8 +638,9 @@ defineExpose({ clearSelection })
 .tree-label:focus-visible {
   outline: none;
 }
-.change-row:focus-within {
-  box-shadow: inset 0 0 0 1px var(--md-sys-color-primary);
+.change-row:has(:focus-visible)::before {
+  outline: 1px solid var(--md-sys-color-primary);
+  outline-offset: -1px;
 }
 .tree-count {
   opacity: 0.6;
@@ -622,9 +649,13 @@ defineExpose({ clearSelection })
 .tree-status {
   font-size: var(--app-font-size-2xs);
   font-weight: 700;
-  border-radius: 2px;
-  min-width: 14px;
-  height: 14px;
+  border-radius: var(--app-radius-full);
+  min-width: 20px;
+  height: 17px;
+  background: var(--status-bg, var(--workbench-field));
+  color: var(--status-text, var(--md-sys-color-on-surface-variant));
+  border: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+  font-variant-numeric: tabular-nums;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -632,23 +663,23 @@ defineExpose({ clearSelection })
 }
 .status-modified,
 .status-replaced {
-  background: #c29927;
-  color: #fff;
+  --status-bg: var(--app-color-status-modified-bg);
+  --status-text: var(--app-color-status-modified-text);
 }
 .status-added {
-  background: #2b9155;
-  color: #fff;
+  --status-bg: var(--app-color-status-added-bg);
+  --status-text: var(--app-color-status-added-text);
 }
 .status-unversioned {
-  background: #507daf;
-  color: #fff;
+  --status-bg: var(--app-color-status-unversioned-bg);
+  --status-text: var(--app-color-status-unversioned-text);
 }
 .status-deleted,
 .status-missing,
 .status-conflicted,
 .status-obstructed {
-  background: #ac4f48;
-  color: #fff;
+  --status-bg: var(--app-color-status-error-bg);
+  --status-text: var(--app-color-status-error-text);
 }
 .tree-row-actions {
   display: flex;

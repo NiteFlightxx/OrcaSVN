@@ -1,7 +1,7 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
-const css = fs.readFileSync('src/sourcegit-theme.css', 'utf8')
+const css = fs.readFileSync('src/workbench-theme.css', 'utf8')
 const luminance = hex => {
   const values = hex.slice(1).match(/../g).map(value => {
     const channel = parseInt(value, 16) / 255
@@ -42,4 +42,23 @@ for (const [name, selector] of [['light', 'html:root'], ['dark', 'html:root.them
     }
 
   })
+}
+
+
+for (const accent of ['teal', 'amber']) {
+  for (const mode of ['', '.theme-dark']) {
+    test(`${mode || 'light'} ${accent} accent keeps button and selection text readable`, () => {
+      const selector = `html:root${mode}[data-accent="${accent}"]`
+      const block = css.slice(css.indexOf(selector + ' {')).split('}')[0]
+      const colors = Object.fromEntries([...block.matchAll(/(--[\w-]+):\s*(#[\da-f]{6});/gi)].map(match => [match[1], match[2]]))
+      for (const [text, background] of [
+        ['on-primary', 'primary'],
+        ['on-primary', 'primary-hover'],
+        ['on-primary-container', 'primary-container'],
+      ]) {
+        const a = colors['--md-sys-color-' + text], b = colors['--md-sys-color-' + background]
+        assert.ok(a && b && contrast(a, b) >= 4.5, `${selector}: ${text} / ${background}`)
+      }
+    })
+  }
 }

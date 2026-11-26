@@ -30,5 +30,34 @@ function keyboard(event: KeyboardEvent) {
 }
 </script>
 <style scoped>
-.panel-splitter{position:relative;touch-action:none;background:var(--md-sys-color-outline-variant);z-index:2}.panel-splitter.x{width:4px;cursor:col-resize}.panel-splitter.y{height:4px;cursor:row-resize}.panel-splitter:hover,.panel-splitter:focus-visible{background:var(--md-sys-color-primary);outline:none}.panel-splitter.x::after{content:'';position:absolute;inset:0 -3px}.panel-splitter.y::after{content:'';position:absolute;inset:-3px 0}
+.panel-splitter {
+  position: relative;
+  touch-action: none;
+  z-index: 2;
+  background: linear-gradient(
+    var(--divider-axis), transparent 1px, var(--md-sys-color-outline-variant) 1px 2px, transparent 2px
+  );
+}
+.panel-splitter.x {
+  --divider-axis: 90deg;
+  width: 4px;
+  cursor: col-resize;
+}
+.panel-splitter.y {
+  --divider-axis: 180deg;
+  height: 4px;
+  cursor: row-resize;
+}
+.panel-splitter:hover,
+.panel-splitter:focus-visible {
+  background: var(--md-sys-color-primary);
+  outline: none;
+}
+.panel-splitter.x::after,
+.panel-splitter.y::after {
+  content: '';
+  position: absolute;
+}
+.panel-splitter.x::after { inset: 0 -3px; }
+.panel-splitter.y::after { inset: -3px 0; }
 </style>

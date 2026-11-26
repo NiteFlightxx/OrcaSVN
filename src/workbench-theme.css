@@ -1,0 +1,188 @@
+/* ForkSVN light and dark workbench palettes. Layout dimensions are shared. */
+:root {
+  --app-font-family: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+  --app-font-family-mono: "Cascadia Mono", Consolas, "Microsoft YaHei UI", "Microsoft YaHei", monospace;
+  --app-font-size-body: 14px;
+  --app-font-size-label: 14px;
+  --app-font-size-sm: 13px;
+  --app-font-size-xs: 12px;
+  --app-font-size-2xs: 11px;
+  --app-line-height-normal: 1.55;
+  --app-font-weight-semibold: 600;
+  --app-font-weight-bold: 700;
+  --app-radius-xs: 4px;
+  --app-radius-sm: 6px;
+  --app-radius: 8px;
+  --app-radius-md: 10px;
+  --app-radius-lg: 14px;
+  --app-size-control-sm: 26px;
+  --app-size-control-compact: 28px;
+  --app-size-control: 30px;
+  --app-size-field: 30px;
+  --app-size-table-row: 30px;
+  --app-size-list-row: 30px;
+  --app-size-panel-header: 30px;
+  --app-size-page-header: 34px;
+  --el-font-size-base: 13px;
+  --el-font-size-small: 12px;
+  --workbench-field: var(--md-sys-color-surface-container-low);
+  --workbench-popover: var(--md-sys-color-surface-container-lowest);
+  --workbench-stroke: 0 0 0 1px var(--md-sys-color-outline-variant) inset;
+  --workbench-focus: 0 0 0 1px var(--md-sys-color-primary) inset,
+    0 0 0 2px color-mix(in srgb, var(--md-sys-color-primary) 20%, transparent);
+  --workbench-overlay-shadow: 0 1px 2px rgba(12, 18, 36, .08), var(--app-shadow-floating);
+}
+html:root {
+  --source-titlebar: #e9ecf7;
+  --source-toolbar: #fafbff;
+  --md-sys-color-surface: #f3f4fa;
+  --md-sys-color-surface-dim: #e9ecf7;
+  --md-sys-color-surface-bright: #ffffff;
+  --md-sys-color-surface-container-lowest: #ffffff;
+  --md-sys-color-surface-container-low: #f8f9fe;
+  --md-sys-color-surface-container: #f0f2fa;
+  --md-sys-color-surface-container-high: #e9ecf7;
+  --md-sys-color-surface-container-highest: #dde3f0;
+  --md-sys-color-on-surface: #20253b;
+  --md-sys-color-on-surface-variant: #515b72;
+  --md-sys-color-outline: #768199;
+  --md-sys-color-outline-variant: #dce1ed;
+  --md-sys-color-primary: #5146c9;
+  --md-sys-color-on-primary: #ffffff;
+  --md-sys-color-primary-hover: #453ab3;
+  --md-sys-color-primary-active: #382d9c;
+  --md-sys-color-primary-container: #eae7ff;
+  --md-sys-color-on-primary-container: #35268e;
+  --app-color-status-modified-bg: #fff0cb;
+  --app-color-status-modified-text: #704408;
+  --app-color-status-added-bg: #def6eb;
+  --app-color-status-added-text: #16553d;
+  --app-color-status-error-bg: #fde7ee;
+  --app-color-status-error-text: #9c244e;
+  --app-color-status-unversioned-bg: #ede9ff;
+  --app-color-status-unversioned-text: #4d3991;
+  --app-color-diff-meta-bg: #ecf0fa;
+  --app-color-diff-meta-text: #405677;
+  --app-color-folder: #886116;
+  --app-color-scrollbar: #aeb8cf;
+  --app-color-history-selection-bg: #eae7ff;
+  --app-color-history-selection-text: #35268e;
+  --app-color-history-bg: #ffffff;
+  --app-color-history-text: #191e30;
+  --app-color-history-hover: #f5f6fb;
+  --app-color-history-timeline: #7264eb;
+  --md-sys-state-hover: color-mix(in srgb, var(--md-sys-color-primary) 9%, transparent);
+  --md-sys-state-focus: color-mix(in srgb, var(--md-sys-color-primary) 14%, transparent);
+  --el-text-color-regular: var(--md-sys-color-on-surface);
+  --el-text-color-secondary: var(--md-sys-color-on-surface-variant);
+  --el-text-color-placeholder: #64708b;
+}
+html:root.theme-dark, html:root.dark {
+  --app-shadow-floating: 0 14px 38px rgba(4, 6, 18, .52);
+  --source-titlebar: #121628;
+  --source-toolbar: #1b2136;
+  --md-sys-color-surface: #161b2d;
+  --md-sys-color-surface-dim: #0e1220;
+  --md-sys-color-surface-bright: #252c45;
+  --md-sys-color-surface-container-lowest: #171c2f;
+  --md-sys-color-surface-container-low: #1b2136;
+  --md-sys-color-surface-container: #20273d;
+  --md-sys-color-surface-container-high: #282f48;
+  --md-sys-color-surface-container-highest: #303951;
+  --md-sys-color-on-surface: #eef0fc;
+  --md-sys-color-on-surface-variant: #bac3dd;
+  --md-sys-color-outline: #8792af;
+  --md-sys-color-outline-variant: #35405a;
+  --md-sys-color-primary: #b4a9ff;
+  --md-sys-color-on-primary: #201548;
+  --md-sys-color-primary-hover: #c8bfff;
+  --md-sys-color-primary-active: #9c8af7;
+  --md-sys-color-primary-container: #31265c;
+  --md-sys-color-on-primary-container: #e9e2ff;
+  --app-color-status-modified-bg: #3d2c1b;
+  --app-color-status-modified-text: #f4cb86;
+  --app-color-status-added-bg: #193a33;
+  --app-color-status-added-text: #a3ead0;
+  --app-color-status-error-bg: #48273b;
+  --app-color-status-error-text: #ffb8d1;
+  --app-color-status-unversioned-bg: #302650;
+  --app-color-status-unversioned-text: #ded0ff;
+  --app-color-diff-meta-bg: #222c47;
+  --app-color-diff-meta-text: #bccbec;
+  --app-color-folder: #e2bb79;
+  --app-color-scrollbar: #556482;
+  --app-color-history-selection-bg: #31265c;
+  --app-color-history-selection-text: #e9e2ff;
+  --app-color-history-bg: #161b2d;
+  --app-color-history-text: #eef0fc;
+  --app-color-history-hover: #242c44;
+  --app-color-history-timeline: #ab9afa;
+  --md-sys-state-hover: color-mix(in srgb, var(--md-sys-color-primary) 9%, transparent);
+  --md-sys-state-focus: color-mix(in srgb, var(--md-sys-color-primary) 14%, transparent);
+  --el-text-color-regular: var(--md-sys-color-on-surface);
+  --el-text-color-secondary: var(--md-sys-color-on-surface-variant);
+  --el-text-color-placeholder: #a6b0cb;
+}
+
+html:root[data-accent="teal"] {
+  --md-sys-color-primary: #067165;
+  --md-sys-color-on-primary: #ffffff;
+  --md-sys-color-primary-hover: #055d55;
+  --md-sys-color-primary-active: #064d47;
+  --md-sys-color-primary-container: #d9f5ed;
+  --md-sys-color-on-primary-container: #075348;
+  --app-color-history-timeline: #168777;
+  --app-color-history-selection-bg: var(--md-sys-color-primary-container);
+  --app-color-history-selection-text: var(--md-sys-color-on-primary-container);
+}
+
+html:root[data-accent="amber"] {
+  --md-sys-color-primary: #895006;
+  --md-sys-color-on-primary: #ffffff;
+  --md-sys-color-primary-hover: #713f02;
+  --md-sys-color-primary-active: #5e3400;
+  --md-sys-color-primary-container: #fff0d4;
+  --md-sys-color-on-primary-container: #694106;
+  --app-color-history-timeline: #a97624;
+  --app-color-history-selection-bg: var(--md-sys-color-primary-container);
+  --app-color-history-selection-text: var(--md-sys-color-on-primary-container);
+}
+
+html:root.theme-dark[data-accent="teal"] {
+  --md-sys-color-primary: #75dfcb;
+  --md-sys-color-on-primary: #103d36;
+  --md-sys-color-primary-hover: #9befdf;
+  --md-sys-color-primary-active: #58cbb4;
+  --md-sys-color-primary-container: #18443d;
+  --md-sys-color-on-primary-container: #c0f5e9;
+  --app-color-history-timeline: #75dfcb;
+  --app-color-history-selection-bg: var(--md-sys-color-primary-container);
+  --app-color-history-selection-text: var(--md-sys-color-on-primary-container);
+}
+
+html:root.theme-dark[data-accent="amber"] {
+  --md-sys-color-primary: #ffce82;
+  --md-sys-color-on-primary: #412800;
+  --md-sys-color-primary-hover: #ffe0a8;
+  --md-sys-color-primary-active: #e6b669;
+  --md-sys-color-primary-container: #48341e;
+  --md-sys-color-on-primary-container: #ffe1aa;
+  --app-color-history-timeline: #ffce82;
+  --app-color-history-selection-bg: var(--md-sys-color-primary-container);
+  --app-color-history-selection-text: var(--md-sys-color-on-primary-container);
+}
+
+/* Compact controls and shared focus/selection treatment. */
+.source-shell .app-mark strong {
+  font-weight: 700;
+  letter-spacing: .01em;
+}
+.source-shell .workspace-commit-composer {
+  background: var(--md-sys-color-surface-container-low);
+}
+.source-shell .log-inspector .el-tree {
+  background: transparent;
+}
+button, select, input { color-scheme: inherit; }
+html.theme-dark, html.dark { color-scheme: dark; }
+html:not(.theme-dark):not(.dark) { color-scheme: light; }

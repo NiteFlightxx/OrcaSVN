@@ -262,10 +262,11 @@ function navigate(event: KeyboardEvent) {
   max-width: calc(100vw - 16px);
   max-height: calc(100vh - 16px);
   overflow: auto;
-  padding: 4px;
-  background: var(--md-sys-color-surface-container);
+  padding: 5px;
+  background: var(--workbench-popover);
   border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: 4px;
+  border-radius: var(--app-radius-lg);
+  box-shadow: var(--workbench-overlay-shadow);
 }
 .file-menu-notice {
   margin: 4px 6px;
@@ -283,12 +284,12 @@ function navigate(event: KeyboardEvent) {
   max-width: calc(100vw - 16px);
   max-height: calc(100vh - 16px);
   overflow: auto;
-  padding: 4px;
+  padding: 5px;
   border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: 5px;
-  background: var(--md-sys-color-surface-container);
+  border-radius: var(--app-radius-lg);
+  background: var(--workbench-popover);
   color: var(--md-sys-color-on-surface);
-  box-shadow: var(--app-shadow-floating);
+  box-shadow: var(--workbench-overlay-shadow);
   box-sizing: border-box;
 }
 .context-menu-item,
@@ -303,7 +304,7 @@ function navigate(event: KeyboardEvent) {
   padding: 5px 10px;
   background: none;
   border: 0;
-  border-radius: 3px;
+  border-radius: var(--app-radius);
   color: inherit;
   font: inherit;
   font-size: 12px;
@@ -320,18 +321,29 @@ function navigate(event: KeyboardEvent) {
 }
 .context-menu-item:hover:not(:disabled),
 .context-menu-item:focus-visible,
-.file-menu-submenu > button:hover,
+.file-menu-submenu > button:hover:not(:disabled),
 .file-menu-submenu > button:focus-visible {
-  outline: none;
-  background: var(--md-sys-color-surface-container-highest);
+  background: var(--md-sys-state-hover);
+}
+.context-menu-item:focus-visible,
+.file-menu-submenu > button:focus-visible {
+  outline: 1px solid var(--md-sys-color-primary);
+  outline-offset: -1px;
+}
+.file-menu-submenu > button[aria-expanded='true'] {
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
 }
 .context-menu-item:disabled,
-.file-menu-submenu > button[aria-disabled='true'] {
+.file-menu-submenu > button:disabled {
   opacity: 0.4;
   cursor: default;
 }
 .context-menu-item.danger:not(:disabled) {
-  color: var(--md-sys-color-error);
+  color: var(--app-color-status-error-text);
+}
+.context-menu-item.danger:not(:disabled):is(:hover, :focus-visible) {
+  background: var(--app-color-status-error-bg);
 }
 .context-menu-item.nested {
   padding-left: 24px;
@@ -342,9 +354,13 @@ hr {
   margin: 4px 6px;
 }
 kbd {
-  font-family: inherit;
-  font-size: 11px;
-  opacity: 0.55;
+  padding-inline: 4px;
+  border-radius: var(--app-radius-xs);
+  background: var(--workbench-field);
+  box-shadow: var(--workbench-stroke);
+  color: var(--md-sys-color-on-surface-variant);
+  font-family: var(--app-font-family-mono);
+  font-size: var(--app-font-size-2xs);
   white-space: nowrap;
 }
 .file-menu-submenu > button {

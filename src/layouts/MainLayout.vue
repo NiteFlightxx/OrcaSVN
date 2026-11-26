@@ -28,7 +28,7 @@
         :title="$t('workspace.openWorkspace')"
         @click="handleWorkspaceCommand('__open__')"
       >
-        <img class="brand-logo" :src="orcaLogo" alt="" /><strong>OrcaSVN</strong>
+        <img class="brand-logo" src="/forksvn.svg" alt="" /><strong>ForkSVN</strong>
       </button>
       <div class="repository-tab-list" role="tablist" :aria-label="$t('sourceUI.repositories')">
         <div
@@ -114,7 +114,7 @@
           ><span>{{ $t('menu.refresh') }}</span>
         </button>
         <button
-          class="tool-button"
+          class="tool-button tool-button-update"
           :disabled="!workspaceStore.currentPath || workspaceStore.isLoading || workflow.busy"
           :title="$t('menu.update')"
           :aria-label="$t('menu.update')"
@@ -192,7 +192,7 @@
           <strong :title="workspaceStore.currentPath || ''">{{
             workspaceStore.currentPath
               ? workspaceNameFromPath(workspaceStore.currentPath)
-              : 'OrcaSVN'
+              : 'ForkSVN'
           }}</strong>
         </div>
         <nav class="repository-navigation" :aria-label="$t('workspace.quickActions')">
@@ -363,7 +363,6 @@
 </template>
 
 <script setup lang="ts">
-import orcaLogo from '../../src-tauri/icons/orca.svg'
 import {
   defineAsyncComponent,
   nextTick,
@@ -612,7 +611,7 @@ const stashCount = computed(
 const workspaceNameFromPath = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() || path
 
 const repositoryRevision = computed(() =>
-  workspaceStore.svnInfo ? `r${workspaceStore.svnInfo.revision}` : 'OrcaSVN'
+  workspaceStore.svnInfo ? `r${workspaceStore.svnInfo.revision}` : 'ForkSVN'
 )
 
 const shellMenus = [
@@ -768,6 +767,11 @@ onUnmounted(() => {
   color: inherit;
   font-size: var(--app-font-size-xs);
   padding: 2px 6px;
+  border-radius: var(--app-radius-xs);
+}
+.menu-button:hover,
+.menu-button[aria-expanded='true'] {
+  background: var(--md-sys-state-hover);
 }
 .repository-identity {
   display: flex;
@@ -778,8 +782,9 @@ onUnmounted(() => {
   max-width: 280px;
   width: 24%;
   border: 0;
-  border-radius: 3px;
-  background: var(--md-sys-color-surface-container);
+  border-radius: var(--app-radius-full);
+  background: var(--workbench-field);
+  box-shadow: var(--workbench-stroke);
   color: inherit;
   padding: 3px 12px;
 }
@@ -792,6 +797,12 @@ onUnmounted(() => {
 }
 .repository-identity > .el-icon {
   flex-shrink: 0;
+}
+.repository-identity > .el-icon:first-child {
+  color: var(--md-sys-color-primary);
+}
+.repository-identity:hover:not(:disabled) {
+  background: var(--md-sys-color-surface-container);
 }
 .repository-toolbar > .toolbar-group {
   flex: 1;
@@ -833,7 +844,7 @@ onUnmounted(() => {
   width: 100%;
   text-align: left;
   border: 0;
-  border-radius: 3px;
+  border-radius: var(--app-radius);
   background: none;
   color: inherit;
   padding: 3px 8px;
@@ -848,17 +859,24 @@ onUnmounted(() => {
 }
 .repository-navigation > button.active,
 .sidebar-stashes button.active {
-  background: var(--md-sys-color-surface-container-highest);
+  color: var(--md-sys-color-on-primary-container);
+  background: var(--md-sys-color-primary-container);
 }
-.repository-navigation > button:hover,
-.sidebar-stashes button:hover {
-  background: var(--md-sys-color-surface-container-high);
+.repository-navigation > button:not(.active):hover,
+.sidebar-stashes button:not(.active):hover {
+  background: var(--md-sys-state-hover);
 }
 .repository-navigation b,
 .sidebar-stashes small {
   margin-left: auto;
   font-size: var(--app-font-size-2xs);
-  font-weight: 400;
+  font-weight: 600;
+  min-width: 18px;
+  padding-inline: 4px;
+  text-align: center;
+  line-height: 16px;
+  border-radius: var(--app-radius-full);
+  background: var(--workbench-field);
   color: var(--md-sys-color-on-surface-variant);
 }
 .repository-navigation-scroll {
@@ -947,13 +965,27 @@ button:disabled {
   align-items: stretch;
   min-width: 120px;
   max-width: 220px;
-  border-right: 1px solid var(--md-sys-color-outline-variant);
-  border-top: 2px solid transparent;
+  position: relative;
+  isolation: isolate;
   font-size: var(--app-font-size-sm);
 }
-.repository-tab.active {
-  border-top-color: var(--md-sys-color-primary);
-  background: var(--md-sys-color-surface-container);
+.repository-tab::before {
+  position: absolute;
+  z-index: -1;
+  inset: 3px 2px;
+  border-radius: var(--app-radius);
+  content: '';
+  pointer-events: none;
+}
+.repository-tab:hover::before {
+  background: var(--md-sys-state-hover);
+}
+.repository-tab.active::before {
+  background: var(--workbench-popover);
+  box-shadow: var(--workbench-stroke), 0 1px 2px rgba(12, 18, 36, .08);
+}
+.repository-tab.active > button[role='tab'] .el-icon {
+  color: var(--md-sys-color-primary);
 }
 .repository-tab > button[role='tab'] {
   display: flex;
@@ -1019,13 +1051,24 @@ button:disabled {
   height: 32px;
   padding: 4px 9px;
   border: 0;
-  border-radius: 3px;
+  border-radius: var(--app-radius);
   background: none;
   font-size: var(--app-font-size-sm);
   white-space: nowrap;
+  transition: background-color var(--app-transition-fast);
 }
 .tool-button:hover:not(:disabled) {
   background: var(--md-sys-state-hover);
+}
+.tool-button-update:not(:disabled) {
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+  font-weight: 600;
+}
+.tool-button-update:not(:disabled):hover {
+  background: color-mix(
+    in srgb, var(--md-sys-color-primary-container) 88%, var(--md-sys-color-primary)
+  );
 }
 .tool-button .el-icon {
   font-size: 17px;
@@ -1074,7 +1117,9 @@ button:disabled {
   background: var(--md-sys-color-surface-container-low);
 }
 .sidebar-resizer {
-  background: var(--md-sys-color-outline-variant);
+  background: linear-gradient(
+    90deg, transparent 1px, var(--md-sys-color-outline-variant) 1px 2px, transparent 2px
+  );
   touch-action: none;
   cursor: col-resize;
 }
@@ -1144,10 +1189,6 @@ summary {
   min-width: 0;
   min-height: 0;
   overflow: auto;
-}
-.route-content :deep(.left-panel),
-.route-content :deep(.welcome-sidebar) {
-  display: none;
 }
 .route-content :deep(.workspace-layout) {
   height: 100%;

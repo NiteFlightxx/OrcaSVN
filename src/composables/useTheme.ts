@@ -22,6 +22,11 @@ export function initializeTheme() {
 
   const { settings } = useSettings()
   applyTheme(settings.theme)
+  watch(
+    () => settings.accent,
+    accent => { document.documentElement.dataset.accent = accent },
+    { immediate: true, flush: 'sync' },
+  )
 
   watch(
     () => settings.theme,

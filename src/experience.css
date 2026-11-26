@@ -18,6 +18,22 @@
 .route-content .el-table {
   --el-table-header-bg-color: var(--md-sys-color-surface-container-low);
 }
+/* Shared popover treatment applies to menus and selects that Element Plus mounts
+   outside the workspace panels. */
+.el-popper.el-dropdown__popper,
+.el-popper.el-select__popper {
+  border-radius: var(--app-radius-lg);
+  background: var(--workbench-popover);
+  box-shadow: var(--workbench-overlay-shadow);
+}
+.el-dropdown-menu,
+.el-select-dropdown__list {
+  padding: 5px;
+}
+.el-dropdown-menu__item,
+.el-select-dropdown__item {
+  border-radius: var(--app-radius);
+}
 .route-content .el-table__cell {
   padding: 3px 0;
   font-size: var(--app-font-size-sm);
@@ -27,14 +43,13 @@
   height: auto;
   padding: 5px 9px;
   font-size: var(--app-font-size-sm);
-  border-radius: 3px;
+  border-radius: var(--app-radius);
 }
 .route-content .el-tree-node__content {
   height: 30px;
   font-size: var(--app-font-size-sm);
 }
-.route-content :is(button, input, select, textarea):focus-visible,
-.file-context-menu button:focus-visible {
+.route-content :is(button, input, select, textarea):focus-visible {
   outline: 1px solid var(--md-sys-color-primary);
   outline-offset: -1px;
 }
@@ -44,7 +59,10 @@
   flex-direction: column;
   max-height: 90dvh;
   overflow: hidden;
-  border-radius: 5px;
+  border-radius: var(--app-radius-lg);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background: var(--workbench-popover);
+  box-shadow: var(--workbench-overlay-shadow);
 }
 .el-dialog__header {
   margin: 0;
@@ -141,7 +159,7 @@ html .source-shell .add-repository {
   padding: 0 8px;
 }
 html .source-shell .repository-toolbar {
-  background: var(--md-sys-color-surface-container-lowest);
+  background: var(--source-toolbar);
   padding: 0 8px;
 }
 html .source-shell .toolbar-primary {
@@ -245,11 +263,16 @@ html .source-shell .status-path {
   flex-shrink: 0;
   font-size: var(--app-font-size-xs);
   max-width: 72px;
+  height: 26px;
+  padding-inline: 4px;
+  border-radius: var(--app-radius-sm);
+  background: var(--workbench-field);
+  box-shadow: var(--workbench-stroke);
 }
-.route-content .changes-filterbar input {
-  border-radius: 4px;
-  font-size: var(--app-font-size-sm);
-  padding: 3px 6px;
+.route-content .changes-filterbar .changes-status {
+  width: 86px;
+  max-width: 30%;
+  padding-inline: 2px;
 }
 .route-content .changes-filterbar button[aria-pressed='true'] {
   color: var(--md-sys-color-primary);
@@ -289,7 +312,7 @@ html .source-shell .status-path {
   width: 24px;
   height: 24px;
   border: 0;
-  border-radius: 3px;
+  border-radius: var(--app-radius-sm);
   background: transparent;
   color: var(--md-sys-color-on-surface-variant);
   cursor: pointer;
@@ -316,27 +339,6 @@ html .source-shell .status-path {
   font-size: 15px;
   flex-shrink: 0;
   color: var(--md-sys-color-on-surface-variant);
-}
-.route-content .change-row .tree-status {
-  background: transparent;
-  font-size: var(--app-font-size-2xs);
-  min-width: 13px;
-  font-weight: 600;
-}
-.route-content .change-row .status-modified,
-.route-content .change-row .status-replaced {
-  color: var(--app-color-status-modified-text);
-}
-.route-content .change-row .status-added {
-  color: var(--app-color-status-added-text);
-}
-.route-content .change-row .status-deleted,
-.route-content .change-row .status-conflicted,
-.route-content .change-row .status-missing {
-  color: var(--app-color-status-error-text);
-}
-.route-content .change-row .status-unversioned {
-  color: var(--app-color-status-unversioned-text);
 }
 .route-content .tree-tools button {
   display: grid;
@@ -445,8 +447,9 @@ html .source-shell .activity-trigger {
   flex-direction: column;
   padding: 16px 20px;
   border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: 6px;
-  background: var(--md-sys-color-surface-container-lowest);
+  border-radius: var(--app-radius-lg);
+  background: var(--workbench-popover);
+  box-shadow: var(--workbench-overlay-shadow);
 }
 .preferences-dialog .el-dialog__header {
   padding: 0 32px 12px 0;
@@ -455,8 +458,9 @@ html .source-shell .activity-trigger {
   flex-shrink: 0;
 }
 .preferences-dialog .el-dialog__title {
-  font-size: 14px;
-  font-weight: 600;
+  font-size: var(--app-font-size-title);
+  font-weight: 700;
+  line-height: 1.1;
 }
 .preferences-dialog .el-dialog__body {
   min-height: 0;

@@ -1,13 +1,13 @@
 # 文档截图
 
-更新日期：2026-10-02。截图来自 0.6.3 发布前开发阶段的真实 Vue 界面，在本地 Vite 浏览器页面中渲染；不包含原生窗口边框。SVN 状态和 Diff 使用 `workspace-demo.js` 中的示例数据，没有连接远端仓库或执行 SVN 写操作。
+截图来自 ForkSVN 的 Windows WebView，使用本地临时 SVN 仓库。示例工作区和历史均为测试数据。
 
 | 文件 | 场景 |
 | --- | --- |
-| `orcasvn-workspace.png` | 简体中文、浅色主题、1440 × 900，工作区文件列表与选中文件 Diff |
-| `orcasvn-workspace-dark.png` | 同一场景的深色主题 |
+| `orcasvn-workspace.png` | 简体中文、浅色主题、1500 × 1000，工作区文件列表与选中文件 Diff |
+| `orcasvn-workspace-dark.png` | 同一场景的深色主题，使用青绿主题色 |
 
-## 重新截取
+## 在浏览器中生成另一组示例截图
 
 需要本地已安装 `browser-use`。在项目根目录运行 `npm run dev -- --host 127.0.0.1`，另开 PowerShell：
 

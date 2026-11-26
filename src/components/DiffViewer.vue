@@ -18,17 +18,20 @@
       >
         <el-icon><ArrowDownToLine /></el-icon>
       </button>
-      <input
-        ref="searchInput"
-        v-model="query"
-        class="diff-search"
-        type="search"
-        :placeholder="$t('diff.findText')"
-        :aria-label="$t('diff.findText')"
-        :disabled="indexing"
-        @keydown.enter.prevent="find($event.shiftKey ? 'previous' : 'next')"
-        @keydown.esc.prevent="query = ''"
-      />
+      <label class="diff-search-field">
+        <el-icon aria-hidden="true"><Search /></el-icon>
+        <input
+          ref="searchInput"
+          v-model="query"
+          class="diff-search"
+          type="search"
+          :placeholder="$t('diff.findText')"
+          :aria-label="$t('diff.findText')"
+          :disabled="indexing"
+          @keydown.enter.prevent="find($event.shiftKey ? 'previous' : 'next')"
+          @keydown.esc.prevent="query = ''"
+        />
+      </label>
       <span v-if="noMatch" class="search-status" role="status">{{ $t('diff.noMatch') }}</span>
       <button
         type="button"
@@ -348,7 +351,11 @@ onBeforeUnmount(() => {
 .diff-tools select {
   max-width: 130px;
   border: 0;
-  background: transparent;
+  height: 28px;
+  padding-inline: 5px;
+  border-radius: var(--app-radius-sm);
+  background: var(--workbench-field);
+  box-shadow: var(--workbench-stroke);
   color: inherit;
   font-size: var(--app-font-size-xs);
 }
@@ -396,18 +403,38 @@ onBeforeUnmount(() => {
   gap: 4px;
   padding: 5px 8px;
   border-bottom: 1px solid var(--md-sys-color-outline-variant);
-  background: var(--md-sys-color-surface-container-low);
+  background: var(--workbench-popover);
 }
-.diff-search {
+.diff-search-field {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   flex: 1;
-  width: 0;
   min-width: 60px;
   height: 28px;
-  padding: 0 8px;
+  padding: 0 7px;
+  border-radius: var(--app-radius);
+  background: var(--workbench-field);
+  box-shadow: var(--workbench-stroke);
+}
+.diff-search-field .el-icon {
+  flex-shrink: 0;
+  color: var(--md-sys-color-on-surface-variant);
+}
+.diff-search-field:focus-within {
+  background: var(--workbench-popover);
+  box-shadow: var(--workbench-focus);
+}
+.diff-search-field .diff-search {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
   font-size: var(--app-font-size-sm);
-  border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: var(--app-radius-sm);
-  background: var(--md-sys-color-surface-container-lowest);
+}
+.diff-search-field .diff-search:focus-visible {
+  outline: 0;
 }
 .diff-tools button {
   display: grid;
