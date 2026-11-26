@@ -144,7 +144,7 @@ pub(crate) fn copy_file(source: &Path, target: &Path) -> Result<String> {
     }
     Ok(digest)
 }
-fn parse_properties(xml: &str) -> Result<BTreeMap<String, String>> {
+pub(crate) fn parse_properties(xml: &str) -> Result<BTreeMap<String, String>> {
     let mut reader = Reader::from_str(xml);
     let mut key = None;
     let mut value = String::new();

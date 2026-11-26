@@ -1,6 +1,7 @@
 //! Selection-scoped discard: preview, revalidate, then mutate exact targets.
 use crate::{asset_stash as stash, svn, workflows as w};
-use serde::{Deserialize, Serialize};
+use quick_xml::{events::Event, Reader};
+use serde::Serialize;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     fs,
@@ -9,22 +10,28 @@ use std::{
     time::{Duration, Instant},
 };
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct Node {
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Node {
+    path: String,
+    status: String,
+    directory: bool,
+    hash: Option<String>,
+    properties: BTreeMap<String, String>,
+    info: String,
+    remove: bool,
+}
+#[derive(Clone, Debug, Serialize)]
+pub struct PreviewNode {
     pub path: String,
     pub status: String,
     pub directory: bool,
-    pub hash: Option<String>,
-    pub properties: BTreeMap<String, String>,
-    pub info: String,
     pub remove: bool,
 }
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Preview {
     pub id: String,
-    pub nodes: Vec<Node>,
+    pub nodes: Vec<PreviewNode>,
 }
 struct Plan {
     created: Instant,
@@ -53,7 +60,10 @@ fn child(root: &Path, relative: &str) -> w::Result<PathBuf> {
     }
 }
 fn under(path: &str, parent: &str) -> bool {
-    parent == "." || path.starts_with(&format!("{parent}/"))
+    parent == "."
+        || path
+            .strip_prefix(parent)
+            .is_some_and(|tail| tail.starts_with('/'))
 }
 fn walk(root: &Path, relative: &str, nodes: &mut BTreeMap<String, Node>) -> w::Result<()> {
     let full = child(root, relative)?;
@@ -94,36 +104,51 @@ fn walk(root: &Path, relative: &str, nodes: &mut BTreeMap<String, Node>) -> w::R
     }
     Ok(())
 }
-async fn status_batch(
-    root: &str,
-    paths: &[String],
-    depth: &str,
-) -> w::Result<Vec<crate::SvnStatus>> {
-    let mut statuses = Vec::new();
+fn target_batches(paths: &[String]) -> impl Iterator<Item = &[String]> {
     let mut next = 0;
-    while next < paths.len() {
+    std::iter::from_fn(move || {
+        if next == paths.len() {
+            return None;
+        }
         let start = next;
         let mut bytes = 0;
         while next < paths.len() && (next == start || bytes + paths[next].len() < 8000) {
             bytes += paths[next].len() + 4;
             next += 1;
         }
-        let mut args: Vec<String> = [
-            "status",
-            "--xml",
-            "--verbose",
-            "--ignore-externals",
-            "--depth",
-            depth,
-            "--",
-        ]
-        .into_iter()
-        .map(str::to_string)
-        .collect();
-        args.extend(paths[start..next].iter().map(|p| w::target(p)));
-        let args: Vec<_> = args.iter().map(String::as_str).collect();
-        statuses
-            .extend(svn::parse_status_xml(&w::run(root, &args).await?).map_err(|e| e.to_string())?);
+        Some(&paths[start..next])
+    })
+}
+
+async fn run_targets(root: &str, options: &[&str], paths: &[String]) -> w::Result<String> {
+    let targets: Vec<_> = paths.iter().map(|path| w::target(path)).collect();
+    let mut args = options.to_vec();
+    args.push("--");
+    args.extend(targets.iter().map(String::as_str));
+    w::run(root, &args).await
+}
+
+async fn status_batch(
+    root: &str,
+    paths: &[String],
+    depth: &str,
+) -> w::Result<Vec<crate::SvnStatus>> {
+    let mut statuses = Vec::new();
+    for group in target_batches(paths) {
+        let xml = run_targets(
+            root,
+            &[
+                "status",
+                "--xml",
+                "--verbose",
+                "--ignore-externals",
+                "--depth",
+                depth,
+            ],
+            group,
+        )
+        .await?;
+        statuses.extend(svn::parse_status_xml(&xml).map_err(|e| e.to_string())?);
     }
     Ok(statuses)
 }
@@ -161,19 +186,111 @@ pub(crate) async fn selection_status(
     }
     Ok(by_path.into_values().collect())
 }
+
+// Split multi-target SVN XML while keeping the same per-node parsers and
+// preserving encoded property values. Paths are decoded before matching.
+fn xml_targets<'a>(xml: &'a str, tag: &[u8]) -> w::Result<BTreeMap<String, &'a str>> {
+    let mut reader = Reader::from_str(xml);
+    let mut result = BTreeMap::new();
+    let mut target = None;
+    loop {
+        let start = reader.buffer_position() as usize;
+        match reader.read_event().map_err(|e| e.to_string())? {
+            Event::Start(entry) if entry.name().as_ref() == tag => {
+                let path = entry
+                    .try_get_attribute("path")
+                    .map_err(|e| e.to_string())?
+                    .ok_or("Missing SVN XML target path")?
+                    .unescape_value()
+                    .map_err(|e| e.to_string())?
+                    .into_owned();
+                #[cfg(windows)]
+                let path = path.replace('\\', "/");
+                target = Some((path, start));
+            }
+            Event::End(entry) if entry.name().as_ref() == tag => {
+                let (path, start) = target.take().ok_or("Unexpected SVN XML closing tag")?;
+                let end = reader.buffer_position() as usize;
+                if result.insert(path, &xml[start..end]).is_some() {
+                    return Err("Duplicate SVN XML target".into());
+                }
+            }
+            Event::Eof => return Ok(result),
+            _ => {}
+        }
+    }
+}
+
+type Properties = BTreeMap<String, String>;
+
+async fn node_metadata(
+    root: &str,
+    selected: &[String],
+    statuses: &BTreeMap<&str, &crate::SvnStatus>,
+) -> w::Result<(
+    BTreeMap<String, crate::SvnInfo>,
+    BTreeMap<String, Properties>,
+)> {
+    let mut versioned = Vec::new();
+    let mut with_properties = Vec::new();
+    for path in selected {
+        let status = statuses[path.as_str()];
+        let full = child(Path::new(root), path)?;
+        if status.status_code != "unversioned" {
+            versioned.push(path.clone());
+            if full.exists() && status.status_code != "deleted" {
+                with_properties.push(path.clone());
+            }
+        }
+    }
+    let mut info = BTreeMap::new();
+    let canonical_root = fs::canonicalize(root).map_err(|e| e.to_string())?;
+    for targets in target_batches(&versioned) {
+        let xml = run_targets(root, &["info", "--xml"], targets).await?;
+        let entries = xml_targets(&xml, b"entry")?;
+        for path in targets {
+            let entry = entries
+                .get(path)
+                .ok_or_else(|| format!("SVN info missing: {path}"))?;
+            let owner = w::field(entry, "wcroot-abspath");
+            if owner.is_empty()
+                || fs::canonicalize(owner).map_err(|e| e.to_string())? != canonical_root
+            {
+                return Err(format!("External or nested working copy: {path}"));
+            }
+            info.insert(
+                path.clone(),
+                svn::parse_info_xml(entry).map_err(|e| e.to_string())?,
+            );
+        }
+    }
+    let mut properties = BTreeMap::new();
+    for targets in target_batches(&with_properties) {
+        let xml = run_targets(root, &["proplist", "--xml", "--verbose"], targets).await?;
+        for (path, entry) in xml_targets(&xml, b"target")? {
+            properties.insert(path, stash::parse_properties(entry)?);
+        }
+    }
+    Ok((info, properties))
+}
+
 async fn capture(info: &w::Identity, selected: &[String]) -> w::Result<Vec<Node>> {
     let statuses = selection_status(info, selected).await?;
+    capture_status(info, selected, &statuses).await
+}
+
+async fn capture_status(
+    info: &w::Identity,
+    selected: &[String],
+    statuses: &[crate::SvnStatus],
+) -> w::Result<Vec<Node>> {
+    let by_path: BTreeMap<_, _> = statuses.iter().map(|s| (s.path.as_str(), s)).collect();
     let root = Path::new(&info.root);
     let selected_set: BTreeSet<_> = selected.iter().cloned().collect();
     let mut nodes = BTreeMap::new();
     for path in selected {
-        let full = child(root, path)?;
-        if path != "." {
-            w::ensure_owned(&info.root, path).await?;
-        }
-        let status = statuses
-            .iter()
-            .find(|s| s.path == *path)
+        let status = by_path
+            .get(path.as_str())
             .ok_or_else(|| format!("Selection changed; refresh: {path}"))?;
         if status.history
             || status.switched
@@ -196,12 +313,19 @@ async fn capture(info: &w::Identity, selected: &[String]) -> w::Result<Vec<Node>
                 status.status_code
             ));
         }
+    }
+    let (mut metadata, mut properties) = node_metadata(&info.root, selected, &by_path).await?;
+    for path in selected {
+        let full = child(root, path)?;
+        let status = by_path[path.as_str()];
         if status.status_code == "unversioned" {
+            w::ensure_owned(&info.root, path).await?;
             walk(root, path, &mut nodes)?;
             continue;
         }
-        let xml = w::run(&info.root, &["info", "--xml", "--", &w::target(path)]).await?;
-        let node_info = svn::parse_info_xml(&xml).map_err(|e| e.to_string())?;
+        let node_info = metadata
+            .remove(path)
+            .ok_or_else(|| format!("SVN info missing: {path}"))?;
         let directory = node_info.node_kind == "dir";
         if full.exists() && directory != full.is_dir() {
             return Err(format!("Obstructed path: {path}"));
@@ -246,11 +370,6 @@ async fn capture(info: &w::Identity, selected: &[String]) -> w::Result<Vec<Node>
                 ));
             }
         }
-        let properties = if full.exists() && status.status_code != "deleted" {
-            stash::properties(&info.root, path, false).await?
-        } else {
-            BTreeMap::new()
-        };
         nodes.insert(
             path.clone(),
             Node {
@@ -262,7 +381,7 @@ async fn capture(info: &w::Identity, selected: &[String]) -> w::Result<Vec<Node>
                 } else {
                     None
                 },
-                properties,
+                properties: properties.remove(path).unwrap_or_default(),
                 info: serde_json::to_string(&node_info).map_err(|e| e.to_string())?,
                 remove: status.status_code == "added",
             },
@@ -284,15 +403,19 @@ async fn preview_protected(
         return Err("Select changes to discard".into());
     }
     let identity = w::identity(path).await?;
-    let xml = w::run(path, &["info", "--xml", "--", "."]).await?;
-    if svn::parse_info_xml(&xml).map_err(|e| e.to_string())?.url != expected_url {
-        return Err("Working-copy branch changed; refresh and try again".into());
-    }
     let workspace = fs::canonicalize(path).map_err(|e| e.to_string())?;
     let root = fs::canonicalize(&identity.root).map_err(|e| e.to_string())?;
     let prefix = workspace
         .strip_prefix(&root)
         .map_err(|_| "Outside working copy")?;
+    let url = if prefix.as_os_str().is_empty() {
+        identity.url.clone()
+    } else {
+        svn::info(path).await.map_err(|e| e.to_string())?.url
+    };
+    if url != expected_url {
+        return Err("Working-copy branch changed; refresh and try again".into());
+    }
     let relative_paths = |files: &[String]| -> w::Result<BTreeSet<String>> {
         files
             .iter()
@@ -341,7 +464,7 @@ async fn preview_protected(
         }
     }
     let selected: Vec<_> = selected.into_iter().collect();
-    let nodes = capture(&identity, &selected).await?;
+    let nodes = capture_status(&identity, &selected, &statuses).await?;
     if let Some(node) = nodes.iter().find(|n| protected.contains(&n.path)) {
         return Err(format!(
             "Selection contains a protected change: {}",
@@ -350,7 +473,15 @@ async fn preview_protected(
     }
     let result = Preview {
         id: w::id(),
-        nodes: nodes.clone(),
+        nodes: nodes
+            .iter()
+            .map(|node| PreviewNode {
+                path: node.path.clone(),
+                status: node.status.clone(),
+                directory: node.directory,
+                remove: node.remove,
+            })
+            .collect(),
     };
     let mut plans = PLANS
         .get_or_init(Default::default)
@@ -385,7 +516,7 @@ pub async fn execute(id: &str) -> w::Result<Outcome> {
         return Err("Discard confirmation expired".into());
     }
     let root = &plan.identity.root;
-    let _guard = w::acquire(root).await?;
+    let _guard = w::acquire_identity(&plan.identity)?;
     if w::identity(root).await? != plan.identity
         || capture(&plan.identity, &plan.selected).await? != plan.nodes
     {
@@ -397,7 +528,15 @@ pub async fn execute(id: &str) -> w::Result<Outcome> {
         status: None,
     };
     let started = Instant::now();
-    let result = apply(&plan, &mut outcome).await;
+    let mut attempted_exact = Vec::new();
+    let result =
+        if plan.nodes.iter().all(|node| {
+            !node.remove && ["modified", "normal", "none"].contains(&node.status.as_str())
+        }) {
+            revert_exact(&plan, &mut attempted_exact).await
+        } else {
+            apply(&plan, &mut outcome).await
+        };
     let operation_ms = started.elapsed().as_millis();
     if let Err(error) = result {
         outcome.error = Some(error);
@@ -408,7 +547,27 @@ pub async fn execute(id: &str) -> w::Result<Outcome> {
     }
     let refresh_started = Instant::now();
     match status_after_discard(&plan).await {
-        Ok(status) => outcome.status = Some(status),
+        Ok(status) => {
+            // Some SVN clients warn and skip an obstructed target in a batch.
+            // Report completion per path using SVN's resulting status.
+            let remaining: BTreeSet<_> = status
+                .entries
+                .iter()
+                .map(|entry| entry.path.as_str())
+                .collect();
+            for path in attempted_exact {
+                if remaining
+                    .contains(workspace_relative(&plan.workspace_prefix, &path).unwrap_or(&path))
+                {
+                    outcome
+                        .error
+                        .get_or_insert_with(|| format!("Discard incomplete; retained: {path}"));
+                } else {
+                    outcome.completed_paths.push(path);
+                }
+            }
+            outcome.status = Some(status);
+        }
         Err(error) => tracing::warn!(%error, "discard status refresh requires a complete scan"),
     }
     tracing::info!(
@@ -419,6 +578,38 @@ pub async fn execute(id: &str) -> w::Result<Outcome> {
         "discard and status refresh completed"
     );
     Ok(outcome)
+}
+
+fn workspace_relative<'a>(prefix: &str, path: &'a str) -> Option<&'a str> {
+    if prefix.is_empty() {
+        Some(path)
+    } else if path == prefix {
+        Some(".")
+    } else {
+        path.strip_prefix(prefix)?.strip_prefix('/')
+    }
+}
+
+async fn revert_exact(plan: &Plan, attempted: &mut Vec<String>) -> w::Result<()> {
+    let root = &plan.identity.root;
+    for (index, paths) in target_batches(&plan.selected).enumerate() {
+        if index != 0 {
+            let expected: Vec<_> = plan
+                .nodes
+                .iter()
+                .filter(|node| paths.binary_search(&node.path).is_ok())
+                .cloned()
+                .collect();
+            if w::identity(root).await? != plan.identity
+                || capture(&plan.identity, paths).await? != expected
+            {
+                return Err("Selection changed during discard; remaining paths retained".into());
+            }
+        }
+        attempted.extend_from_slice(paths);
+        run_targets(root, &["revert", "--depth", "empty"], paths).await?;
+    }
+    Ok(())
 }
 
 async fn status_after_discard(plan: &Plan) -> w::Result<StatusPatch> {
@@ -449,16 +640,6 @@ async fn status_after_discard(plan: &Plan) -> w::Result<StatusPatch> {
     if w::identity(&plan.identity.root).await? != plan.identity {
         return Err("Working-copy identity changed during refresh".into());
     }
-    let relative = |path: &str| -> Option<String> {
-        if plan.workspace_prefix.is_empty() {
-            Some(path.to_string())
-        } else if path == plan.workspace_prefix {
-            Some(".".into())
-        } else {
-            path.strip_prefix(&format!("{}/", plan.workspace_prefix))
-                .map(str::to_string)
-        }
-    };
     let mut fresh = BTreeMap::new();
     for mut entry in entries {
         if ["normal", "none", "ignored"].contains(&entry.status_code.as_str())
@@ -466,16 +647,22 @@ async fn status_after_discard(plan: &Plan) -> w::Result<StatusPatch> {
         {
             continue;
         }
-        if let Some(path) = relative(&entry.path) {
-            entry.path = path;
+        if let Some(path) = workspace_relative(&plan.workspace_prefix, &entry.path) {
+            entry.path = path.to_owned();
             fresh.insert(entry.path.clone(), entry);
         }
     }
     Ok(StatusPatch {
         workspace: plan.workspace.clone(),
         expected_url: plan.expected_url.clone(),
-        paths: paths.iter().filter_map(|p| relative(p)).collect(),
-        subtrees: subtrees.iter().filter_map(|p| relative(p)).collect(),
+        paths: paths
+            .iter()
+            .filter_map(|p| workspace_relative(&plan.workspace_prefix, p).map(str::to_owned))
+            .collect(),
+        subtrees: subtrees
+            .iter()
+            .filter_map(|p| workspace_relative(&plan.workspace_prefix, p).map(str::to_owned))
+            .collect(),
         entries: fresh.into_values().collect(),
     })
 }

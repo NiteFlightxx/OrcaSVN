@@ -8,6 +8,7 @@ mod external_tools;
 mod file_actions;
 mod history_actions;
 mod svn;
+mod svn_tools;
 #[cfg(test)]
 mod workflow_tests;
 mod workflows;
@@ -1006,6 +1007,7 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![
+            svn_tools::svn_workspace_action,
             file_actions::workspace_item_details,
             discard::preview_workspace_discard,
             discard::execute_workspace_discard,
@@ -1030,6 +1032,7 @@ fn main() {
             workflows::repository_branch,
             workflows::repository_list,
             workflows::repository_preview,
+            workflows::repository_branch_merge_preview,
             workflows::repository_execute,
             workflows::repository_undo,
             workflows::repository_conflicts,

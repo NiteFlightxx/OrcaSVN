@@ -17,6 +17,8 @@ export const repositoryIdentity = (path: string) => invoke<Identity>('repository
 export const repositoryBranch = (path: string, url: string) => invoke<RepositoryEntry>('repository_branch', { path, url })
 export const repositoryList = (path: string, url: string) => invoke<RepositoryEntry[]>('repository_list', { path, url })
 export const repositoryPreview = (path: string, source: string, revision?: number) => invoke<OperationPlan>('repository_preview', { path, source, revision })
+export const repositoryBranchMergePreview = (path: string, source: string, expectedUrl: string) =>
+  invoke<OperationPlan>('repository_branch_merge_preview', { path, source, expectedUrl })
 export const historyMergePreview = (path: string, source: string, revisions: number[], reverse: boolean, expectedUrl: string) => invoke<OperationPlan>('repository_history_merge_preview', { path, source, revisions, reverse, expectedUrl })
 export const repositoryExecute = (planId: string) => invoke<Outcome>('repository_execute', { planId })
 export const repositoryUndo = (operationId: string) => invoke<Outcome>('repository_undo', { operationId })

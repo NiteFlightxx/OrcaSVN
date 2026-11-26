@@ -68,6 +68,12 @@ const router = createRouter({
           component: () => import('@/views/SettingsView.vue'),
           meta: { title: 'nav.settings' },
         },
+        {
+          path: 'svn-tools',
+          name: 'svn-tools',
+          component: () => import('@/views/SvnToolsView.vue'),
+          meta: { title: 'svnTools.title' },
+        },
       ],
     },
     {

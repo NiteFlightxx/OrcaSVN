@@ -551,6 +551,56 @@ fn save_plan(plan: Plan) -> Result<Plan> {
     plans.insert(plan.id.clone(), plan.clone());
     Ok(plan)
 }
+
+#[tauri::command]
+pub(crate) async fn repository_branch_merge_preview(
+    path: String,
+    source: String,
+    expected_url: String,
+) -> Result<Plan> {
+    let info = identity(&path).await?;
+    let _guard = acquire_identity(&info)?;
+    if info.url != expected_url
+        || fs::canonicalize(&path).map_err(|e| e.to_string())?
+            != fs::canonicalize(&info.root).map_err(|e| e.to_string())?
+    {
+        return Err("Open the working-copy root before merging".into());
+    }
+    let fingerprint = clean_fingerprint(&info, true).await?;
+    let (source_info, uuid) = remote(&info.root, &source).await?;
+    if uuid != info.uuid || source_info.url.trim_end_matches('/') == info.url.trim_end_matches('/')
+    {
+        return Err("Select a different branch in the same repository".into());
+    }
+    let peg = format!("{}@{}", source_info.url, source_info.revision);
+    let preview = run(
+        &info.root,
+        &[
+            "merge",
+            "--dry-run",
+            "--accept",
+            "postpone",
+            "--",
+            &peg,
+            ".",
+        ],
+    )
+    .await?;
+    save_plan(Plan {
+        id: id(),
+        kind: "branch-merge".into(),
+        identity: info,
+        source: source_info.url,
+        source_revision: source_info.revision,
+        revision: source_info.revision,
+        revisions: Vec::new(),
+        fingerprint,
+        preview,
+        created: chrono::Utc::now().timestamp(),
+        local_changes: Vec::new(),
+    })
+}
+
 #[tauri::command]
 pub async fn repository_preview(
     path: String,
@@ -907,6 +957,12 @@ pub async fn execute_plan(data: &Path, plan_id: &str) -> Result<Outcome> {
                 &peg,
                 ".",
             ],
+        )
+        .await
+    } else if plan.kind == "branch-merge" {
+        run(
+            &now.root,
+            &["merge", "--accept", "postpone", "--", &peg, "."],
         )
         .await
     } else {

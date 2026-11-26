@@ -14,6 +14,7 @@
               v-for="item in menu.items"
               :key="item.command"
               :command="item.command"
+              :title="item.hint ? t(item.hint) : undefined"
               :disabled="item.repository && (!workspaceStore.currentPath || workflow.busy)"
               >{{ $t(item.label) }}</el-dropdown-item
             ></el-dropdown-menu
@@ -367,7 +368,7 @@ import {
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus/es/components/message/index'
-import { launchWorkspacePath, openWorkspaceTarget, type OpenWorkspaceTarget } from '@/api/svn'
+import { launchWorkspacePath, openWorkspaceTarget, svnCleanup, type OpenWorkspaceTarget } from '@/api/svn'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useStashStore } from '@/stores/stash'
 import { useWorkspace } from '@/composables/useWorkspace'
@@ -627,19 +628,31 @@ const shellMenus = [
     items: [
       { command: 'refresh', label: 'menu.refresh', repository: true },
       { command: 'update', label: 'menu.update', repository: true },
+      { command: 'cleanup', label: 'svnTools.cleanup', hint: 'svnTools.cleanupHint', repository: true },
       { command: 'branches', label: 'flow.branches', repository: true },
+      { command: 'svn-tools', label: 'svnTools.title', repository: true },
       { command: 'stash', label: 'menu.stash', repository: true },
     ],
   },
 ] as {
   label: string
-  items: { command: string; label: string; repository?: boolean }[]
+  items: { command: string; label: string; hint?: string; repository?: boolean }[]
 }[]
 async function handleShellCommand(command: string) {
   if (command === 'open') return handleWorkspaceCommand('__open__')
   if (command === 'sidebar') return toggleSidebar()
   if (command === 'branches') return focusBranches()
   if (command === 'update') return updateWorkspace()
+  if (command === 'cleanup') {
+    const path = workspaceStore.currentPath
+    if (!path || workflow.busy) return
+    try {
+      await workflow.perform(t('svnTools.cleanup'), () => svnCleanup(path))
+    } catch (error) {
+      workspaceStore.setError(String(error))
+    }
+    return
+  }
   if (command === 'refresh') {
     if (!workflow.busy) return refreshStatus()
     return

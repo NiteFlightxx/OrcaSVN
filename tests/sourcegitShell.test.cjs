@@ -16,17 +16,21 @@ function shellHarness() {
   const workspace = vue.reactive({ currentPath: '/fixture/alpha', svnInfo: { url: 'file:///fixture/dev', revision: 1 }, isLoading: false, statusList: [], recentWorkspaces: [], clearWorkspace() { this.currentPath = null; this.svnInfo = null } })
   const storage = new Map(), calls = [], route = vue.reactive({ name: 'workspace', meta: {} })
   let fail = false
+  const workflow = vue.reactive({ busy: false, stashes: [], perform: async (title, operation) => {
+    calls.push(['workflow', title])
+    return await operation()
+  } })
   const mocks = {
     '@/utils/repositoryUi': load('src/utils/repositoryUi.ts'),
     vue: { ...vue, onMounted() {}, onUnmounted() {} }, 'vue-router': { useRoute: () => route, useRouter: () => ({ push: async value => { calls.push(['route', value]); route.name = value.name } }) }, 'vue-i18n': { useI18n: () => ({ t: key => key }) },
-    'element-plus/es/components/message/index': { ElMessage: {} }, '@/api/svn': {}, '@/stores/workspace': { useWorkspaceStore: () => workspace }, '@/stores/stash': { useStashStore: () => ({ currentEntries: () => [] }) }, '@/stores/workflows': { useWorkflowStore: () => ({ stashes: [] }) },
+    'element-plus/es/components/message/index': { ElMessage: {} }, '@/api/svn': { svnCleanup: async path => calls.push(['cleanup', path]) }, '@/stores/workspace': { useWorkspaceStore: () => workspace }, '@/stores/stash': { useStashStore: () => ({ currentEntries: () => [] }) }, '@/stores/workflows': { useWorkflowStore: () => workflow },
     '@/composables/useWorkspace': { useWorkspace: () => ({ loadWorkspace: async path => { calls.push(['load', path]); if (fail) return false; workspace.currentPath = path; workspace.svnInfo = { url: 'file:///fixture/dev', revision: 1 }; return true } }) }, '@/composables/useWorkspaceErrorToast': { useWorkspaceErrorToast() {} }, '@/composables/useUpdateCheck': { useUpdateCheck: () => ({}) },
     '@/composables/useSvnUpdate': { useSvnUpdate: () => ({ updateWorkspace: async () => calls.push(['update']), updating: vue.ref(false) }) },
     '@/composables/useAutomaticBinaryResolution': { useAutomaticBinaryResolution: () => () => {} },
     '@/components/BranchSidebar.vue': {}, '@/components/OperationDialog.vue': {}, '@/components/ActivityPanel.vue': {}, '@/components/LanguageSwitcher.vue': {}, '@/components/icons/materialIcons': {},
   }
   const h = setup('src/layouts/MainLayout.vue', 'openTabs, selectRepositoryTab, closeRepositoryTab, handleShellKeydown, showSidebar, toggleSidebar, updateWorkspace, openStash, handleShellCommand, preferencesVisible, navigateTo, navigationPages, startResize, resizeSidebar, finishResize, sidebarWidth, compactNavigation, mobileSidebarOpen, focusBranches', mocks, { document: { dispatchEvent() {} }, Event: class Event {}, localStorage: { getItem: key => storage.get(key) || null, setItem: (key, value) => storage.set(key, value) } })
-  return { ...h, workspace, storage, calls, route, fail: value => { fail = value } }
+  return { ...h, workspace, workflow, storage, calls, route, fail: value => { fail = value } }
 }
 test('repository tabs switch and close adjacent tabs without removing recent repositories', async () => {
   const h = shellHarness()
@@ -197,5 +201,23 @@ test('narrow navigation opens the branch drawer without changing desktop sidebar
   await vue.nextTick()
   assert.equal(h.mobileSidebarOpen.value, false)
   assert.equal(h.showSidebar.value, true)
+  h.stop()
+})
+
+
+test('repository cleanup runs only for the active working copy when the writer is idle', async () => {
+  const h = shellHarness()
+  h.workflow.busy = true
+  await h.handleShellCommand('cleanup')
+  h.workflow.busy = false
+  assert.deepEqual(h.calls, [])
+  await h.handleShellCommand('cleanup')
+  assert.deepEqual(h.calls, [
+    ['workflow', 'svnTools.cleanup'],
+    ['cleanup', '/fixture/alpha'],
+  ])
+  h.workspace.clearWorkspace()
+  await h.handleShellCommand('cleanup')
+  assert.equal(h.calls.length, 2)
   h.stop()
 })

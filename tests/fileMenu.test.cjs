@@ -27,7 +27,7 @@ function harness(options = {}) {
     'vue-i18n': { useI18n: () => ({ t: key => key }) },
     '@/stores/workspace': { useWorkspaceStore: () => workspace }, '@/stores/staging': { useStagingStore: () => staging },
     '@/stores/commitDraft': { useCommitDraftStore: () => ({ key: 'draft', message: '' }) },
-    '@/stores/workflows': { useWorkflowStore: () => options.flow || ({ busy: false, perform: async (_title, operation, mutation = true) => { const result = await operation(); if (mutation) calls.push(['refresh']); return result } }) },
+    '@/stores/workflows': { useWorkflowStore: () => options.flow || ({ busy: false, perform: async (_title, operation, mutation = true, refreshLocal = true) => { const result = await operation(); if (mutation && refreshLocal) calls.push(['refresh']); return result } }) },
     '@/api/svn': {
       workspaceItemDetails: options.details || (async () => details),
       openWorkspaceItem: async (...args) => calls.push(['open', ...args]),
@@ -38,6 +38,7 @@ function harness(options = {}) {
       cancelWorkspaceDiscard: async () => {},
       ignoreWorkspaceItem: async (...args) => calls.push(['ignore', ...args]),
       exportWorkspacePatch: async (...args) => calls.push(['patch', ...args]),
+      svnWorkspaceAction: options.svnAction || (async (...args) => { calls.push(['svn', ...args]); return '  SVN output  ' }),
     },
     '@tauri-apps/plugin-dialog': { save: options.save || (async () => '/export/file.patch') },
     'element-plus/es/components/message/index': { ElMessage: { error: message => messages.push(message), success() {} } },
@@ -50,7 +51,7 @@ function harness(options = {}) {
   const source = fs.readFileSync('src/views/WorkspaceView.vue', 'utf8').match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1]
   const context = { exports: {}, require: name => { assert.ok(name in mocks, name); return mocks[name] } }
   const scope = vue.effectScope()
-  scope.run(() => vm.runInNewContext(compile(source + '\nexports.state = { openFileContextMenu, runContextAction, fileContextMenu, contextItems, actionBlockReason, pendingFileAction, fileActionPhase, fileQuery, filteredFiles, handleChangeSelection, selectedFile, activePanel, conflictRequest };'), context))
+  scope.run(() => vm.runInNewContext(compile(source + '\nexports.state = { openFileContextMenu, runContextAction, fileTool, canApplyFileTool, executeFileTool, fileContextMenu, contextItems, actionBlockReason, pendingFileAction, fileActionPhase, fileQuery, filteredFiles, handleChangeSelection, selectedFile, activePanel, conflictRequest };'), context))
   const folder = tree.buildChangeTree(files)[0].children.find(node => node.path === 'Content')
   return { ...context.exports.state, calls, messages, details, workspace, staging, folder, file: folder.children[0], stop: () => scope.stop() }
 }
@@ -307,5 +308,127 @@ test('context stash transfers exactly the selected paths and their workspace and
   assert.equal(route.query.stashWorkspace, originWorkspace)
   assert.equal(route.query.stashBranch, originBranch)
   assert.equal(targets.includes('Source/Game.cpp'), false)
+  h.stop()
+})
+
+
+function svnActions(h) {
+  return h.contextItems.value.flatMap(item => item.children || [item])
+    .filter(item => item.id.startsWith('svn-file-'))
+}
+
+test('SVN menu exposes operations appropriate to each file, directory and selection', async () => {
+  const h = harness()
+  await h.openFileContextMenu(pointer, h.file, false)
+  const ids = () => Array.from(svnActions(h), item => item.id)
+  assert.ok(ids().includes('svn-file-move'))
+  assert.ok(ids().includes('svn-file-lock'))
+  assert.ok(ids().includes('svn-file-unlock'))
+  assert.ok(!ids().includes('svn-file-add'))
+
+  h.details.kind = 'dir'
+  await h.openFileContextMenu(pointer, h.folder, false)
+  assert.ok(ids().includes('svn-file-copy'))
+  assert.ok(!ids().includes('svn-file-lock'))
+  assert.ok(!ids().includes('svn-file-changelist'))
+
+  h.details.kind = 'file'
+  h.details.historyUrl = null
+  h.file.entry.status_code = 'unversioned'
+  await h.openFileContextMenu(pointer, h.file, false)
+  assert.deepEqual(ids(), ['svn-file-add'])
+  await h.runContextAction('svn-file-add')
+  assert.deepEqual(JSON.parse(JSON.stringify(h.calls)), [
+    ['svn', '/wc', 'file:///repo/dev', { kind: 'add', target: 'Content/A.txt' }],
+    ['refresh'],
+  ])
+
+  await h.openFileContextMenu(pointer, h.file, false, {
+    targets: ['Content/A.txt', 'Source/Game.cpp'], count: 2,
+  })
+  assert.deepEqual(ids(), [])
+  h.file.entry.status_code = 'conflicted'
+  await h.openFileContextMenu(pointer, h.file, false)
+  assert.deepEqual(ids(), [])
+  h.stop()
+})
+
+test('read-only context actions show the result in place and allow a stale status snapshot', async () => {
+  const h = harness()
+  h.workspace.statusIsStale = true
+  await h.openFileContextMenu(pointer, h.file, false)
+  assert.equal(svnActions(h).find(item => item.id === 'svn-file-move').disabled, true)
+  await h.runContextAction('svn-file-move')
+  assert.equal(h.fileTool.value, null)
+  await h.runContextAction('svn-file-properties')
+  assert.equal(h.fileTool.value.output, 'SVN output')
+  assert.deepEqual(JSON.parse(JSON.stringify(h.calls)), [
+    ['svn', '/wc', 'file:///repo/dev', { kind: 'properties', target: 'Content/A.txt' }],
+  ])
+  h.stop()
+})
+
+test('rename uses a focused dialog and submits its captured target and branch only after confirmation', async () => {
+  const h = harness()
+  await h.openFileContextMenu(pointer, h.file, false)
+  await h.runContextAction('svn-file-move')
+  const request = h.fileTool.value
+  assert.equal(request.kind, 'move')
+  assert.equal(request.destination, 'Content/A.txt')
+  assert.equal(h.canApplyFileTool(request), false)
+  assert.deepEqual(h.calls, [])
+  request.destination = 'Content/Renamed.txt'
+  assert.equal(h.canApplyFileTool(request), true)
+  await h.executeFileTool(request)
+  assert.equal(h.fileTool.value, null)
+  assert.deepEqual(JSON.parse(JSON.stringify(h.calls)), [
+    ['svn', '/wc', 'file:///repo/dev', {
+      kind: 'move', target: 'Content/A.txt', destination: 'Content/Renamed.txt',
+    }],
+    ['refresh'],
+  ])
+  h.stop()
+})
+
+test('a branch change, status refresh or stale status prevents a queued file write', async () => {
+  const h = harness()
+  for (const invalidate of [
+    () => { h.workspace.statusList = [...h.workspace.statusList] },
+    () => { h.workspace.statusIsStale = true },
+    () => { h.workspace.svnInfo.url = 'file:///repo/another-branch' },
+  ]) {
+    await h.openFileContextMenu(pointer, h.file, false)
+    await h.runContextAction('svn-file-delete')
+    const request = h.fileTool.value
+    assert.equal(h.canApplyFileTool(request), true)
+    invalidate()
+    assert.equal(h.canApplyFileTool(request), false)
+    await h.executeFileTool(request)
+    assert.deepEqual(h.calls, [])
+    h.fileTool.value = null
+    h.workspace.statusIsStale = false
+  }
+  h.stop()
+})
+
+test('an export picker result cannot target a different working copy after switching', async () => {
+  const h = harness({
+    save: async () => { h.workspace.currentPath = '/other'; return '/export/A.txt' },
+  })
+  await h.openFileContextMenu(pointer, h.file, false)
+  await h.runContextAction('svn-file-export')
+  assert.deepEqual(h.calls, [])
+  h.stop()
+})
+
+
+test('refreshing the same repository URL does not close an open file menu', async () => {
+  const h = harness()
+  await h.openFileContextMenu(pointer, h.file, false)
+  h.workspace.svnInfo = { ...h.workspace.svnInfo, revision: 5 }
+  h.staging.paths = []
+  assert.equal(h.fileContextMenu.visible, true)
+  await h.runContextAction('svn-file-info')
+  assert.equal(h.fileTool.value.output, 'SVN output')
   h.stop()
 })

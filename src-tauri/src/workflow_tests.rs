@@ -13,6 +13,284 @@ struct Fixture {
 }
 
 #[test]
+fn svn_tools_schedule_local_operations_and_respect_working_copy_boundaries() {
+    use crate::svn_tools::{run, Action};
+    let f = Fixture::new();
+    let url = format!("{}/dev", f.url);
+    f.seed_directory();
+    let root = f.root();
+    let input = || "text.txt".to_owned();
+    runtime().block_on(async {
+        let run = |action| run(&f.dev, &url, action);
+        let info = run(Action::Info { target: input() }).await.unwrap();
+        assert!(info.contains("text.txt"));
+        run(Action::SetProperty {
+            target: input(),
+            name: "demo-property".into(),
+            value: "--flag\n下一行".into(),
+        })
+        .await
+        .unwrap();
+        assert!(run(Action::Properties { target: input() })
+            .await
+            .unwrap()
+            .contains("--flag"));
+        run(Action::DeleteProperty {
+            target: input(),
+            name: "demo-property".into(),
+        })
+        .await
+        .unwrap();
+        assert!(!run(Action::Properties { target: input() })
+            .await
+            .unwrap()
+            .contains("demo-property"));
+        run(Action::Changelist {
+            target: input(),
+            name: "Desktop test".into(),
+        })
+        .await
+        .unwrap();
+        assert!(f
+            .svn(Some(&f.dev), &["status", "--verbose", "--", "text.txt"])
+            .contains("Desktop test"));
+        run(Action::RemoveChangelist { target: input() })
+            .await
+            .unwrap();
+        assert!(!f
+            .svn(Some(&f.dev), &["status", "--verbose", "--", "text.txt"])
+            .contains("Desktop test"));
+        run(Action::Lock {
+            target: input(),
+            message: "isolated lock".into(),
+        })
+        .await
+        .unwrap();
+        assert!(run(Action::Info { target: input() })
+            .await
+            .unwrap()
+            .contains("isolated lock"));
+        assert!(run(Action::RemoteStatus { target: input() })
+            .await
+            .unwrap()
+            .contains("text.txt"));
+        run(Action::Unlock { target: input() }).await.unwrap();
+        assert!(!run(Action::Info { target: input() })
+            .await
+            .unwrap()
+            .contains("isolated lock"));
+        fs::write(root.join("new @& file.txt"), "new").unwrap();
+        run(Action::Add {
+            target: "new @& file.txt".into(),
+        })
+        .await
+        .unwrap();
+        run(Action::Mkdir {
+            target: "new-folder".into(),
+        })
+        .await
+        .unwrap();
+        run(Action::Copy {
+            target: input(),
+            destination: "new-folder/copy.txt".into(),
+        })
+        .await
+        .unwrap();
+        run(Action::Move {
+            target: "delete.txt".into(),
+            destination: "renamed.txt".into(),
+        })
+        .await
+        .unwrap();
+        run(Action::Delete {
+            target: "asset.uasset".into(),
+        })
+        .await
+        .unwrap();
+        assert!(
+            root.join("asset.uasset").is_file(),
+            "delete should keep local bytes"
+        );
+        let changes = w::local_status(&f.dev, false).await.unwrap();
+        let item = |path: &str| changes.iter().find(|entry| entry.path == path).unwrap();
+        assert_eq!(item("asset.uasset").status_code, "deleted");
+        assert_eq!(item("new @& file.txt").status_code, "added");
+        assert_eq!(item("delete.txt").status_code, "deleted");
+        assert!(item("renamed.txt").history);
+        assert!(item("new-folder/copy.txt").history);
+        assert!(run(Action::Move {
+            target: input(),
+            destination: "new-folder".into()
+        })
+        .await
+        .is_err());
+        assert!(run(Action::Delete { target: ".".into() }).await.is_err());
+        assert!(run(Action::Mkdir {
+            target: "../outside".into()
+        })
+        .await
+        .is_err());
+        assert!(crate::svn_tools::run(
+            &f.dev,
+            "file:///wrong-branch",
+            Action::Delete { target: input() }
+        )
+        .await
+        .is_err());
+        assert_eq!(fs::read(root.join("text.txt")).unwrap(), b"base\n");
+        run(Action::Cleanup).await.unwrap();
+        let submitted = crate::svn::commit_selection(
+            &f.dev,
+            "submit renamed file",
+            &["delete.txt".into(), "renamed.txt".into()],
+            Some(&url),
+            false,
+        )
+        .await
+        .unwrap();
+        assert!(submitted.success, "{submitted:?}");
+        assert_eq!(fs::read(root.join("renamed.txt")).unwrap(), b"delete me\n");
+    });
+}
+
+#[test]
+fn svn_tools_browser_transfer_and_patch_in_a_local_repository() {
+    use crate::svn_tools::{run, Action};
+    let f = Fixture::new();
+    let url = format!("{}/dev", f.url);
+    let root = f.root();
+    let exported = f.temp.join("isolated-export");
+    let import = f.temp.join("isolated-import");
+    fs::create_dir(&import).unwrap();
+    fs::write(import.join("artifact.txt"), "imported content\n").unwrap();
+    runtime().block_on(async {
+        let run = |action| run(&f.dev, &url, action);
+        let entries = w::repository_list(f.dev.clone(), url.clone())
+            .await
+            .unwrap();
+        assert!(entries
+            .iter()
+            .any(|entry| entry.name == "text.txt" && entry.kind == "file"));
+        run(Action::Export {
+            source: url.clone(),
+            destination: exported.to_string_lossy().into_owned(),
+            revision: None,
+        })
+        .await
+        .unwrap();
+        assert!(exported.join("text.txt").is_file());
+        assert!(!exported.join(".svn").exists());
+        assert!(run(Action::Export {
+            source: ".".into(),
+            destination: exported.to_string_lossy().into_owned(),
+            revision: None,
+        })
+        .await
+        .is_err());
+        let folder = format!("{url}/Published%20files");
+        run(Action::RemoteMkdir {
+            destination: folder.clone(),
+            message: "new remote directory".into(),
+        })
+        .await
+        .unwrap();
+        let child = format!("{folder}/Import");
+        run(Action::Import {
+            source: import.to_string_lossy().into_owned(),
+            destination: child.clone(),
+            message: "import test".into(),
+        })
+        .await
+        .unwrap();
+        let entries = w::repository_list(f.dev.clone(), child.clone())
+            .await
+            .unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].name, "artifact.txt");
+        assert_eq!(
+            f.svn(None, &["cat", &format!("{child}/artifact.txt")]),
+            "imported content\n"
+        );
+        assert!(run(Action::RemoteMkdir {
+            destination: "file:///unrelated/folder".into(),
+            message: "no".into()
+        })
+        .await
+        .is_err());
+        fs::write(root.join("text.txt"), "patched content\n").unwrap();
+        let patch = f.svn(Some(&f.dev), &["diff", "--", "text.txt"]);
+        f.svn(Some(&f.dev), &["revert", "text.txt"]);
+        let patch_path = f.temp.join("text.patch");
+        fs::write(&patch_path, patch).unwrap();
+        let patch_source = patch_path.to_string_lossy().into_owned();
+        run(Action::Patch {
+            source: patch_source.clone(),
+            reverse: false,
+        })
+        .await
+        .unwrap();
+        assert_eq!(
+            fs::read(root.join("text.txt")).unwrap(),
+            b"patched content\n"
+        );
+        run(Action::Patch {
+            source: patch_source,
+            reverse: true,
+        })
+        .await
+        .unwrap();
+        assert_eq!(fs::read(root.join("text.txt")).unwrap(), b"base\n");
+        assert!(run(Action::Mergeinfo {
+            source: format!("{}/publish", f.url)
+        })
+        .await
+        .is_ok());
+    });
+}
+
+#[test]
+fn svn_tools_branch_merge_uses_previewed_source_and_leaves_reviewable_changes() {
+    let f = Fixture::new();
+    let source = format!("{}/dev", f.url);
+    let destination = format!("{}/publish", f.url);
+    let working = Path::new(&f.publish);
+    fs::write(f.root().join("text.txt"), "first approved source change\n").unwrap();
+    f.svn(Some(&f.dev), &["commit", "-m", "first source revision"]);
+    f.svn(Some(&f.publish), &["update"]);
+    runtime().block_on(async {
+        let plan = w::repository_branch_merge_preview(
+            f.publish.clone(),
+            source.clone(),
+            destination.clone(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(plan.kind, "branch-merge");
+        assert_eq!(fs::read(working.join("text.txt")).unwrap(), b"base\n");
+        fs::write(f.root().join("text.txt"), "another source revision\n").unwrap();
+        f.svn(Some(&f.dev), &["commit", "-m", "later source revision"]);
+        let outcome = w::execute_plan(&f.temp.join("merge-journal"), &plan.id)
+            .await
+            .unwrap();
+        assert!(outcome.error.is_none(), "{outcome:?}");
+        assert!(outcome.conflicts.is_empty());
+        assert_eq!(
+            fs::read(working.join("text.txt")).unwrap(),
+            b"first approved source change\n"
+        );
+        assert_eq!(
+            f.svn(None, &["cat", &format!("{destination}/text.txt")]),
+            "base\n"
+        );
+        assert!(
+            w::repository_branch_merge_preview(f.publish.clone(), source, destination)
+                .await
+                .is_err()
+        );
+    });
+}
+
+#[test]
 fn automatic_binaries_resolution_keeps_bytes_and_skips_text_and_assets() {
     let f = Fixture::new();
     let binaries = [
@@ -161,6 +439,112 @@ fn automatic_binaries_resolution_keeps_bytes_and_skips_text_and_assets() {
         ).await.unwrap();
         assert!(outside.failures.contains_key("../escape.dll"));
         assert!(outside.status.is_none());
+    });
+}
+
+#[test]
+fn automatic_modules_resolution_restores_valid_local_manifests_and_keeps_working_edits() {
+    let f = Fixture::new();
+    let standard = "Binaries/Win64/UnrealEditor.modules";
+    let edited = "Plugins/Test/Binaries/Win64/UnrealEditor.MODULES";
+    let outside = "Content/Outside.modules";
+    let notes = "Binaries/Notes.txt";
+    let binary = "Binaries/Win64/Example.dll";
+    let files = [standard, edited, outside, notes, binary];
+    let manifest = |id: &str| {
+        format!("{{\n  \"BuildId\": \"{id}\",\n  \"Modules\": {{\"Demo\": \"Demo.dll\"}}\n}}\n")
+    };
+    for file in files {
+        let full = f.root().join(file);
+        fs::create_dir_all(full.parent().unwrap()).unwrap();
+        if file == binary {
+            fs::write(full, [0, 1, 255]).unwrap();
+        } else {
+            fs::write(full, manifest("base")).unwrap();
+        }
+    }
+    f.svn(
+        Some(&f.dev),
+        &["add", "--", "Binaries", "Plugins", "Content"],
+    );
+    f.svn(Some(&f.dev), &["commit", "-m", "synthetic modules base"]);
+    let observer = f
+        .temp
+        .join("modules-observer")
+        .to_string_lossy()
+        .into_owned();
+    let url = format!("{}/dev", f.url);
+    f.svn(None, &["checkout", &url, &observer]);
+    let local = manifest("local");
+    let incoming = manifest("incoming");
+    let merged = manifest("manually-reconciled");
+    for file in files {
+        let owner = Path::new(&observer).join(file);
+        if file == binary {
+            fs::write(f.root().join(file), [0, 7, 8]).unwrap();
+            fs::write(owner, [0, 9, 10]).unwrap();
+        } else {
+            fs::write(f.root().join(file), &incoming).unwrap();
+            fs::write(owner, &local).unwrap();
+        }
+    }
+    f.svn(
+        Some(&f.dev),
+        &["commit", "-m", "synthetic incoming modules"],
+    );
+    f.svn(Some(&observer), &["update", "--accept", "postpone"]);
+    let working = Path::new(&observer);
+    let conflicted = fs::read_to_string(working.join(standard)).unwrap();
+    assert!(conflicted.contains("<<<<<<<"));
+    fs::write(working.join(edited), &merged).unwrap();
+
+    runtime().block_on(async {
+        let data = f.temp.join("modules-data");
+        let files = files.map(String::from);
+        crate::svn::capture_commands(&observer);
+        let result = crate::binary_conflicts::resolve_batch(&data, &observer, &files, &url)
+            .await
+            .unwrap();
+        let commands = crate::svn::take_commands(&observer);
+        assert!(result.failures.is_empty(), "{result:?}");
+        assert!(!result.verification_failed);
+        assert_eq!(result.resolved, [binary, standard, edited]);
+        assert_eq!(result.status.unwrap().paths, result.resolved);
+        let strategies: Vec<_> = commands
+            .iter()
+            .filter(|args| args[0] == "resolve")
+            .map(|args| args[2].as_str())
+            .collect();
+        assert_eq!(strategies, ["working", "mine-full"]);
+        assert_eq!(fs::read(working.join(binary)).unwrap(), [0, 9, 10]);
+        assert_eq!(fs::read_to_string(working.join(standard)).unwrap(), local);
+        assert_eq!(fs::read_to_string(working.join(edited)).unwrap(), merged);
+        assert_eq!(
+            w::repository_conflicts(observer.clone())
+                .await
+                .unwrap()
+                .iter()
+                .map(|conflict| conflict.path.as_str())
+                .collect::<Vec<_>>(),
+            [notes, outside],
+        );
+        let recovery: Vec<_> = fs::read_dir(data.join("recovery"))
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .collect();
+        assert_eq!(recovery.len(), 3);
+        let manifest_backup = recovery
+            .into_iter()
+            .find(|dir| {
+                let text = fs::read_to_string(dir.join("manifest.json")).unwrap();
+                let record: serde_json::Value = serde_json::from_str(&text).unwrap();
+                record["path"] == standard && record["strategy"] == "mine-full"
+            })
+            .unwrap();
+        assert_eq!(
+            fs::read_to_string(manifest_backup.join("working-file")).unwrap(),
+            conflicted
+        );
     });
 }
 
@@ -2734,6 +3118,108 @@ fn discard_status_from_a_subdirectory_maps_paths_and_leaves_unrelated_trees_unqu
             fs::read_dir(f.root().join("unrelated")).unwrap().count(),
             128
         );
+    });
+}
+
+#[test]
+fn discard_modified_files_reports_scoped_command_cost() {
+    let f = Fixture::new();
+    let files: Vec<_> = (0..24).map(|i| format!("file-{i:02}.txt")).collect();
+    for file in &files {
+        fs::write(f.root().join(file), "base").unwrap();
+    }
+    let mut add = vec!["add", "--"];
+    add.extend(files.iter().map(String::as_str));
+    f.svn(Some(&f.dev), &add);
+    f.svn(Some(&f.dev), &["commit", "-m", "discard benchmark fixture"]);
+    for file in &files {
+        fs::write(f.root().join(file), "local edit").unwrap();
+    }
+    f.svn(
+        Some(&f.dev),
+        &["propset", "discard-property", "local", &files[0]],
+    );
+    fs::write(f.root().join("text.txt"), "keep unselected").unwrap();
+    runtime().block_on(async {
+        crate::svn::capture_commands(&f.dev);
+        let started = std::time::Instant::now();
+        let preview = crate::discard::preview(&f.dev, &files, &format!("{}/dev", f.url))
+            .await
+            .unwrap();
+        let preview_ms = started.elapsed().as_secs_f64() * 1000.;
+        let preview_commands = crate::svn::take_commands(&f.dev);
+        crate::svn::capture_commands(&f.dev);
+        let started = std::time::Instant::now();
+        let result = crate::discard::execute(&preview.id).await.unwrap();
+        let execute_ms = started.elapsed().as_secs_f64() * 1000.;
+        let execute_commands = crate::svn::take_commands(&f.dev);
+        eprintln!(
+            "DISCARD24 preview_ms={preview_ms:.1} preview_commands={} execute_ms={execute_ms:.1} execute_commands={}",
+            preview_commands.len(),
+            execute_commands.len(),
+        );
+        assert!(preview_commands.len() <= 4, "{preview_commands:?}");
+        assert!(execute_commands.len() <= 7, "{execute_commands:?}");
+        assert_eq!(
+            execute_commands.iter().filter(|args| args[0] == "revert").count(),
+            1,
+        );
+        assert!(result.error.is_none(), "{:?}", result.error);
+        assert_eq!(result.completed_paths, files);
+        assert!(result.status.unwrap().entries.is_empty());
+        for file in &files {
+            assert_eq!(fs::read(f.root().join(file)).unwrap(), b"base");
+        }
+        assert_eq!(fs::read(f.root().join("text.txt")).unwrap(), b"keep unselected");
+        assert_eq!(f.svn(Some(&f.dev), &["status", "--", &files[0]]), "");
+    });
+}
+
+#[cfg(windows)]
+#[test]
+fn discard_batch_reports_a_locked_tracked_path_as_retained() {
+    use std::os::windows::fs::OpenOptionsExt;
+    let f = Fixture::new();
+    let locked = "locked@&.txt";
+    fs::write(f.root().join(locked), "base locked").unwrap();
+    f.svn(Some(&f.dev), &["add", "--", &w::target(locked)]);
+    f.svn(Some(&f.dev), &["commit", "-m", "seed locked tracked file"]);
+    fs::write(f.root().join(locked), "keep while locked").unwrap();
+    fs::write(f.root().join("asset.uasset"), [0, 71, 255]).unwrap();
+    let files = vec![locked.into(), "asset.uasset".into()];
+    runtime().block_on(async {
+        let plan = crate::discard::preview(&f.dev, &files, &format!("{}/dev", f.url))
+            .await
+            .unwrap();
+        let lock = fs::OpenOptions::new()
+            .read(true)
+            .share_mode(1)
+            .open(f.root().join(locked))
+            .unwrap();
+        let outcome = crate::discard::execute(&plan.id).await.unwrap();
+        assert!(outcome.error.is_some());
+        assert_eq!(outcome.completed_paths, ["asset.uasset"]);
+        let patch = outcome.status.unwrap();
+        assert_eq!(patch.entries.len(), 1);
+        assert_eq!(patch.entries[0].path, locked);
+        assert_eq!(
+            fs::read(f.root().join(locked)).unwrap(),
+            b"keep while locked"
+        );
+        drop(lock);
+        // SVN can leave an interrupted filesystem work item in its queue
+        // after a Windows sharing violation. Cleanup may finish that revert.
+        f.svn(Some(&f.dev), &["cleanup"]);
+        if fs::read(f.root().join(locked)).unwrap() != b"base locked" {
+            let retry =
+                crate::discard::preview(&f.dev, &[locked.into()], &format!("{}/dev", f.url))
+                    .await
+                    .unwrap();
+            let outcome = crate::discard::execute(&retry.id).await.unwrap();
+            assert!(outcome.error.is_none(), "{:?}", outcome.error);
+            assert_eq!(outcome.completed_paths, [locked]);
+        }
+        assert_eq!(fs::read(f.root().join(locked)).unwrap(), b"base locked");
     });
 }
 

@@ -88,11 +88,6 @@
             ><strong>r{{ workspaceStore.svnInfo.revision }}</strong>
           </div>
         </div>
-        <div class="sidebar-actions">
-          <button @click="doCleanup">
-            <el-icon><Brush /></el-icon>{{ $t('common.cleanup') }}
-          </button>
-        </div>
       </aside>
 
       <!-- 中间面板：文件列表 -->
@@ -422,6 +417,63 @@
       v-if="reviewOpen"
       @close="reviewOpen = false"
     />
+    <el-dialog
+      v-if="fileTool"
+      :model-value="true"
+      :title="t('svnTools.' + fileTool.kind)"
+      width="min(560px, calc(100vw - 32px))"
+      append-to-body
+      :close-on-click-modal="false"
+      @update:model-value="fileTool = null"
+    >
+      <form class="workspace-file-tool" @submit.prevent="executeFileTool(fileTool)">
+        <code class="file-tool-path">{{ fileTool.target }}</code>
+        <p v-if="fileTool.kind === 'delete'">{{ t('svnTools.keepLocal') }}</p>
+        <p v-if="fileTool.directory && ['add', 'move', 'copy', 'delete'].includes(fileTool.kind)">
+          {{ t('svnTools.folderScope') }}
+        </p>
+        <p v-if="fileTool.kind === 'lock' || fileTool.kind === 'unlock'">
+          {{ t('svnTools.remoteLockHint') }}
+        </p>
+        <label v-if="fileTool.kind === 'move' || fileTool.kind === 'copy'">
+          {{ t('svnTools.relativePath') }}
+          <el-input v-model="fileTool.destination" :disabled="fileTool.busy" />
+        </label>
+        <label v-if="fileTool.kind === 'lock'">
+          {{ t('svnTools.lockMessage') }}
+          <el-input v-model="fileTool.comment" :disabled="fileTool.busy" />
+        </label>
+        <label v-if="['changelist', 'setProperty', 'deleteProperty'].includes(fileTool.kind)">
+          {{ t(fileTool.kind === 'changelist' ? 'svnTools.changelistName' : 'svnTools.propertyName') }}
+          <el-input v-model="fileTool.name" :disabled="fileTool.busy" />
+        </label>
+        <label v-if="fileTool.kind === 'setProperty'">
+          {{ t('svnTools.propertyValue') }}
+          <el-input v-model="fileTool.value" type="textarea" :rows="4" :disabled="fileTool.busy" />
+        </label>
+        <p v-if="fileTool.error" class="file-tool-error" role="alert">{{ fileTool.error }}</p>
+        <p v-else-if="!fileTool.readOnly && !fileTool.busy && !isCurrentFileTool(fileTool)" role="status">
+          {{ t('fileMenu.changed') }}
+        </p>
+        <p v-else-if="!fileTool.readOnly && !fileTool.busy && !staging.ready" role="status">
+          {{ t('fileMenu.verifyFirst') }}
+        </p>
+        <p v-else-if="!fileTool.readOnly && !fileTool.busy && !fileToolStatusMatches(fileTool)" role="status">
+          {{ t('fileMenu.changed') }}
+        </p>
+        <p v-else-if="fileTool.busy && fileTool.readOnly" role="status">{{ t('common.loading') }}</p>
+        <pre v-else-if="fileTool.readOnly" class="file-tool-output">{{ fileTool.output }}</pre>
+        <div v-if="!fileTool.readOnly" class="file-tool-buttons">
+          <el-button @click="fileTool = null">{{ t('common.cancel') }}</el-button>
+          <el-button
+            native-type="submit"
+            :type="fileTool.kind === 'delete' || fileTool.kind === 'deleteProperty' ? 'danger' : 'primary'"
+            :loading="fileTool.busy"
+            :disabled="!canApplyFileTool(fileTool)"
+          >{{ t('svnTools.' + fileTool.kind) }}</el-button>
+        </div>
+      </form>
+    </el-dialog>
     <ConflictResolutionDialog
       v-if="conflictRequest"
       :request="conflictRequest"
@@ -451,12 +503,13 @@ import {
   executeWorkspaceDiscard,
   cancelWorkspaceDiscard,
   revealWorkspaceFile,
-  svnCleanup,
   svnDiff,
   workspaceItemDetails,
   openWorkspaceItem,
   ignoreWorkspaceItem,
   exportWorkspacePatch,
+  svnWorkspaceAction,
+  type SvnWorkspaceAction,
   type WorkspaceItemDetails,
   type DiscardStatusPatch,
 } from '@/api/svn'
@@ -578,12 +631,38 @@ const fileContextMenu = reactive({
   key: '',
   details: null as WorkspaceItemDetails | null,
 })
+type FileToolKind =
+  | 'info' | 'properties' | 'remoteStatus' | 'export'
+  | 'add' | 'delete' | 'move' | 'copy' | 'lock' | 'unlock'
+  | 'setProperty' | 'deleteProperty' | 'changelist' | 'removeChangelist'
+
+interface FileToolRequest {
+  kind: FileToolKind
+  workspace: string
+  branch: string
+  key: string
+  generation: number
+  status: SvnStatus[]
+  target: string
+  directory: boolean
+  readOnly: boolean
+  destination: string
+  comment: string
+  name: string
+  value: string
+  busy: boolean
+  error: string
+  output: string
+}
+const fileTool = ref<FileToolRequest | null>(null)
 let contextRequest = 0
 const contextItems = computed<FileMenuItem[]>(() => {
   const details = fileContextMenu.details,
     file = fileContextMenu.file
   const current =
-    fileContextMenu.workspace === workspaceStore.currentPath && fileContextMenu.key === staging.key
+    fileContextMenu.workspace === workspaceStore.currentPath &&
+    fileContextMenu.branch === (workspaceStore.svnInfo?.url || '') &&
+    fileContextMenu.key === staging.key
   const ready = current && staging.ready && !flow.busy && pendingFileAction.value === null
   const blockedReason = !current ? t('fileMenu.changed') : actionBlockReason.value || undefined
   const canIgnore = ready && file?.status_code === 'unversioned'
@@ -610,6 +689,42 @@ const contextItems = computed<FileMenuItem[]>(() => {
       { id: 'copy-relative', label: t('workspace.copyPath'), disabled: !current },
       { id: 'copy-absolute', label: t('workspace.copyAbsolutePath'), disabled: !current },
     ]
+  const showTools = !fileContextMenu.multiple && details && fileContextMenu.path !== '.'
+  const readable = current && !!fileContextMenu.branch && !flow.busy
+  const writable = ready && readable && !conflicts.length
+  const versioned = history || file?.status_code === 'added'
+  const present = details?.exists && !['deleted', 'missing', 'obstructed'].includes(file?.status_code || '')
+  const localItem = showTools && versioned && present
+  const fileItem = localItem && details.kind === 'file'
+  const tool = (kind: FileToolKind, enabled: boolean, icon: string): FileMenuItem => ({
+    id: 'svn-file-' + kind,
+    label: t('svnTools.' + kind),
+    disabled: !enabled,
+    icon,
+    title: enabled ? undefined : blockedReason,
+    danger: kind === 'delete' || kind === 'deleteProperty',
+  })
+  const extraTools = [
+    ...(showTools && versioned
+      ? [tool('info', readable, 'InfoFilled'), tool('properties', readable, 'Document')]
+      : []),
+    ...(showTools && history ? [tool('remoteStatus', readable, 'Refresh')] : []),
+    ...(localItem && history ? [tool('copy', writable, 'CopyDocument')] : []),
+    ...(localItem
+      ? [
+          tool('delete', writable, 'Delete'),
+          tool('setProperty', writable, 'Edit'),
+          tool('deleteProperty', writable, 'Delete'),
+          tool('export', readable, 'Download'),
+        ]
+      : []),
+    ...(fileItem && history
+      ? [tool('lock', writable, 'Lock'), tool('unlock', writable, 'Unlock')]
+      : []),
+    ...(fileItem
+      ? [tool('changelist', writable, 'List'), tool('removeChangelist', writable, 'Minus')]
+      : []),
+  ]
   return [
     {
       id: 'open',
@@ -661,6 +776,13 @@ const contextItems = computed<FileMenuItem[]>(() => {
       title: blockedReason || t('fileMenu.discardFolderHint'),
       shortcut: 'Delete',
     },
+    ...(showTools && present && file?.status_code === 'unversioned'
+      ? [tool('add', writable, 'Plus')]
+      : []),
+    ...(localItem ? [tool('move', writable, 'Edit')] : []),
+    ...(extraTools.length
+      ? [{ id: 'svn-file-more', icon: 'MoreFilled', label: t('svnTools.fileActions'), children: extraTools }]
+      : []),
     ...(conflicts.length
       ? [
           {
@@ -752,6 +874,9 @@ const displayedStatus = computed(() =>
   showIgnored.value
     ? workspaceStore.rawStatusList || workspaceStore.statusList
     : workspaceStore.statusList
+)
+const displayedStatusByPath = computed(
+  () => new Map(displayedStatus.value.map((entry) => [entry.path, entry]))
 )
 const filteredFiles = computed(() => {
   const query = fileQuery.value.trim().toLocaleLowerCase()
@@ -956,15 +1081,6 @@ const doCommit = () => {
   if (staging.ready && !flow.busy && staging.paths.length) reviewOpen.value = true
 }
 
-const doCleanup = async () => {
-  if (!workspaceStore.currentPath) return
-  try {
-    await flow.perform(t('common.cleanup'), () => svnCleanup(workspaceStore.currentPath!))
-  } catch (err) {
-    workspaceStore.setError(String(err))
-  }
-}
-
 const viewDiff = (path: string) => {
   hideFileContextMenu()
   router.push({ name: 'diff', query: { path } })
@@ -1027,11 +1143,126 @@ const joinWorkspacePath = (workspacePath: string, filePath: string) => {
   return `${base}${separator}${relative}`
 }
 
+const isCurrentFileTool = (request: FileToolRequest) =>
+  request.generation === fileActionWorkspaceGeneration &&
+  request.workspace === workspaceStore.currentPath &&
+  request.branch === workspaceStore.svnInfo?.url &&
+  request.key === staging.key
+
+const fileToolStatusMatches = (request: FileToolRequest) =>
+  request.status === (workspaceStore.rawStatusList || workspaceStore.statusList)
+
+const canApplyFileTool = (request: FileToolRequest) =>
+  isCurrentFileTool(request) && !flow.busy && !request.busy &&
+  pendingFileAction.value === null && staging.ready && !workspaceStore.statusIsStale &&
+  fileToolStatusMatches(request) &&
+  (!['move', 'copy'].includes(request.kind) ||
+    (!!request.destination.trim() && normalizePath(request.destination.trim()) !== request.target)) &&
+  (!['changelist', 'setProperty', 'deleteProperty'].includes(request.kind) || !!request.name.trim())
+
+function fileToolAction(request: FileToolRequest): SvnWorkspaceAction {
+  const { kind, target } = request
+  const name = request.name.trim()
+  switch (kind) {
+    case 'move':
+    case 'copy':
+      return { kind, target, destination: normalizePath(request.destination.trim()) }
+    case 'lock':
+      return { kind, target, message: request.comment }
+    case 'setProperty':
+      return { kind, target, name, value: request.value }
+    case 'deleteProperty':
+    case 'changelist':
+      return { kind, target, name }
+    case 'export':
+      return { kind, source: target, destination: request.destination }
+    default:
+      return { kind, target }
+  }
+}
+
+async function executeFileTool(request: FileToolRequest) {
+  if (!isCurrentFileTool(request) || flow.busy || request.busy) return
+  if (!request.readOnly && !canApplyFileTool(request)) {
+    if (fileTool.value === request) request.error = t('fileMenu.changed')
+    return
+  }
+
+  const action = fileToolAction(request)
+  const title = t('svnTools.' + action.kind)
+  const run = () => svnWorkspaceAction(request.workspace, request.branch, action)
+  request.busy = true
+  request.error = ''
+  try {
+    if (action.kind === 'export') {
+      await flow.perform(title, run, false)
+      if (isCurrentFileTool(request)) ElMessage.success(t('common.success'))
+    } else if (request.readOnly) {
+      const output = await run()
+      if (isCurrentFileTool(request)) request.output = output.trim() || t('svnTools.noOutput')
+    } else {
+      const refresh = !['lock', 'unlock', 'changelist', 'removeChangelist'].includes(action.kind)
+      await flow.perform(title, run, true, refresh)
+      if (isCurrentFileTool(request)) {
+        if (fileTool.value === request) fileTool.value = null
+        ElMessage.success(t('common.success'))
+      }
+    }
+  } catch (error) {
+    if (isCurrentFileTool(request)) {
+      if (fileTool.value === request) request.error = String(error)
+      else ElMessage.error(String(error))
+    }
+  } finally {
+    request.busy = false
+  }
+}
+
+async function startFileTool(kind: FileToolKind, context: typeof fileContextMenu) {
+  const target = normalizePath(context.path)
+  const request: FileToolRequest = reactive({
+    kind,
+    target,
+    directory: context.details?.kind === 'dir',
+    readOnly: ['info', 'properties', 'remoteStatus', 'export'].includes(kind),
+    workspace: context.workspace,
+    branch: context.branch,
+    key: context.key,
+    generation: fileActionWorkspaceGeneration,
+    status: workspaceStore.rawStatusList || workspaceStore.statusList,
+    destination: kind === 'move' ? target : '',
+    comment: '',
+    name: '',
+    value: '',
+    busy: false,
+    error: '',
+    output: '',
+  })
+
+  if (kind === 'export') {
+    const destination = await save({
+      title: t('svnTools.exportPath'),
+      defaultPath: target.split('/').pop(),
+    })
+    if (!destination || !isCurrentFileTool(request)) return
+    request.destination = destination
+    await executeFileTool(request)
+    return
+  }
+  if ((kind === 'add' && !request.directory) || kind === 'removeChangelist') {
+    await executeFileTool(request)
+    return
+  }
+  fileTool.value = request
+  if (request.readOnly) await executeFileTool(request)
+}
+
 const runContextAction = async (action: string) => {
   const menu = contextItems.value
     .flatMap((item) => [item, ...(item.disabled ? [] : item.children || [])])
     .find((item) => item.id === action)
   if (
+    !fileContextMenu.visible ||
     !menu ||
     menu.disabled ||
     fileContextMenu.workspace !== workspaceStore.currentPath ||
@@ -1063,6 +1294,8 @@ const runContextAction = async (action: string) => {
       if (context.staged) staging.unstage(targets)
       else staging.stage(targets)
     } else if (action === 'discard') await discardTargets(context.targets)
+    else if (action.startsWith('svn-file-'))
+      await startFileTool(action.slice('svn-file-'.length) as FileToolKind, context)
     else if (action === 'resolve-conflicts') openConflictDialog(context.targets)
     else if (action === 'resolve-local') openConflictDialog(context.targets, false, 'mine-full')
     else if (action === 'resolve-incoming')
@@ -1230,7 +1463,7 @@ watch(
 )
 
 watch(
-  () => [workspaceStore.currentPath, workspaceStore.svnInfo?.url],
+  [() => workspaceStore.currentPath, () => workspaceStore.svnInfo?.url],
   () => {
     fileActionWorkspaceGeneration += 1
     diffRequestGeneration += 1
@@ -1241,6 +1474,7 @@ watch(
     selectedChangePaths.value = []
     lastConflictFile.value = null
     conflictRequest.value = null
+    fileTool.value = null
     reviewOpen.value = false
     fileQuery.value = ''
     hideFileContextMenu()
@@ -1249,7 +1483,7 @@ watch(
 )
 
 watch(
-  () => [staging.key, [...staging.paths].sort().join('\n'), filter.value, fileQuery.value],
+  [() => staging.key, () => [...staging.paths].sort().join('\n'), filter, fileQuery],
   () => {
     fileActionWorkspaceGeneration += 1
     hideFileContextMenu()
@@ -1279,6 +1513,7 @@ onDeactivated(() => {
   saveWorkspaceView()
   fileActionWorkspaceGeneration += 1
   hideFileContextMenu()
+  fileTool.value = null
   if (!flow.busy) conflictRequest.value = null
 })
 
@@ -1296,8 +1531,9 @@ const discardTargets = async (targets: string[]) => {
     return
   const selectionKey = staging.key
   const branch = workspaceStore.svnInfo?.url || ''
+  const targetPaths = new Set(targets)
   const original = targets
-    .map((path) => displayedStatus.value.find((entry) => entry.path === path))
+    .map((path) => displayedStatusByPath.value.get(path))
     .map((entry) => (entry ? { ...entry } : null))
   if (original.some((entry) => !entry)) return
   if (
@@ -1313,19 +1549,17 @@ const discardTargets = async (targets: string[]) => {
     generation === fileActionWorkspaceGeneration &&
     workspaceStore.currentPath === workspacePath &&
     staging.key === selectionKey
-  const stillSelected = () =>
-    isCurrent() &&
-    staging.ready &&
-    !flow.busy &&
-    !workspaceStore.statusIsStale &&
-    original.every((entry) => {
-      const current = displayedStatus.value.find((file) => file.path === entry!.path)
+  const stillSelected = () => {
+    if (!isCurrent() || !staging.ready || flow.busy || workspaceStore.statusIsStale) return false
+    return original.every((entry) => {
+      const current = displayedStatusByPath.value.get(entry!.path)
       return (
         current &&
         current.status_code === entry!.status_code &&
         current.prop_status === entry!.prop_status
       )
     })
+  }
   pendingFileAction.value = targets[0]
   fileActionPhase.value = 'preview'
   let planId: string | null = null
@@ -1340,7 +1574,7 @@ const discardTargets = async (targets: string[]) => {
         ...(workspaceStore.rawStatusList || workspaceStore.statusList).map((file) => file.path),
         ...staging.paths,
       ]),
-    ].filter((path) => !targets.includes(path))
+    ].filter((path) => !targetPaths.has(path))
     const preview = await previewWorkspaceDiscard(
       workspacePath,
       targets.map(normalizePath),
@@ -1773,5 +2007,33 @@ const discardTargets = async (targets: string[]) => {
   .right-panel {
     grid-template-rows: 30px minmax(60px, 1fr) 4px minmax(140px, var(--composer-height));
   }
+}
+.workspace-file-tool {
+  display: grid;
+  gap: 12px;
+}
+.workspace-file-tool p,
+.file-tool-output {
+  margin: 0;
+}
+.file-tool-path,
+.file-tool-error,
+.file-tool-output {
+  overflow-wrap: anywhere;
+}
+.file-tool-output {
+  max-height: 52vh;
+  overflow: auto;
+  padding: 12px;
+  white-space: pre-wrap;
+  border-radius: 6px;
+  background: var(--md-sys-color-surface-container);
+}
+.file-tool-error {
+  color: var(--md-sys-color-error);
+}
+.file-tool-buttons {
+  display: flex;
+  justify-content: flex-end;
 }
 </style>

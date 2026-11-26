@@ -44,6 +44,7 @@
               role="menuitem"
               type="button"
               class="context-menu-item nested"
+              :class="{ danger: child.danger }"
               :disabled="child.disabled"
               :title="child.title"
               @click="$emit('action', child.id)"

@@ -1,7 +1,7 @@
 export const conflictActionLocales = {
   'zh-CN': {
-    autoBinaryTitle: '自动解决 Binaries 二进制冲突',
-    autoBinaryResolved: '已保留当前本地文件并标记解决 {count} 项二进制冲突',
+    autoBinaryTitle: '自动解决 Binaries 冲突',
+    autoBinaryResolved: '已保留本地版本并解决 {count} 项冲突',
     selected: '已选择 {count} 个冲突路径',
     batchHint:
       '选择处理方式后确认范围。文件版本替换仅适用于内容冲突；树与属性冲突需确认手动处理结果。',
@@ -12,8 +12,8 @@ export const conflictActionLocales = {
     retry: '重试未完成项',
   },
   'zh-TW': {
-    autoBinaryTitle: '自動解決 Binaries 二進位衝突',
-    autoBinaryResolved: '已保留目前本機檔案並標記解決 {count} 項二進位衝突',
+    autoBinaryTitle: '自動解決 Binaries 衝突',
+    autoBinaryResolved: '已保留本機版本並解決 {count} 項衝突',
     selected: '已選擇 {count} 個衝突路徑',
     batchHint:
       '選擇處理方式後確認範圍。檔案版本取代僅適用於內容衝突；樹與屬性衝突需確認手動處理結果。',
@@ -24,8 +24,8 @@ export const conflictActionLocales = {
     retry: '重試未完成項',
   },
   'en-US': {
-    autoBinaryTitle: 'Automatically resolve Binaries binary conflicts',
-    autoBinaryResolved: 'Kept current local files and marked {count} binary conflicts resolved',
+    autoBinaryTitle: 'Automatically resolve Binaries conflicts',
+    autoBinaryResolved: 'Kept local versions and resolved {count} conflicts',
     selected: '{count} conflict paths selected',
     batchHint:
       'Choose a resolution, then confirm its scope. File replacement applies to content conflicts. Tree and property conflicts require confirmation of manual handling.',
@@ -37,9 +37,8 @@ export const conflictActionLocales = {
     retry: 'Retry remaining paths',
   },
   'ja-JP': {
-    autoBinaryTitle: 'Binaries のバイナリ競合を自動解決',
-    autoBinaryResolved:
-      '現在のローカルファイルを保持し、{count} 件のバイナリ競合を解決済みにしました',
+    autoBinaryTitle: 'Binaries の競合を自動解決',
+    autoBinaryResolved: 'ローカル版を保持し、{count} 件の競合を解決しました',
     selected: '競合パス {count} 件を選択',
     batchHint:
       '解決方法を選んで対象を確認してください。ファイル置換は内容の競合に適用されます。ツリーと属性の競合には手動処理の確認が必要です。',
@@ -50,9 +49,8 @@ export const conflictActionLocales = {
     retry: '未完了のパスを再試行',
   },
   'ko-KR': {
-    autoBinaryTitle: 'Binaries 바이너리 충돌 자동 해결',
-    autoBinaryResolved:
-      '현재 로컬 파일을 유지하고 바이너리 충돌 {count}개를 해결됨으로 표시했습니다',
+    autoBinaryTitle: 'Binaries 충돌 자동 해결',
+    autoBinaryResolved: '로컬 버전을 유지하고 충돌 {count}개를 해결했습니다',
     selected: '충돌 경로 {count}개 선택됨',
     batchHint:
       '처리 방법을 선택한 후 범위를 확인하세요. 파일 교체는 내용 충돌에 적용됩니다. 트리 및 속성 충돌은 수동 처리 확인이 필요합니다.',

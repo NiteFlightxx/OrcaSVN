@@ -12,6 +12,7 @@ import { changeLocales } from './changes'
 import { commitDetailLocales } from './commitDetails'
 import { fileMenuLocales } from './fileMenu'
 import { historyPresenceLocales } from './historyPresence'
+import { svnToolsLocales } from './svnTools'
 import { watch } from 'vue'
 import { createI18n } from 'vue-i18n'
 import zhCN from './locales/zh-CN'
@@ -86,6 +87,7 @@ const i18n = createI18n({
       commitFlow: commitFlowLocales['zh-CN'],
       historyMenu: historyMenuLocales['zh-CN'],
       updateProgress: updateProgressLocales['zh-CN'],
+      svnTools: svnToolsLocales['zh-CN'],
     },
     'zh-TW': {
       experience: experienceLocales['zh-TW'],
@@ -103,6 +105,7 @@ const i18n = createI18n({
       commitFlow: commitFlowLocales['zh-TW'],
       historyMenu: historyMenuLocales['zh-TW'],
       updateProgress: updateProgressLocales['zh-TW'],
+      svnTools: svnToolsLocales['zh-TW'],
     },
     'ja-JP': {
       experience: experienceLocales['ja-JP'],
@@ -120,6 +123,7 @@ const i18n = createI18n({
       commitFlow: commitFlowLocales['ja-JP'],
       historyMenu: historyMenuLocales['ja-JP'],
       updateProgress: updateProgressLocales['ja-JP'],
+      svnTools: svnToolsLocales['ja-JP'],
     },
     'ko-KR': {
       experience: experienceLocales['ko-KR'],
@@ -137,6 +141,7 @@ const i18n = createI18n({
       commitFlow: commitFlowLocales['ko-KR'],
       historyMenu: historyMenuLocales['ko-KR'],
       updateProgress: updateProgressLocales['ko-KR'],
+      svnTools: svnToolsLocales['ko-KR'],
     },
     'en-US': {
       experience: experienceLocales['en-US'],
@@ -154,6 +159,7 @@ const i18n = createI18n({
       commitFlow: commitFlowLocales['en-US'],
       historyMenu: historyMenuLocales['en-US'],
       updateProgress: updateProgressLocales['en-US'],
+      svnTools: svnToolsLocales['en-US'],
     },
   },
 })

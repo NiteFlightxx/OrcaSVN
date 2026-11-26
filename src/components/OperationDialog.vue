@@ -9,7 +9,7 @@
           ? 'flow.switchTo'
           : displayedKind === 'reverse-merge'
             ? 'historyMenu.reverseMerge'
-            : 'flow.cherryPick'
+            : displayedKind === 'branch-merge' ? 'svnTools.branchMerge' : 'flow.cherryPick'
       )
     "
     width="min(720px, 94vw)"
@@ -67,7 +67,10 @@
         <strong>{{ $t('flow.source') }}</strong
         >: {{ flow.plan.source }}
       </p>
-      <p>
+      <p v-if="displayedKind === 'branch-merge'">
+        {{ $t('svnTools.branchMergeHint', { revision: flow.plan.sourceRevision }) }}
+      </p>
+      <p v-else>
         {{
           $t('historyMenu.mergeHint', {
             revisions: (flow.plan.revisions?.length ? flow.plan.revisions : [flow.plan.revision])
@@ -108,7 +111,7 @@
       <summary>{{ $t('flow.details') }}</summary>
       <pre>{{ flow.plan.preview }}</pre>
     </details>
-    <p v-if="executing" class="check-status" role="status">{{ $t('branchUI.switching') }}</p>
+    <p v-if="executing" class="check-status" role="status">{{ $t(isSwitch ? 'branchUI.switching' : 'flow.running') }}</p>
     <pre v-if="executing && flow.commandOutput" class="operation-output" aria-live="polite">{{
       flow.commandOutput
     }}</pre>
@@ -230,7 +233,7 @@ async function execute() {
           ? 'flow.switchTo'
           : plan.kind === 'reverse-merge'
             ? 'historyMenu.reverseMerge'
-            : 'flow.cherryPick'
+            : plan.kind === 'branch-merge' ? 'svnTools.branchMerge' : 'flow.cherryPick'
       ),
       () => repositoryExecute(plan.id)
     )
@@ -266,7 +269,7 @@ async function execute() {
       await router.push({ name: 'conflicts' })
       return
     }
-    if (['cherry-pick', 'reverse-merge'].includes(plan.kind)) {
+    if (['cherry-pick', 'reverse-merge', 'branch-merge'].includes(plan.kind)) {
       sessionStorage.setItem(
         'orca_merge_message',
         JSON.stringify({

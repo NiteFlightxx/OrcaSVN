@@ -11,6 +11,22 @@ import type {
   StashUnversionedEntry,
 } from '@/types'
 
+export type SvnWorkspaceAction =
+  | { kind: 'info' | 'properties' | 'remoteStatus' | 'add' | 'delete' | 'mkdir' | 'unlock' | 'removeChangelist'; target: string }
+  | { kind: 'copy' | 'move'; target: string; destination: string }
+  | { kind: 'lock'; target: string; message: string }
+  | { kind: 'setProperty'; target: string; name: string; value: string }
+  | { kind: 'deleteProperty' | 'changelist'; target: string; name: string }
+  | { kind: 'cleanup' }
+  | { kind: 'export'; source: string; destination: string; revision?: number }
+  | { kind: 'import'; source: string; destination: string; message: string }
+  | { kind: 'remoteMkdir'; destination: string; message: string }
+  | { kind: 'patch'; source: string; reverse: boolean }
+  | { kind: 'mergeinfo'; source: string }
+
+export const svnWorkspaceAction = (path: string, expectedUrl: string, action: SvnWorkspaceAction) =>
+  invoke<string>('svn_workspace_action', { path, expectedUrl, action })
+
 export async function configureSvnExecutable(executable?: string): Promise<string> {
   return invoke<string>('configure_svn_executable', {
     executable: executable?.trim() || null,

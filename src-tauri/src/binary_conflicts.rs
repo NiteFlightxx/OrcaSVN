@@ -1,14 +1,9 @@
-//! Automatic conflict acknowledgement for existing generated binary files.
+//! Automatic conflict resolution for generated binaries and Unreal module manifests.
 //! Uses the same guarded working-result resolution as the manual command.
 use crate::workflows as w;
 use quick_xml::{events::Event, Reader};
 use serde::Serialize;
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    fs,
-    io::Read,
-    path::Path,
-};
+use std::{collections::BTreeMap, fs, io::Read, path::Path};
 
 const MAX_BATCH: usize = 8;
 
@@ -44,10 +39,37 @@ fn mime_type(xml: &str) -> w::Result<String> {
     }
 }
 
-async fn binary_properties(
+fn has_conflict_markers(bytes: &[u8]) -> bool {
+    bytes
+        .split(|byte| *byte == b'\n')
+        .any(|line| line.starts_with(b"<<<<<<< "))
+}
+
+fn module_resolution(root: &Path, full: &Path, conflict: &w::Conflict) -> w::Result<&'static str> {
+    let working = fs::read(full).map_err(|error| error.to_string())?;
+    if !has_conflict_markers(&working) {
+        return Ok("working");
+    }
+    // SVN inserts markers into text conflicts. Acknowledging those bytes
+    // would leave the generated manifest unusable.
+    let local = conflict
+        .versions
+        .iter()
+        .find(|version| version.side == "local")
+        .filter(|_| conflict.kind != "tree")
+        .ok_or("Cannot restore the local .modules version from its conflict artifacts")?;
+    let local = w::safe_child(root, &local.path)?;
+    let bytes = fs::read(local).map_err(|error| error.to_string())?;
+    if has_conflict_markers(&bytes) {
+        return Err("The local .modules version already contains conflict markers".into());
+    }
+    Ok("mine-full")
+}
+
+async fn automatic_resolution(
     info: &w::Identity,
     conflict: &w::Conflict,
-) -> w::Result<Option<String>> {
+) -> w::Result<Option<(&'static str, String)>> {
     if !conflict.summary.as_ref().is_some_and(|s| {
         s.node_kind == "file"
             && ["normal", "add", "replace"].contains(&s.schedule.as_str())
@@ -73,13 +95,20 @@ async fn binary_properties(
         ],
     )
     .await?;
+    if full
+        .extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("modules"))
+    {
+        let strategy = module_resolution(Path::new(&info.root), &full, conflict)?;
+        return Ok(Some((strategy, xml)));
+    }
     let mime = mime_type(&xml)?.trim().to_ascii_lowercase();
     if !mime.is_empty() {
         // Match SVN's binary MIME rule, including its two text exceptions.
         return Ok((!mime.starts_with("text/")
             && mime != "image/x-xbitmap"
             && mime != "image/x-xpixmap")
-            .then_some(xml));
+            .then_some(("working", xml)));
     }
     let mut bytes = Vec::new();
     fs::File::open(full)
@@ -96,7 +125,7 @@ async fn binary_properties(
     }
     Ok(
         (bytes.contains(&0) || std::str::from_utf8(&bytes).is_err_and(|e| e.error_len().is_some()))
-            .then_some(xml),
+            .then_some(("working", xml)),
     )
 }
 
@@ -179,30 +208,30 @@ pub(crate) async fn resolve_batch(
     }
     let targets: Vec<_> = candidates.keys().map(|file| w::target(file)).collect();
     let before = exact_status(&info.root, &targets).await?;
-    let mut prepared = BTreeSet::new();
+    let mut prepared = BTreeMap::new();
     for (relative, file) in &candidates {
         let Some(entry) = before.get(relative).filter(|entry| conflicted(entry)) else {
             continue;
         };
         let prepare = async {
             let current = w::inspect_conflict(&info, entry, false).await?;
-            let Some(properties) = binary_properties(&info, &current).await? else {
-                return Ok(false);
+            let Some((strategy, properties)) = automatic_resolution(&info, &current).await? else {
+                return Ok(None);
             };
             let data = data.to_path_buf();
             let info = info.clone();
             tokio::task::spawn_blocking(move || {
-                w::resolution_backup(&data, &info, &current, "working", Some(&properties))
+                w::resolution_backup(&data, &info, &current, strategy, Some(&properties))
             })
             .await
             .map_err(|e| e.to_string())??;
-            Ok(true)
+            Ok(Some(strategy))
         };
         match prepare.await {
-            Ok(true) => {
-                prepared.insert(relative.clone());
+            Ok(Some(strategy)) => {
+                prepared.insert(relative.clone(), strategy);
             }
-            Ok(false) => {}
+            Ok(None) => {}
             Err(error) => {
                 result.failures.insert(file.clone(), error);
             }
@@ -214,10 +243,22 @@ pub(crate) async fn resolve_batch(
     // Recheck the source after backups, immediately before acknowledging
     // conflicts. The writer prevents an in-app switch between these steps.
     verify_source(path, &info, expected_url, prefix.as_os_str().is_empty()).await?;
-    let targets: Vec<_> = prepared.iter().map(|file| w::target(file)).collect();
-    let mut args = vec!["resolve", "--accept", "working", "--depth", "empty", "--"];
-    args.extend(targets.iter().map(String::as_str));
-    let command = w::run(&info.root, &args).await;
+    let targets: Vec<_> = prepared.keys().map(|file| w::target(file)).collect();
+    let mut errors = BTreeMap::new();
+    for strategy in ["working", "mine-full"] {
+        let selected: Vec<_> = prepared
+            .iter()
+            .filter(|(_, accept)| **accept == strategy)
+            .map(|(file, _)| w::target(file))
+            .collect();
+        if !selected.is_empty() {
+            let mut args = vec!["resolve", "--accept", strategy, "--depth", "empty", "--"];
+            args.extend(selected.iter().map(String::as_str));
+            if let Err(error) = w::run(&info.root, &args).await {
+                errors.insert(strategy, error);
+            }
+        }
+    }
     let verification = async {
         let after = exact_status(&info.root, &targets).await?;
         verify_source(path, &info, expected_url, prefix.as_os_str().is_empty()).await?;
@@ -228,7 +269,7 @@ pub(crate) async fn resolve_batch(
         Err(error) => {
             result.verification_failed = true;
             let _ = crate::svn::invalidate_status(&workspace);
-            for relative in &prepared {
+            for relative in prepared.keys() {
                 result
                     .failures
                     .insert(candidates[relative].clone(), error.clone());
@@ -243,15 +284,14 @@ pub(crate) async fn resolve_batch(
         subtrees: Vec::new(),
         entries: Vec::new(),
     };
-    for relative in prepared {
+    for (relative, strategy) in prepared {
         let file = &candidates[&relative];
         let entry = after.get(&relative);
         if entry.is_some_and(conflicted) {
             result.failures.insert(
                 file.clone(),
-                command
-                    .as_ref()
-                    .err()
+                errors
+                    .get(strategy)
                     .cloned()
                     .unwrap_or_else(|| "Conflict is still present".into()),
             );
