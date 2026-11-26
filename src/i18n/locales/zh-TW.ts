@@ -72,7 +72,7 @@ export default {
     logLimit: '日誌預設載入筆數',
     theme: '主題',
     accent: '主題色',
-    accent_indigo: '鳶尾紫',
+    accent_indigo: '鈷藍',
     accent_teal: '青綠',
     accent_amber: '琥珀',
     themeLight: '淺色',

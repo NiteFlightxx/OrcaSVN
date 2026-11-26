@@ -9,6 +9,7 @@ mod file_actions;
 mod history_actions;
 mod svn;
 mod svn_tools;
+mod window_chrome;
 #[cfg(test)]
 mod workflow_tests;
 mod workflows;
@@ -1001,12 +1002,19 @@ fn main() {
     tauri::Builder::default()
         .setup(|app| {
             workflows::register_app(app.handle().clone());
+            #[cfg(windows)]
+            if let Some(window) = app.get_webview_window("main") {
+                if let Err(error) = window_chrome::set_taskbar_icon(&window) {
+                    tracing::warn!(%error, "Could not set the Windows taskbar icon");
+                }
+            }
             Ok(())
         })
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![
+            window_chrome::sync_window_chrome,
             svn_tools::svn_workspace_action,
             file_actions::workspace_item_details,
             discard::preview_workspace_discard,

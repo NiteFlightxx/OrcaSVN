@@ -8,13 +8,13 @@
     :close-on-click-modal="false"
   >
     <div class="update-summary" :class="feedback.state" role="status" aria-live="polite">
-      <el-icon :class="{ 'is-loading': feedback.running }"
+      <el-icon aria-hidden="true" :class="{ 'is-loading': feedback.running }"
         ><Loading v-if="feedback.running" /><Warning
           v-else-if="feedback.state === 'conflicts' || feedback.state === 'failed'" /><Check v-else
       /></el-icon>
-      <strong>{{ $t(`updateProgress.${feedback.state}`) }}</strong>
-      <span>{{ $t('updateProgress.elapsed', { seconds: elapsed }) }}</span>
+      <strong>{{ $t(`updateProgress.${feedback.state}`, { count: feedback.conflicts.length }) }}</strong>
     </div>
+    <p class="update-elapsed">{{ $t('updateProgress.elapsed', { seconds: elapsed }) }}</p>
     <p class="update-workspace">{{ feedback.workspace }}</p>
     <progress
       v-if="feedback.running"
@@ -25,20 +25,16 @@
       {{ lastLine || $t('updateProgress.waiting') }}
     </p>
     <p v-if="feedback.error" class="update-error" role="alert">{{ feedback.error }}</p>
-    <p v-if="feedback.state === 'completed'" class="update-note">
+    <p v-if="!feedback.running && feedback.verification === 'refreshing'" class="update-note" role="status">
       {{ $t('updateProgress.backgroundRefresh') }}
+    </p>
+    <p v-else-if="feedback.verification === 'failed'" class="update-error" role="alert">
+      {{ $t('experience.refreshFailed') }}
     </p>
     <ul v-if="feedback.conflicts.length" class="update-conflicts">
       <li v-for="path in feedback.conflicts" :key="path">{{ path }}</li>
     </ul>
-    <pre
-      v-if="feedback.output"
-      ref="outputElement"
-      class="update-output"
-      tabindex="0"
-      :aria-label="$t('updateProgress.output')"
-      @scroll="trackScroll"
-      >{{ feedback.output }}</pre>
+    <SvnOutputDetails v-if="feedback.output" :key="feedback.startedAt" :text="feedback.output" :live="feedback.running" />
     <template #footer
       ><el-button @click="feedback.visible = false">{{
         $t(feedback.running ? 'updateProgress.background' : 'common.close')
@@ -47,11 +43,10 @@
   </el-dialog>
 </template>
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { svnUpdateFeedback as feedback } from '@/composables/useSvnUpdate'
+import SvnOutputDetails from './SvnOutputDetails.vue'
 const now = ref(Date.now())
-const outputElement = ref<HTMLElement | null>(null)
-const following = ref(true)
 let timer: ReturnType<typeof setInterval> | undefined
 const elapsed = computed(() =>
   Math.max(
@@ -66,7 +61,6 @@ watch(
     if (timer !== undefined) clearInterval(timer)
     timer = undefined
     if (running) {
-      following.value = true
       now.value = Date.now()
       timer = setInterval(() => {
         now.value = Date.now()
@@ -75,15 +69,6 @@ watch(
   },
   { immediate: true }
 )
-function trackScroll() {
-  const el = outputElement.value
-  if (el) following.value = el.scrollHeight - el.scrollTop - el.clientHeight < 32
-}
-watch([() => feedback.output, () => feedback.visible], async () => {
-  await nextTick()
-  if (following.value && outputElement.value)
-    outputElement.value.scrollTop = outputElement.value.scrollHeight
-})
 onBeforeUnmount(() => {
   if (timer !== undefined) clearInterval(timer)
 })
@@ -93,11 +78,9 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-.update-summary > span {
-  margin-left: auto;
-  font-size: var(--app-font-size-xs);
-  color: var(--md-sys-color-on-surface-variant);
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--md-sys-color-surface-container-low);
 }
 .update-summary.completed .el-icon {
   color: var(--md-sys-color-primary);
@@ -108,6 +91,18 @@ onBeforeUnmount(() => {
 }
 .update-summary.conflicts .el-icon {
   color: var(--app-color-status-modified-text);
+}
+.update-elapsed {
+  text-align: right;
+  margin: 6px 0 0;
+  font-size: var(--app-font-size-xs);
+  color: var(--md-sys-color-on-surface-variant);
+  font-variant-numeric: tabular-nums;
+}
+@media (prefers-reduced-motion: reduce) {
+  .update-summary .is-loading {
+    animation: none;
+  }
 }
 .update-workspace,
 .update-note {
@@ -132,19 +127,6 @@ onBeforeUnmount(() => {
   margin: 10px 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-}
-.update-output {
-  max-height: 32vh;
-  margin: 12px 0 0;
-  padding: 10px;
-  background: var(--md-sys-color-surface-container-lowest);
-  border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: 3px;
-  font: var(--app-font-size-xs)/1.7 var(--app-font-family-mono);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  overflow: auto;
-  user-select: text;
 }
 .update-conflicts {
   max-height: 120px;

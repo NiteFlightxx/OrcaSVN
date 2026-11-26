@@ -43,7 +43,21 @@ test('update feedback opens immediately, streams output and shares the running g
   assert.match(h.feedback.output,/revision 43/)
   // Native completion does not wait for the background inventory.
   assert.deepEqual(h.calls.map(call=>call[0]),['update','refresh','success'])
+  assert.equal(h.feedback.verification, 'refreshing')
   h.verification.resolve(true)
+  await new Promise(setImmediate)
+  assert.equal(h.feedback.verification, 'idle')
+})
+
+test('a failed local scan keeps the native update result and reports stale status', async () => {
+  const h = harness(), pending = h.updateWorkspace()
+  h.workspace.statusIsStale = true
+  h.update.resolve({ success: true, output: 'Updated to revision 43.', conflicts: [] })
+  await pending
+  h.verification.resolve(false)
+  await new Promise(setImmediate)
+  assert.equal(h.feedback.state, 'completed')
+  assert.equal(h.feedback.verification, 'failed')
 })
 
 test('backgrounding does not cancel the command and a failure reopens the result with its output',async()=>{

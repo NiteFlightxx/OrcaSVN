@@ -56,7 +56,7 @@
           label-position="right"
         >
           <el-form-item :label="$t('settings.theme')" class="form-item">
-            <el-radio-group v-model="settings.theme" @change="applyTheme" class="theme-group">
+            <el-radio-group v-model="settings.theme" class="theme-group">
               <el-radio value="light" class="theme-radio">
                 <div class="theme-option">
                   <el-icon><Sunny /></el-icon>
@@ -204,7 +204,6 @@ import { ElMessage } from 'element-plus/es/components/message/index'
 import { configureSvnExecutable } from '@/api/svn'
 import { useLocale } from '@/composables/useLocale'
 import { useSettings, type Accent, type BinaryConflictPolicy } from '@/composables/useSettings'
-import { applyTheme } from '@/composables/useTheme'
 import { useWorkspace } from '@/composables/useWorkspace'
 import { useUpdateCheck } from '@/composables/useUpdateCheck'
 
@@ -272,7 +271,6 @@ const handleSvnPathChange = async (value: string) => {
 
 onMounted(() => {
   setLocale(settings.language)
-  applyTheme(settings.theme)
 })
 </script>
 
@@ -382,7 +380,7 @@ onMounted(() => {
   border-radius: 50%;
   background: var(--accent-swatch);
 }
-.accent-swatch[data-swatch="indigo"] { --accent-swatch: #5146c9; }
+.accent-swatch[data-swatch="indigo"] { --accent-swatch: #2455cb; }
 .accent-swatch[data-swatch="teal"] { --accent-swatch: #067165; }
 .accent-swatch[data-swatch="amber"] { --accent-swatch: #895006; }
 .preferences-hint {

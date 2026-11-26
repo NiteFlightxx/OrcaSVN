@@ -72,7 +72,7 @@ export default {
     logLimit: '기본 로그 로드 개수',
     theme: '테마',
     accent: '강조 색상',
-    accent_indigo: '인디고',
+    accent_indigo: '코발트 블루',
     accent_teal: '청록',
     accent_amber: '호박색',
     themeLight: '라이트',

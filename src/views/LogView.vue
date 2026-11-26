@@ -184,14 +184,7 @@
                 ></i
                 ><span>{{ commitSubject(row.message) }}</span>
                 <el-icon
-                  v-if="presence.state(row.revision) === 'checking'"
-                  class="presence-indicator checking"
-                  :title="presenceHint(row.revision)"
-                  aria-hidden="true"
-                  ><Loading
-                /></el-icon>
-                <el-icon
-                  v-else-if="presence.state(row.revision) === 'unknown'"
+                  v-if="presence.state(row.revision) === 'unknown'"
                   class="presence-indicator"
                   :title="presenceHint(row.revision)"
                   aria-hidden="true"
@@ -269,6 +262,9 @@
           >
             {{ $t('common.retry') }}
           </button>
+          <span v-else-if="presence.checking.value" class="history-load-status" role="status">{{
+            $t('historyPresence.checkingBatch')
+          }}</span>
           <span v-else-if="!hasMore && logs.length" class="history-load-status">{{
             $t('log.allLoaded')
           }}</span>
@@ -1460,19 +1456,6 @@ onUnmounted(() => {
   margin-left: 6px;
   font-size: 13px;
   color: inherit;
-}
-.presence-indicator.checking {
-  animation: presence-spin 1s linear infinite;
-}
-@keyframes presence-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .presence-indicator.checking {
-    animation: none;
-  }
 }
 .history-base-row .revision-dot {
   left: 3px;

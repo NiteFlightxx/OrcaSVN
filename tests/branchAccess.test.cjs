@@ -159,7 +159,7 @@ test('a mutation refreshes branch metadata once via epoch; scoped commits refres
   await h.flow.perform('commit', async () => ({success:true, output:'committed', warning:'refresh failed'}), true, false)
   await tick()
   assert.equal(reads, afterUpdate)
-  assert.equal(h.flow.activities[0].failed, false)
+  assert.equal(h.flow.activities[0].phase, 'completed')
   assert.equal(h.flow.busy, false)
   h.stop()
 })

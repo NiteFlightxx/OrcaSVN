@@ -72,7 +72,7 @@ export default {
     logLimit: '日志默认加载条数',
     theme: '主题',
     accent: '主题色',
-    accent_indigo: '鸢尾紫',
+    accent_indigo: '钴蓝',
     accent_teal: '青绿',
     accent_amber: '琥珀',
     themeLight: '浅色',

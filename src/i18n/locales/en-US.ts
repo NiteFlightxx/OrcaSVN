@@ -72,7 +72,7 @@ export default {
     logLimit: 'Default Log Batch Size',
     theme: 'Theme',
     accent: 'Accent',
-    accent_indigo: 'Indigo',
+    accent_indigo: 'Cobalt blue',
     accent_teal: 'Teal',
     accent_amber: 'Amber',
     themeLight: 'Light',

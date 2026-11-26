@@ -23,7 +23,7 @@
     <p v-if="error" class="error" role="alert">{{ error }}</p>
     <p v-if="notice" role="status">{{ notice }}</p>
     <p v-if="flow.busy" role="status">{{ $t('commitFlow.' + commitPhase) }}</p>
-    <pre v-if="flow.busy && flow.commandOutput">{{ flow.commandOutput }}</pre>
+    <SvnOutputDetails v-if="flow.busy && flow.commandOutput" :text="flow.commandOutput" live />
     <template #footer
       ><el-button :disabled="flow.busy" @click="close">{{ $t('common.cancel') }}</el-button
       ><el-button
@@ -50,6 +50,7 @@ import { useSettings } from '@/composables/useSettings'
 import { svnCommit } from '@/api/svn'
 import { useWorkspace } from '@/composables/useWorkspace'
 import CommitMessageEditor from './CommitMessageEditor.vue'
+import SvnOutputDetails from './SvnOutputDetails.vue'
 const props = defineProps<{ visibleFiles?: string[] }>()
 const emit = defineEmits<{ close: []; submitted: [] }>()
 const { t } = useI18n(),
@@ -177,10 +178,5 @@ async function submit() {
 }
 code {
   overflow-wrap: anywhere;
-}
-pre {
-  max-height: 15vh;
-  overflow: auto;
-  white-space: pre-wrap;
 }
 </style>

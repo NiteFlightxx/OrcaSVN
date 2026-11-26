@@ -140,7 +140,7 @@ test('failed background verification cannot change a successful update into a co
   assert.equal(h.flow.busy, false)
   assert.equal(h.updating.value, false)
   assert.equal(h.messages[0][0], 'success')
-  assert.equal(h.flow.activities[0].failed, false)
+  assert.equal(h.flow.activities[0].phase, 'completed')
 })
 
 test('late completion cannot refresh or notify a different repository', async () => {

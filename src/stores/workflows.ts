@@ -21,6 +21,8 @@ import {
   uniqueBranches,
 } from '@/utils/branches'
 
+type OperationResultPhase = 'completed' | 'failed' | 'conflicts' | 'added'
+
 export const useWorkflowStore = defineStore('workflows', () => {
   const workspace = useWorkspaceStore()
   const identity = ref<Identity | null>(null)
@@ -43,7 +45,7 @@ export const useWorkflowStore = defineStore('workflows', () => {
     ])
   )
   const busy = ref(false)
-  const phase = ref('completed')
+  const phase = ref<OperationResultPhase | 'executing' | 'checking' | 'refreshing'>('completed')
   const commandOutput = ref('')
   const operationWorkspace = ref('')
   const refreshWarning = ref(false)
@@ -58,14 +60,15 @@ export const useWorkflowStore = defineStore('workflows', () => {
   void listen<{ phase: string; file: string; current: number; total: number }>(
     'workflow-progress',
     (event) => {
-      progress.value = event.payload
+      if (busy.value) progress.value = event.payload
     }
   ).catch(() => {})
   const title = ref('')
   const plan = ref<OperationPlan | null>(null)
   const activities = ref<
-    { title: string; output: string; failed: boolean; time: string; undoId?: string }[]
+    { id: number; title: string; output: string; phase: OperationResultPhase; time: string; undoId?: string }[]
   >([])
+  let operationId = 0
   const branchName = computed(() => (identity.value ? nameFromUrl(identity.value.url) : ''))
   let generation = 0
   let browseGeneration = 0
@@ -258,6 +261,7 @@ export const useWorkflowStore = defineStore('workflows', () => {
     refreshLocal = true
   ): Promise<T> {
     if (busy.value) throw new Error('Another operation is running')
+    const id = ++operationId
     busy.value = true
     title.value = name
     progress.value = null
@@ -267,32 +271,45 @@ export const useWorkflowStore = defineStore('workflows', () => {
     const path = workspace.currentPath
     operationWorkspace.value = path || ''
     const startingEpoch = workspace.epoch
-    let finalPhase = 'completed'
+    let finalPhase: OperationResultPhase = 'completed'
     try {
       const result = await operation()
-      const failure =
+      const operationResult =
         result && typeof result === 'object'
-          ? (result as { error?: string; warning?: string }).error ||
-            ((result as { success?: boolean }).success === true ? '' : (result as { warning?: string }).warning)
-          : ''
-      const operationResult = result as { id?: string; kind?: string; output?: string }
-      const conflicts = (result as { conflicts?: string[] } | null)?.conflicts
-      finalPhase = conflicts?.length ? 'conflicts' : failure ? 'failed' : 'completed'
+          ? (result as {
+              id?: string
+              kind?: string
+              output?: string
+              error?: string | null
+              warning?: string | null
+              success?: boolean
+              conflicts?: string[]
+              added?: boolean
+            })
+          : null
+      const failure = operationResult?.error ||
+        (operationResult?.success !== true ? operationResult?.warning : '')
+      if (failure || operationResult?.success === false) finalPhase = 'failed'
+      else if (operationResult?.conflicts?.length) finalPhase = 'conflicts'
+      else if (operationResult?.added === true) finalPhase = 'added'
+      const output = typeof result === 'string' ? result : operationResult?.output || commandOutput.value
       activities.value.unshift({
+        id,
         title: name,
-        output: typeof result === 'string' ? result : operationResult?.output || failure || name,
-        failed: Boolean(failure),
+        output: failure && !output.includes(failure) ? [output, failure].filter(Boolean).join('\n') : output,
+        phase: finalPhase,
         time: new Date().toLocaleString(),
         undoId:
-          !failure && operationResult?.kind === 'cherry-pick' ? operationResult.id : undefined,
+          finalPhase !== 'failed' && operationResult?.kind === 'cherry-pick' ? operationResult.id : undefined,
       })
       return result
     } catch (e) {
       finalPhase = 'failed'
       activities.value.unshift({
+        id,
         title: name,
-        output: String(e),
-        failed: true,
+        output: [commandOutput.value, String(e)].filter(Boolean).join('\n'),
+        phase: finalPhase,
         time: new Date().toLocaleString(),
       })
       throw e

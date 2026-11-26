@@ -72,7 +72,7 @@ export default {
     logLimit: 'ログのデフォルト読み込み件数',
     theme: 'テーマ',
     accent: 'アクセントカラー',
-    accent_indigo: 'インディゴ',
+    accent_indigo: 'コバルトブルー',
     accent_teal: 'ティール',
     accent_amber: 'アンバー',
     themeLight: 'ライト',

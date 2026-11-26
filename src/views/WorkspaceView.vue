@@ -1599,9 +1599,10 @@ const discardTargets = async (targets: string[]) => {
         statusPatch = result.status
         operationError = result.error
         flow.phase = 'refreshing'
-        await refreshStatusAfterDiscard(
+        const refreshed = await refreshStatusAfterDiscard(
           workspaceStore.epoch === executionEpoch ? statusPatch : null
         )
+        flow.refreshWarning = !refreshed && isCurrent() && workspaceStore.statusIsStale
         refreshedScope = true
         return result
       },
@@ -1612,7 +1613,7 @@ const discardTargets = async (targets: string[]) => {
     operationError = result.error
     planId = null
     if (workspaceStore.currentPath === workspacePath && staging.key === selectionKey) {
-      if (!result.error) ElMessage.success(t('fileMenu.discardCompleted'))
+      if (!result.error && !flow.refreshWarning) ElMessage.success(t('fileMenu.discardCompleted'))
       if (result.error) workspaceStore.setError(result.error)
     }
   } catch (err) {

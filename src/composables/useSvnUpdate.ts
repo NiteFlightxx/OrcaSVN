@@ -11,6 +11,7 @@ export const svnUpdateFeedback = reactive({
   visible: false,
   running: false,
   state: 'idle' as 'idle' | 'running' | 'completed' | 'conflicts' | 'failed',
+  verification: 'idle' as 'idle' | 'refreshing' | 'failed',
   workspace: '',
   output: '',
   error: '',
@@ -18,6 +19,7 @@ export const svnUpdateFeedback = reactive({
   startedAt: 0,
   finishedAt: 0,
 })
+let updateGeneration = 0
 
 // Updating is a repository operation. Keep the current route and let the shared
 // operation runner retain command output. Verify local state in the background
@@ -59,12 +61,27 @@ export function useSvnUpdate() {
     const path = workspace.currentPath
     const url = workspace.svnInfo?.url || ''
     if (!path || workspace.isLoading || workflow.busy || updating.value) return
+    const generation = ++updateGeneration
     const isCurrent = () =>
       workspace.currentPath === path && (!url || workspace.svnInfo?.url === url)
+    async function verifyLocalStatus(path: string) {
+      if (isCurrent()) svnUpdateFeedback.verification = 'refreshing'
+      let refreshed = false
+      try {
+        refreshed = await refreshStatusAfterUpdate(path, url)
+      } catch (error) {
+        if (generation === updateGeneration && isCurrent()) workspace.setError(String(error))
+      } finally {
+        if (generation === updateGeneration)
+          svnUpdateFeedback.verification =
+            !refreshed && isCurrent() && workspace.statusIsStale ? 'failed' : 'idle'
+      }
+    }
     Object.assign(svnUpdateFeedback, {
       visible: true,
       running: true,
       state: 'running',
+      verification: 'idle',
       workspace: path,
       output: '',
       error: '',
@@ -88,14 +105,7 @@ export function useSvnUpdate() {
           } finally {
             // Do not make a successful SVN command wait for full working-copy
             // verification. The existing list remains visible but marked stale.
-            const report = (error: unknown) => {
-              if (isCurrent()) workspace.setError(String(error))
-            }
-            try {
-              void refreshStatusAfterUpdate(path, url).catch(report)
-            } catch (error) {
-              report(error)
-            }
+            void verifyLocalStatus(path)
           }
         },
         true,
