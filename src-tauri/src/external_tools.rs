@@ -4,6 +4,157 @@ use crate::{file_actions, workflows as w};
 use std::{collections::HashMap, fs, path::Path};
 use tauri::Manager;
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BlueprintReviewReport {
+    info: String,
+    report: Option<String>,
+    detail: Option<String>,
+}
+
+fn blueprintreview_cli() -> w::Result<std::path::PathBuf> {
+    let mut candidates = Vec::new();
+    if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+        candidates.push(Path::new(&local).join("Programs/BlueprintReview/blueprintreview.exe"));
+    }
+    if let Some(programs) = std::env::var_os("ProgramFiles") {
+        candidates.push(Path::new(&programs).join("BlueprintReview/blueprintreview.exe"));
+    }
+    candidates
+        .into_iter()
+        .find(|path| path.is_absolute() && path.is_file())
+        .ok_or_else(|| {
+            "BlueprintReview CLI is not installed in a standard Windows installation directory"
+                .into()
+        })
+}
+
+async fn blueprintreview_output(
+    program: &Path,
+    args: &[&str],
+    directory: &Path,
+) -> w::Result<String> {
+    let mut command = tokio::process::Command::new(program);
+    command.args(args).current_dir(directory).kill_on_drop(true);
+    #[cfg(windows)]
+    command.creation_flags(0x08000000);
+    let output = tokio::time::timeout(std::time::Duration::from_secs(30), command.output())
+        .await
+        .map_err(|_| "BlueprintReview timed out".to_owned())?
+        .map_err(|error| error.to_string())?;
+    if !output.status.success() {
+        let detail = String::from_utf8_lossy(&output.stderr);
+        return Err(if detail.trim().is_empty() {
+            format!("BlueprintReview exited with {}", output.status)
+        } else {
+            detail.trim().to_owned()
+        });
+    }
+    if output.stdout.len() > 2_000_000 {
+        return Err("BlueprintReview report exceeds 2 MB".into());
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+pub(crate) async fn blueprintreview_report(
+    path: &str,
+    file: &str,
+    expected_url: &str,
+    directory: &Path,
+    program: &Path,
+) -> w::Result<BlueprintReviewReport> {
+    let _guard = w::acquire(path).await?;
+    if w::identity(path).await?.url != expected_url {
+        return Err("Working-copy branch changed".into());
+    }
+    let full = file_actions::owned(path, file).await?;
+    if !full.is_file()
+        || !full.extension().is_some_and(|ext| {
+            ext.eq_ignore_ascii_case("uasset") || ext.eq_ignore_ascii_case("umap")
+        })
+    {
+        return Err("Select an existing Unreal asset".into());
+    }
+    // Work on private copies. The external viewer must never write to the actual working file.
+    fs::create_dir_all(directory).map_err(|error| error.to_string())?;
+    let result = async {
+        let working = directory.join("working");
+        fs::create_dir(&working).map_err(|error| error.to_string())?;
+        let right = working.join(full.file_name().ok_or("Invalid asset name")?);
+        fs::copy(&full, &right).map_err(|error| error.to_string())?;
+        let info =
+            blueprintreview_output(program, &["info", &right.to_string_lossy()], directory).await?;
+        if info.lines().any(|line| {
+            line.trim_start().starts_with("contains:") && line.contains("(not supported)")
+        }) {
+            return Ok(BlueprintReviewReport {
+                info,
+                report: None,
+                detail: None,
+            });
+        }
+        let left_dir = directory.join("base");
+        fs::create_dir(&left_dir).map_err(|error| error.to_string())?;
+        let left = left_dir.join(full.file_name().ok_or("Invalid asset name")?);
+        let comparison = async {
+            w::run(
+                path,
+                &[
+                    "export",
+                    "-r",
+                    "BASE",
+                    "--",
+                    &w::target(file),
+                    &left.to_string_lossy(),
+                ],
+            )
+            .await?;
+            blueprintreview_output(
+                program,
+                &[
+                    "diff",
+                    &left.to_string_lossy(),
+                    &right.to_string_lossy(),
+                    "--format",
+                    "md",
+                ],
+                directory,
+            )
+            .await
+        }
+        .await;
+        let (report, detail) = match comparison {
+            Ok(report) => (Some(report), None),
+            Err(detail) => (None, Some(detail)),
+        };
+        Ok(BlueprintReviewReport {
+            info,
+            report,
+            detail,
+        })
+    }
+    .await;
+    let _ = fs::remove_dir_all(directory);
+    result
+}
+
+#[tauri::command]
+pub async fn workspace_blueprintreview_report(
+    app: tauri::AppHandle,
+    path: String,
+    file: String,
+    expected_url: String,
+) -> w::Result<BlueprintReviewReport> {
+    let program = blueprintreview_cli()?;
+    let directory = app
+        .path()
+        .app_cache_dir()
+        .map_err(|error| error.to_string())?
+        .join("blueprintreview")
+        .join(w::id());
+    blueprintreview_report(&path, &file, &expected_url, &directory, &program).await
+}
+
 fn expand_arguments(args: &[String], files: &HashMap<&str, String>) -> w::Result<Vec<String>> {
     if args.len() > 64 {
         return Err("Too many tool arguments".into());

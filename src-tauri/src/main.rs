@@ -1022,6 +1022,7 @@ fn main() {
             discard::cancel_workspace_discard,
             file_actions::open_workspace_item,
             external_tools::workspace_external_tool,
+            external_tools::workspace_blueprintreview_report,
             external_tools::workspace_properties,
             external_tools::workspace_compare,
             file_actions::ignore_workspace_item,

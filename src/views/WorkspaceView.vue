@@ -306,10 +306,17 @@
           <div v-else-if="isLoadingDiff" class="loading-diff">
             <el-skeleton :rows="10" />
           </div>
-          <div v-else-if="selectedDetails?.binary" class="empty-diff">
+          <div v-else-if="selectedDetails?.binary" class="empty-diff" :class="{ 'binary-summary': blueprintReview || blueprintReviewError }">
             <strong>{{ $t('experience.binary') }}</strong
             ><code>{{ selectedFile }}</code
             ><small>{{ selectedDetails.size?.toLocaleString() }} B</small>
+            <el-button
+              v-if="selectedFile && /\.(uasset|umap)$/i.test(selectedFile)"
+              type="primary"
+              :loading="blueprintReviewLoading"
+              :disabled="flow.busy"
+              @click="reviewBlueprintAsset"
+            >{{ $t('experience.blueprintReview') }}</el-button>
             <p>{{ $t('experience.binaryHint') }}</p>
             <el-button :disabled="flow.busy" @click="openExternal">{{
               $t('experience.externalDiff')
@@ -329,6 +336,17 @@
             <el-icon><Document /></el-icon>
             <span>{{ $t('diff.noDiff') }}</span>
           </div>
+          <section v-if="!selectedConflict && selectedDetails?.binary && (blueprintReview || blueprintReviewError)" class="blueprint-review-result">
+            <p v-if="blueprintReviewError" role="alert" class="commit-error">{{ blueprintReviewError }}</p>
+            <template v-if="blueprintReview">
+              <strong>{{ $t('experience.blueprintInfo') }}</strong>
+              <pre>{{ blueprintReview.info }}</pre>
+              <strong>{{ $t('experience.blueprintChanges') }}</strong>
+              <pre v-if="blueprintReview.report">{{ blueprintReview.report }}</pre>
+              <p v-else>{{ $t('experience.blueprintUnavailable') }}</p>
+              <pre v-if="blueprintReview.detail">{{ blueprintReview.detail }}</pre>
+            </template>
+          </section>
           <p
             v-if="!conflictsMode && commitError"
             class="commit-feedback commit-error"
@@ -506,6 +524,10 @@ const showIgnored = ref(false),
   propertiesOpen = ref(false),
   diffError = ref('')
 const selectedDetails = ref<WorkspaceItemDetails | null>(null)
+type BlueprintReport = { info: string; report: string | null; detail: string | null }
+const blueprintReview = ref<BlueprintReport | null>(null)
+const blueprintReviewError = ref('')
+const blueprintReviewLoading = ref(false)
 const workspaceElement = ref<HTMLElement | null>(null)
 const workspaceStore = useWorkspaceStore()
 const staging = useStagingStore()
@@ -935,6 +957,9 @@ const loadDiff = async (path: string) => {
     workspaceStore.currentPath === workspacePath &&
     selectedFile.value === path
   isLoadingDiff.value = true
+  blueprintReview.value = null
+  blueprintReviewError.value = ''
+  blueprintReviewLoading.value = false
   diffResult.value = null
   selectedDetails.value = null
   properties.value = ''
@@ -965,6 +990,27 @@ const loadDiff = async (path: string) => {
 }
 
 const openWorkspace = () => openWorkspaceDialog(t('dialog.selectSVNWorkspaceDirectory'))
+
+async function reviewBlueprintAsset() {
+  const path = workspaceStore.currentPath
+  const file = selectedFile.value
+  const expectedUrl = flow.identity?.url || workspaceStore.svnInfo?.url
+  if (!path || !file || !expectedUrl || blueprintReviewLoading.value || flow.busy || !/\.(uasset|umap)$/i.test(file)) return
+  const generation = diffRequestGeneration
+  const isCurrent = () =>
+    generation === diffRequestGeneration && path === workspaceStore.currentPath && file === selectedFile.value
+  blueprintReviewLoading.value = true
+  blueprintReviewError.value = ''
+  blueprintReview.value = null
+  try {
+    const report = await invoke<BlueprintReport>('workspace_blueprintreview_report', { path, file, expectedUrl })
+    if (isCurrent()) blueprintReview.value = report
+  } catch (error) {
+    if (isCurrent()) blueprintReviewError.value = String(error)
+  } finally {
+    if (isCurrent()) blueprintReviewLoading.value = false
+  }
+}
 
 async function openExternal() {
   if (!selectedFile.value) return
@@ -1916,6 +1962,33 @@ const discardTargets = async (targets: string[]) => {
   flex-direction: column;
   color: var(--md-sys-color-on-surface-variant);
   font-size: 14px;
+}
+.blueprint-review-result {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+  background: var(--md-sys-color-surface-container-lowest);
+  font-size: var(--app-font-size-sm);
+}
+.binary-summary {
+  flex: 0 0 auto;
+  gap: 6px;
+  padding: 12px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+}
+.binary-summary p {
+  display: none;
+}
+.blueprint-review-result pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 8px 0 14px;
+  padding: 10px;
+  background: var(--md-sys-color-surface-container-low);
+  border-radius: var(--app-radius);
 }
 .empty-diff > .el-icon {
   font-size: 42px;
