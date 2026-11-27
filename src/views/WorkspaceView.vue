@@ -329,6 +329,18 @@
             <el-icon><Document /></el-icon>
             <span>{{ $t('diff.noDiff') }}</span>
           </div>
+          <p
+            v-if="!conflictsMode && commitError"
+            class="commit-feedback commit-error"
+            role="alert"
+            tabindex="0"
+          >{{ commitError }}</p>
+          <p
+            v-else-if="!conflictsMode && commitNotice && !submitting"
+            class="commit-feedback"
+            role="status"
+            tabindex="0"
+          >{{ commitNotice }}</p>
         </div>
         <PanelSplitter
           v-if="!conflictsMode"
@@ -342,25 +354,23 @@
         <div v-if="!conflictsMode" class="workspace-commit-composer">
           <CommitMessageEditor compact :disabled="flow.busy" />
           <div class="commit-action-row">
-            <small :title="$t('experience.latest')">{{
-              $t('sourceUI.selectedForCommit', { count: staging.paths.length })
+            <small role="status" :title="$t('experience.latest')">{{
+              submitting
+                ? $t('commitFlow.' + commitPhase)
+                : $t('sourceUI.selectedForCommit', { count: staging.paths.length })
             }}</small
             ><el-button
               type="primary"
               size="small"
-              :disabled="!draft.message || !staging.paths.length || !staging.ready || flow.busy"
+              :disabled="!canSubmit || pendingFileAction !== null"
+              :loading="submitting"
               @click="doCommit"
-              >{{ $t('changes.reviewCommit') }}</el-button
+              >{{ $t(needsAdd ? 'experience.addFirst' : 'experience.submit') }}</el-button
             >
           </div>
         </div>
       </aside>
     </div>
-    <CommitReviewDialog
-      :visible-files="filteredFiles.map((file) => file.path)"
-      v-if="reviewOpen"
-      @close="reviewOpen = false"
-    />
     <el-dialog
       v-if="fileTool"
       :model-value="true"
@@ -463,6 +473,7 @@ import { ElMessage } from 'element-plus/es/components/message/index'
 import { ElMessageBox } from 'element-plus/es/components/message-box/index'
 import { useWorkspace } from '@/composables/useWorkspace'
 import { useSettings } from '@/composables/useSettings'
+import { useStagedCommit } from '@/composables/useStagedCommit'
 import WorkspaceChangeTree from '@/components/WorkspaceChangeTree.vue'
 import PanelSplitter from '@/components/PanelSplitter.vue'
 import ConflictResolutionDialog from '@/components/ConflictResolutionDialog.vue'
@@ -471,7 +482,6 @@ import { readPanelSize } from '@/utils/changeSelection'
 import { useStagingStore } from '@/stores/staging'
 import { useCommitDraftStore } from '@/stores/commitDraft'
 import { useWorkflowStore } from '@/stores/workflows'
-import CommitReviewDialog from '@/components/CommitReviewDialog.vue'
 import ConflictInspector from '@/components/ConflictInspector.vue'
 import { useExternalTool } from '@/composables/useExternalTool'
 import { invoke } from '@tauri-apps/api/core'
@@ -491,8 +501,7 @@ const { t } = useI18n()
 const router = useRouter(),
   route = useRoute()
 const conflictsMode = computed(() => route.name === 'conflicts')
-const reviewOpen = ref(false),
-  showIgnored = ref(false),
+const showIgnored = ref(false),
   properties = ref(''),
   propertiesOpen = ref(false),
   diffError = ref('')
@@ -502,6 +511,15 @@ const workspaceStore = useWorkspaceStore()
 const staging = useStagingStore()
 const draft = useCommitDraftStore()
 const flow = useWorkflowStore()
+const {
+  canSubmit,
+  needsAdd,
+  submitting,
+  commitPhase,
+  error: commitError,
+  notice: commitNotice,
+  submit,
+} = useStagedCommit()
 const { settings } = useSettings()
 const {
   openWorkspace: openWorkspaceDialog,
@@ -1005,7 +1023,7 @@ async function restoreWorkspaceView() {
     })
 }
 watch(
-  () => [route.query.commit, staging.ready],
+  () => [route.query.commit, staging.ready, flow.busy],
   () => {
     if (route.name === 'workspace' && route.query.commit === '1' && staging.ready && !flow.busy) {
       const requested = route.query.files
@@ -1025,7 +1043,6 @@ watch(
           }
         } catch {}
       }
-      doCommit()
       void router.replace({ name: 'workspace', query: {} })
     }
   },
@@ -1046,7 +1063,7 @@ watch(conflictsMode, () => {
 const doCheckout = () => router.push({ name: 'checkout' })
 
 const doCommit = () => {
-  if (staging.ready && !flow.busy && staging.paths.length) reviewOpen.value = true
+  if (!conflictsMode.value && pendingFileAction.value === null) void submit()
 }
 
 const viewDiff = (path: string) => {
@@ -1443,7 +1460,6 @@ watch(
     lastConflictFile.value = null
     conflictRequest.value = null
     fileTool.value = null
-    reviewOpen.value = false
     fileQuery.value = ''
     hideFileContextMenu()
   },
@@ -1937,6 +1953,22 @@ const discardTargets = async (targets: string[]) => {
 .commit-action-row small {
   font-size: var(--app-font-size-xs);
   color: var(--md-sys-color-on-surface-variant);
+}
+.commit-feedback {
+  margin: auto 0 0;
+  padding: 6px 8px;
+  flex-shrink: 0;
+  max-height: 66px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface-container-low);
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: var(--app-font-size-xs);
+}
+.commit-error {
+  color: var(--md-sys-color-error);
 }
 .loading-diff {
   padding: 16px;

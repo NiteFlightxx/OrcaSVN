@@ -18,6 +18,7 @@ function harness(status = 'modified', path = 'file.ts') {
   const staging = vue.reactive({ paths: [], eligible: [], key: 'scope', ready: true })
   const mocks = {
     '@/composables/useExternalTool': { useExternalTool: () => ({ open: async () => {} }) },
+    '@/composables/useStagedCommit': { useStagedCommit: () => ({}) },
     '@tauri-apps/api/core': { invoke: async () => '' },
     '@/utils/repositoryUi': { repositoryUi: () => ({}) },
     vue: { ...vue, onMounted() {}, onDeactivated() {}, onBeforeUnmount(fn) { unmount = fn } },

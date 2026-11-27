@@ -23,6 +23,7 @@ function harness(options = {}) {
   const details = { kind: 'file', exists: true, binary: false, historyUrl: 'file:///repo/dev/Content/A.txt' }
   const mocks = {
     '@/composables/useExternalTool': { useExternalTool: () => ({ open: async () => {} }) },
+    '@/composables/useStagedCommit': { useStagedCommit: () => ({}) },
     '@tauri-apps/api/core': { invoke: async () => '' },
     '@/utils/repositoryUi': { repositoryUi: () => ({}) },
     vue: { ...vue, onMounted() {}, onDeactivated() {}, onBeforeUnmount() {} },
